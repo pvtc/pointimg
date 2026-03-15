@@ -1,0 +1,225 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build-cli-linux:
+    name: Build CLI - Linux
+    runs-on: ubuntu-22.04
+    strategy:
+      matrix:
+        target:
+          - x86_64-unknown-linux-gnu
+          - aarch64-unknown-linux-gnu
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+      
+      - name: Install cross-compilation tools
+        if: matrix.target == 'aarch64-unknown-linux-gnu'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y gcc-aarch64-linux-gnu
+      
+      - name: Build CLI
+        run: cargo build --release --no-default-features --bin pointimg --target ${{ matrix.target }}
+        env:
+          CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER: aarch64-linux-gnu-gcc
+      
+      - name: Package
+        run: |
+          cd target/${{ matrix.target }}/release
+          tar czf ../../../pointimg-cli-linux-${{ matrix.target }}.tar.gz pointimg
+          cd ../../..
+      
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: pointimg-cli-linux-${{ matrix.target }}
+          path: pointimg-cli-linux-${{ matrix.target }}.tar.gz
+
+  build-cli-macos:
+    name: Build CLI - macOS
+    runs-on: macos-latest
+    strategy:
+      matrix:
+        target:
+          - x86_64-apple-darwin
+          - aarch64-apple-darwin
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+      
+      - name: Build CLI
+        run: cargo build --release --no-default-features --bin pointimg --target ${{ matrix.target }}
+      
+      - name: Package
+        run: |
+          cd target/${{ matrix.target }}/release
+          tar czf ../../../pointimg-cli-macos-${{ matrix.target }}.tar.gz pointimg
+          cd ../../..
+      
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: pointimg-cli-macos-${{ matrix.target }}
+          path: pointimg-cli-macos-${{ matrix.target }}.tar.gz
+
+  build-cli-windows:
+    name: Build CLI - Windows
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+      
+      - name: Build CLI
+        run: cargo build --release --no-default-features --bin pointimg
+      
+      - name: Package
+        run: |
+          cd target/release
+          Compress-Archive -Path pointimg.exe -DestinationPath ../../pointimg-cli-windows-x86_64.zip
+          cd ../..
+      
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: pointimg-cli-windows-x86_64
+          path: pointimg-cli-windows-x86_64.zip
+
+  build-gui-linux:
+    name: Build GUI - Linux x86_64
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libgtk-3-dev libxcb-render0-dev libxcb-shape0-dev libxcb-xfixes0-dev libspeechd-dev libxkbcommon-dev libssl-dev
+      
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+      
+      - name: Build GUI
+        run: cargo build --release --bin pointimg-gui
+      
+      - name: Package
+        run: |
+          cd target/release
+          tar czf ../../pointimg-gui-linux-x86_64.tar.gz pointimg-gui
+          cd ../..
+      
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: pointimg-gui-linux-x86_64
+          path: pointimg-gui-linux-x86_64.tar.gz
+
+  build-gui-macos:
+    name: Build GUI - macOS Universal
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: x86_64-apple-darwin,aarch64-apple-darwin
+      
+      - name: Build GUI (x86_64)
+        run: cargo build --release --bin pointimg-gui --target x86_64-apple-darwin
+      
+      - name: Build GUI (aarch64)
+        run: cargo build --release --bin pointimg-gui --target aarch64-apple-darwin
+      
+      - name: Create Universal Binary
+        run: |
+          mkdir -p target/release
+          lipo -create \
+            target/x86_64-apple-darwin/release/pointimg-gui \
+            target/aarch64-apple-darwin/release/pointimg-gui \
+            -output target/release/pointimg-gui
+      
+      - name: Package
+        run: |
+          cd target/release
+          tar czf ../../pointimg-gui-macos-universal.tar.gz pointimg-gui
+          cd ../..
+      
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: pointimg-gui-macos-universal
+          path: pointimg-gui-macos-universal.tar.gz
+
+  build-gui-windows:
+    name: Build GUI - Windows x86_64
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+      
+      - name: Build GUI
+        run: cargo build --release --bin pointimg-gui
+      
+      - name: Package
+        run: |
+          cd target/release
+          Compress-Archive -Path pointimg-gui.exe -DestinationPath ../../pointimg-gui-windows-x86_64.zip
+          cd ../..
+      
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: pointimg-gui-windows-x86_64
+          path: pointimg-gui-windows-x86_64.zip
+
+  # ─────────────────────────────────────────────────────────────────────────────
+  # Create GitHub Release
+  # ─────────────────────────────────────────────────────────────────────────────
+  
+  release:
+    name: Create Release
+    needs:
+      - build-cli-linux
+      - build-cli-macos
+      - build-cli-windows
+      - build-gui-linux
+      - build-gui-macos
+      - build-gui-windows
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/v')
+    steps:
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+      
+      - name: Create Release
+        uses: softprops/action-gh-release@v1
+        with:
+          files: artifacts/**/*
+          draft: false
+          prerelease: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

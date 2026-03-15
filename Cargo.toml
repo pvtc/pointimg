@@ -1,0 +1,52 @@
+[package]
+name = "pointimg"
+version = "0.1.0"
+edition = "2024"
+
+[lib]
+name = "pointimg"
+path = "src/lib.rs"
+
+[[bin]]
+name = "pointimg"
+path = "src/main.rs"
+
+[[bin]]
+name = "pointimg-gui"
+path = "src/gui/main.rs"
+required-features = ["gui"]
+
+[features]
+default = ["gui"]
+gui = ["dep:eframe", "dep:egui", "dep:wgpu", "dep:rfd"]
+
+[dependencies]
+image = "0.25"
+anyhow = "1"
+clap = { version = "4", features = ["derive"] }
+rayon = "1"
+log = "0.4"
+env_logger = "0.11"
+eframe = { version = "0.31", default-features = false, features = ["wgpu", "wayland", "x11", "accesskit"], optional = true }
+egui = { version = "0.31", optional = true }
+wgpu = { version = "24", default-features = false, optional = true }
+rfd = { version = "0.15", optional = true }
+
+# ─── Profils ──────────────────────────────────────────────────────────────────
+
+[profile.dev]
+opt-level = 1          # évite que le debug soit trop lent sur les images
+
+[profile.release]
+opt-level = 3
+lto = "thin"           # link-time optimisation légère
+
+# ─── Lints ────────────────────────────────────────────────────────────────────
+
+[lints.rust]
+unused_imports = "warn"
+dead_code = "warn"
+
+[lints.clippy]
+perf = "warn"
+complexity = "warn"
