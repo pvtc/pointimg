@@ -17,7 +17,7 @@ use image::{DynamicImage, GrayImage, Luma, Rgb, RgbImage};
 use rayon::prelude::*;
 use std::f32::consts::PI;
 
-pub use anyhow::{anyhow, Result};
+pub use anyhow::{Result, anyhow};
 
 // ─── Types publics ────────────────────────────────────────────────────────────
 
@@ -134,21 +134,21 @@ fn validate_params(w: u32, h: u32, params: &FilterParams) -> Result<()> {
     if params.num_points == 0 {
         return Err(anyhow!("num_points doit etre > 0"));
     }
-    if let DotShape::RegularPolygon { sides } = params.dot_shape {
-        if sides < 3 || sides > 12 {
-            return Err(anyhow!(
-                "polygon_sides doit etre entre 3 et 12, got {}",
-                sides
-            ));
-        }
+    if let DotShape::RegularPolygon { sides } = params.dot_shape
+        && !(3..=12).contains(&sides)
+    {
+        return Err(anyhow!(
+            "polygon_sides doit etre entre 3 et 12, got {}",
+            sides
+        ));
     }
-    if let DotShape::Ellipse { aspect, .. } = params.dot_shape {
-        if aspect <= 0.0 || aspect > 10.0 {
-            return Err(anyhow!(
-                "ellipse_aspect doit etre dans (0, 10], got {}",
-                aspect
-            ));
-        }
+    if let DotShape::Ellipse { aspect, .. } = params.dot_shape
+        && (aspect <= 0.0 || aspect > 10.0)
+    {
+        return Err(anyhow!(
+            "ellipse_aspect doit etre dans (0, 10], got {}",
+            aspect
+        ));
     }
     const MAX_DIMENSION: u32 = 65535;
     if w > MAX_DIMENSION || h > MAX_DIMENSION {
@@ -877,11 +877,7 @@ fn zone_density(density: &[f32], x0: u32, y0: u32, w: u32, h: u32, img_w: u32, i
             n += 1;
         }
     }
-    if n > 0 {
-        sum / n as f32
-    } else {
-        1.0
-    }
+    if n > 0 { sum / n as f32 } else { 1.0 }
 }
 
 // ─── Algorithme 1 : Grille ────────────────────────────────────────────────────
@@ -1154,11 +1150,7 @@ fn pixel_variance(src: &RgbImage, x0: u32, y0: u32, w: u32, h: u32, avg: &[u8; 3
             n += 1;
         }
     }
-    if n > 0 {
-        sum / n as f32
-    } else {
-        0.0
-    }
+    if n > 0 { sum / n as f32 } else { 0.0 }
 }
 
 /// Rend les dots en SVG (chaîne de caractères).
@@ -1214,7 +1206,10 @@ pub fn render_svg_from_dots(w: u32, h: u32, dots: &[Dot], params: &FilterParams)
                 let s = r * 2.0;
                 format!(
                     "  <rect x=\"{:.1}\" y=\"{:.1}\" width=\"{:.1}\" height=\"{:.1}\" fill=\"{fill}\"/>",
-                    dot.x - r, dot.y - r, s, s
+                    dot.x - r,
+                    dot.y - r,
+                    s,
+                    s
                 )
             }
             DotShape::Ellipse { aspect, angle_deg } => {
