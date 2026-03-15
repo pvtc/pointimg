@@ -11,7 +11,7 @@ use pointimg::filter::{self, Algorithm, Dot, DotShape, FilterParams};
 
 use eframe::egui;
 use egui::{ColorImage, TextureHandle, TextureOptions};
-use image::{DynamicImage, GrayImage as ImgGrayImage, RgbImage, GenericImageView};
+use image::{DynamicImage, GenericImageView, GrayImage as ImgGrayImage, RgbImage};
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
@@ -218,16 +218,21 @@ impl App {
             let mut last_preview = Instant::now();
             let preview_interval = Duration::from_millis(100);
 
-            let res = filter::apply_with_progress(&src, &params, &cancel, |iter, total, preview: &RgbImage| {
-                *progress.lock().unwrap_or_else(|e| e.into_inner()) = (iter, total);
-                let now = Instant::now();
-                // Always clone on last iteration, throttle intermediate previews
-                if iter == total || now.duration_since(last_preview) >= preview_interval {
-                    *result.lock().unwrap_or_else(|e| e.into_inner()) = Some(preview.clone());
-                    last_preview = now;
-                    ctx.request_repaint();
-                }
-            });
+            let res = filter::apply_with_progress(
+                &src,
+                &params,
+                &cancel,
+                |iter, total, preview: &RgbImage| {
+                    *progress.lock().unwrap_or_else(|e| e.into_inner()) = (iter, total);
+                    let now = Instant::now();
+                    // Always clone on last iteration, throttle intermediate previews
+                    if iter == total || now.duration_since(last_preview) >= preview_interval {
+                        *result.lock().unwrap_or_else(|e| e.into_inner()) = Some(preview.clone());
+                        last_preview = now;
+                        ctx.request_repaint();
+                    }
+                },
+            );
             match res {
                 Ok((dst, dots)) => {
                     *result.lock().unwrap_or_else(|e| e.into_inner()) = Some(dst);
@@ -236,7 +241,8 @@ impl App {
                 }
                 Err(e) => {
                     if !cancel.load(Ordering::Relaxed) {
-                        *status_err.lock().unwrap_or_else(|e| e.into_inner()) = Some(format!("Erreur : {e}"));
+                        *status_err.lock().unwrap_or_else(|e| e.into_inner()) =
+                            Some(format!("Erreur : {e}"));
                     }
                 }
             }
@@ -252,13 +258,17 @@ impl App {
                 const MAX_PIXELS: u64 = 256 * 1024 * 1024; // 256M pixels ≈ 1GB RAM (RGBA)
                 let (w, h) = img.dimensions();
                 let pixels = (w as u64) * (h as u64);
-                
+
                 if w > MAX_DIMENSION || h > MAX_DIMENSION {
-                    self.status = format!("Image trop grande : {}x{} (max {}x{})", w, h, MAX_DIMENSION, MAX_DIMENSION);
+                    self.status = format!(
+                        "Image trop grande : {}x{} (max {}x{})",
+                        w, h, MAX_DIMENSION, MAX_DIMENSION
+                    );
                     return;
                 }
                 if pixels > MAX_PIXELS {
-                    self.status = format!("Image trop grande : {} pixels (max {})", pixels, MAX_PIXELS);
+                    self.status =
+                        format!("Image trop grande : {} pixels (max {})", pixels, MAX_PIXELS);
                     return;
                 }
                 // Utiliser filter::flatten_to_rgb (bug 2 : pas de duplication)
@@ -371,8 +381,13 @@ impl eframe::App for App {
             self.load_image(path, ctx);
         }
         if kb_save {
-            let has_result = self.result.lock().unwrap_or_else(|e| e.into_inner()).is_some();
-            if has_result && !self.computing.load(Ordering::Relaxed)
+            let has_result = self
+                .result
+                .lock()
+                .unwrap_or_else(|e| e.into_inner())
+                .is_some();
+            if has_result
+                && !self.computing.load(Ordering::Relaxed)
                 && let Some(path) = rfd::FileDialog::new()
                     .add_filter("PNG", &["png"])
                     .add_filter("JPEG", &["jpg", "jpeg"])
@@ -418,7 +433,11 @@ impl eframe::App for App {
         let computing = self.computing.load(Ordering::Relaxed);
         if !computing {
             // Invalider la texture résultat à chaque frame pour prendre les previews
-            let has_new = self.result.lock().unwrap_or_else(|e| e.into_inner()).is_some();
+            let has_new = self
+                .result
+                .lock()
+                .unwrap_or_else(|e| e.into_inner())
+                .is_some();
             if has_new {
                 self.result_texture = None;
             }
@@ -435,13 +454,18 @@ impl eframe::App for App {
         }
 
         // ── Erreur du thread ──────────────────────────────────────────────────
-        if let Some(err) = self.compute_error.lock().unwrap_or_else(|e| e.into_inner()).take() {
+        if let Some(err) = self
+            .compute_error
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .take()
+        {
             self.status = err;
         }
 
         // ── Panneau de contrôle ───────────────────────────────────────────────
         egui::SidePanel::left("controls")
-            .resizable(true)   // UX 15
+            .resizable(true) // UX 15
             .min_width(290.0)
             .show(ctx, |ui| {
                 egui::ScrollArea::vertical().show(ui, |ui| {
@@ -486,12 +510,18 @@ impl eframe::App for App {
 
                     ui.label("Sensibilite variance");
                     let vs_changed = ui
-                        .add(egui::Slider::new(&mut self.params.variance_sensitivity, 0.0..=1.0).step_by(0.01))
+                        .add(
+                            egui::Slider::new(&mut self.params.variance_sensitivity, 0.0..=1.0)
+                                .step_by(0.01),
+                        )
                         .changed();
                     if vs_changed {
                         // C1: recalculate density image when variance_sensitivity changes
                         if let Some(src) = &self.src_rgb {
-                            self.density_image = Some(filter::compute_density_image(src, self.params.variance_sensitivity));
+                            self.density_image = Some(filter::compute_density_image(
+                                src,
+                                self.params.variance_sensitivity,
+                            ));
                             self.density_texture = None;
                         }
                     }
@@ -499,12 +529,18 @@ impl eframe::App for App {
 
                     ui.label("Rayon min (fraction image)");
                     params_changed |= ui
-                        .add(egui::Slider::new(&mut self.params.min_radius_ratio, 0.001..=0.02).step_by(0.001))
+                        .add(
+                            egui::Slider::new(&mut self.params.min_radius_ratio, 0.001..=0.02)
+                                .step_by(0.001),
+                        )
                         .changed();
 
                     ui.label("Rayon max (fraction image)");
                     params_changed |= ui
-                        .add(egui::Slider::new(&mut self.params.max_radius_ratio, 0.01..=0.3).step_by(0.005))
+                        .add(
+                            egui::Slider::new(&mut self.params.max_radius_ratio, 0.01..=0.3)
+                                .step_by(0.005),
+                        )
                         .changed();
 
                     ui.label("Boost zones uniformes (×max)");
@@ -522,10 +558,16 @@ impl eframe::App for App {
                         Algorithm::Kmeans | Algorithm::Voronoi | Algorithm::Quadtree => {
                             ui.label("Nombre de points");
                             params_changed |= ui
-                                .add(egui::Slider::new(&mut self.params.num_points, 50..=5000).logarithmic(true))
+                                .add(
+                                    egui::Slider::new(&mut self.params.num_points, 50..=5000)
+                                        .logarithmic(true),
+                                )
                                 .changed();
 
-                            if matches!(self.params.algorithm, Algorithm::Kmeans | Algorithm::Voronoi) {
+                            if matches!(
+                                self.params.algorithm,
+                                Algorithm::Kmeans | Algorithm::Voronoi
+                            ) {
                                 ui.label("Itérations");
                                 params_changed |= ui
                                     .add(egui::Slider::new(&mut self.params.iterations, 1..=30))
@@ -564,7 +606,10 @@ impl eframe::App for App {
                         }
                         if let Some(ref mut s) = self.params.rng_seed {
                             let mut seed_i64 = *s as i64;
-                            if ui.add(egui::DragValue::new(&mut seed_i64).speed(1.0)).changed() {
+                            if ui
+                                .add(egui::DragValue::new(&mut seed_i64).speed(1.0))
+                                .changed()
+                            {
                                 *s = seed_i64.unsigned_abs();
                                 params_changed = true;
                             }
@@ -577,14 +622,15 @@ impl eframe::App for App {
                     ui.label("Couleur de fond");
                     ui.horizontal(|ui| {
                         let old_color = self.params.bg_color;
-                        let mut color = egui::Color32::from_rgb(
-                            old_color[0], old_color[1], old_color[2],
-                        );
+                        let mut color =
+                            egui::Color32::from_rgb(old_color[0], old_color[1], old_color[2]);
                         if egui::color_picker::color_edit_button_srgba(
                             ui,
                             &mut color,
                             egui::color_picker::Alpha::Opaque,
-                        ).changed() {
+                        )
+                        .changed()
+                        {
                             self.params.bg_color = [color.r(), color.g(), color.b()];
                             self.refresh_src_rgb();
                             params_changed = true;
@@ -607,7 +653,10 @@ impl eframe::App for App {
                     // ── Zoom ──────────────────────────────────────────────────
                     ui.horizontal(|ui| {
                         ui.label("Zoom");
-                        if ui.add(egui::Slider::new(&mut self.zoom, 0.1..=4.0).step_by(0.1)).changed() {
+                        if ui
+                            .add(egui::Slider::new(&mut self.zoom, 0.1..=4.0).step_by(0.1))
+                            .changed()
+                        {
                             self.zoom_fit = false; // U3: manual zoom disables fit
                         }
                         if ui.small_button("1:1").clicked() {
@@ -633,7 +682,10 @@ impl eframe::App for App {
                             ui.spinner();
                             ctx.request_repaint();
                         } else {
-                            if ui.add_enabled(has_src, egui::Button::new("Recalculer")).clicked() {
+                            if ui
+                                .add_enabled(has_src, egui::Button::new("Recalculer"))
+                                .clicked()
+                            {
                                 self.last_param_change = None;
                                 self.start_compute(ctx);
                             }
@@ -667,9 +719,16 @@ impl eframe::App for App {
                     ui.separator();
 
                     // Sauvegarder PNG
-                    let has_result = self.result.lock().unwrap_or_else(|e| e.into_inner()).is_some();
+                    let has_result = self
+                        .result
+                        .lock()
+                        .unwrap_or_else(|e| e.into_inner())
+                        .is_some();
                     if ui
-                        .add_enabled(has_result && !is_computing, egui::Button::new("Sauvegarder PNG…"))
+                        .add_enabled(
+                            has_result && !is_computing,
+                            egui::Button::new("Sauvegarder PNG…"),
+                        )
                         .clicked()
                         && let Some(path) = rfd::FileDialog::new()
                             .add_filter("PNG", &["png"])
@@ -680,9 +739,16 @@ impl eframe::App for App {
                     }
 
                     // Sauvegarder SVG
-                    let has_dots = self.last_dots.lock().unwrap_or_else(|e| e.into_inner()).is_some();
+                    let has_dots = self
+                        .last_dots
+                        .lock()
+                        .unwrap_or_else(|e| e.into_inner())
+                        .is_some();
                     if ui
-                        .add_enabled((has_src || has_dots) && !is_computing, egui::Button::new("Sauvegarder SVG…"))
+                        .add_enabled(
+                            (has_src || has_dots) && !is_computing,
+                            egui::Button::new("Sauvegarder SVG…"),
+                        )
                         .clicked()
                         && let Some(path) = rfd::FileDialog::new()
                             .add_filter("SVG", &["svg"])
@@ -746,24 +812,59 @@ impl eframe::App for App {
                     let panel_w = available.x / 2.0 - 4.0;
                     let panel_h = available.y;
                     ui.horizontal(|ui| {
-                        show_panel_zoomable(ui, "Source", &self.src_texture, panel_w, panel_h, false, zoom);
+                        show_panel_zoomable(
+                            ui,
+                            "Source",
+                            &self.src_texture,
+                            panel_w,
+                            panel_h,
+                            false,
+                            zoom,
+                        );
                         ui.separator();
-                        show_panel_zoomable(ui, "Résultat", &self.result_texture, panel_w, panel_h,
-                            computing, zoom);
+                        show_panel_zoomable(
+                            ui,
+                            "Résultat",
+                            &self.result_texture,
+                            panel_w,
+                            panel_h,
+                            computing,
+                            zoom,
+                        );
                     });
                 }
                 ViewMode::ResultOnly => {
-                    show_panel_zoomable(ui, "Résultat", &self.result_texture,
-                        available.x, available.y,
-                        computing, zoom);
+                    show_panel_zoomable(
+                        ui,
+                        "Résultat",
+                        &self.result_texture,
+                        available.x,
+                        available.y,
+                        computing,
+                        zoom,
+                    );
                 }
                 ViewMode::SourceOnly => {
-                    show_panel_zoomable(ui, "Source", &self.src_texture,
-                        available.x, available.y, false, zoom);
+                    show_panel_zoomable(
+                        ui,
+                        "Source",
+                        &self.src_texture,
+                        available.x,
+                        available.y,
+                        false,
+                        zoom,
+                    );
                 }
                 ViewMode::DensityMap => {
-                    show_panel_zoomable(ui, "Density map", &self.density_texture,
-                        available.x, available.y, false, zoom);
+                    show_panel_zoomable(
+                        ui,
+                        "Density map",
+                        &self.density_texture,
+                        available.x,
+                        available.y,
+                        false,
+                        zoom,
+                    );
                 }
             }
         });
@@ -777,10 +878,7 @@ fn show_shape_selector(ui: &mut egui::Ui, shape: &mut DotShape) -> bool {
     let mut changed = false;
 
     ui.horizontal(|ui| {
-        for (label, variant) in [
-            ("Cercle", DotShape::Circle),
-            ("Carré", DotShape::Square),
-        ] {
+        for (label, variant) in [("Cercle", DotShape::Circle), ("Carré", DotShape::Square)] {
             let selected = std::mem::discriminant(shape) == std::mem::discriminant(&variant);
             if ui.selectable_label(selected, label).clicked() && !selected {
                 *shape = variant;
@@ -791,7 +889,10 @@ fn show_shape_selector(ui: &mut egui::Ui, shape: &mut DotShape) -> bool {
     ui.horizontal(|ui| {
         let is_ellipse = matches!(shape, DotShape::Ellipse { .. });
         if ui.selectable_label(is_ellipse, "Ellipse").clicked() && !is_ellipse {
-            *shape = DotShape::Ellipse { aspect: 1.5, angle_deg: 0.0 };
+            *shape = DotShape::Ellipse {
+                aspect: 1.5,
+                angle_deg: 0.0,
+            };
             changed = true;
         }
         let is_poly = matches!(shape, DotShape::RegularPolygon { .. });
@@ -806,11 +907,15 @@ fn show_shape_selector(ui: &mut egui::Ui, shape: &mut DotShape) -> bool {
         DotShape::Ellipse { aspect, angle_deg } => {
             ui.horizontal(|ui| {
                 ui.label("Aspect");
-                changed |= ui.add(egui::Slider::new(aspect, 0.2..=5.0).step_by(0.05)).changed();
+                changed |= ui
+                    .add(egui::Slider::new(aspect, 0.2..=5.0).step_by(0.05))
+                    .changed();
             });
             ui.horizontal(|ui| {
                 ui.label("Angle (°)");
-                changed |= ui.add(egui::Slider::new(angle_deg, -180.0..=180.0).step_by(1.0)).changed();
+                changed |= ui
+                    .add(egui::Slider::new(angle_deg, -180.0..=180.0).step_by(1.0))
+                    .changed();
             });
         }
         DotShape::RegularPolygon { sides } => {
