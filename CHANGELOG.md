@@ -103,6 +103,16 @@ et ce projet adhère au [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 - Preview RGBA composite sur damier 8×8 (gris clair/gris foncé, effet Photosop)
   via `rgba_to_color_image_checker`. La zone transparente est visible entre dots.
 
+### Accélération GPU
+
+- Feature optionnelle `gpu` avec compute shader WGSL pour calculer la variance
+  locale de la density map en parallèle par pixel.
+- Activation explicite : `cargo build --features gpu` puis `POINTIMG_GPU=1`.
+- Fallback CPU/SAT automatique si l'option runtime est absente ou si aucun
+  adapter/device GPU n'est disponible.
+- Tests GPU exécutables sur une machine équipée :
+  `POINTIMG_GPU=1 cargo test --features gpu`.
+
 ### Routing GUI halftone/transparent
 
 - `start_compute` route vers `apply_rgba` quand `transparent` ou `halftone != Off`

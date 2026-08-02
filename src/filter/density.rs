@@ -30,6 +30,11 @@ pub(crate) fn zone_density(
 // Bug 3 corrigé : calcul en f64 pour éviter la troncature entière.
 
 pub(crate) fn compute_density_map(src: &RgbImage, sensitivity: f32) -> Vec<f32> {
+    #[cfg(feature = "gpu")]
+    if let Some(density) = crate::filter::gpu::compute_density_map(src, sensitivity) {
+        return density;
+    }
+
     let (width, height) = src.dimensions();
     let radius: usize = 4;
     let w = width as usize;

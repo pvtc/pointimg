@@ -7,11 +7,11 @@
 /// - Density map cachée : recalculée uniquement au chargement d'une nouvelle image
 /// - Preview progressive : pour Voronoï/K-means, chaque itération publie un résultat intermédiaire
 /// - Dots cachés : stockés dans App après chaque calcul complet, utilisés pour l'export SVG
-use pointimg::filter::{self, Algorithm, Dot, DotShape, FilterParams};
+use pointimg::filter::{self, Algorithm, Dot, DotShape, FilterParams, HalftoneMode, Screening};
 
 use eframe::egui;
 use egui::{ColorImage, TextureHandle, TextureOptions};
-use image::{DynamicImage, GenericImageView, GrayImage as ImgGrayImage, RgbImage};
+use image::{DynamicImage, GenericImageView, GrayImage as ImgGrayImage, RgbImage, Rgba, RgbaImage};
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
@@ -21,10 +21,19 @@ fn main() -> eframe::Result {
     env_logger::init();
     use eframe::egui_wgpu::{WgpuConfiguration, WgpuSetup, WgpuSetupCreateNew};
 
+    // Backend GPU : sur Linux on force Vulkan + GL (fallback pour Wayland/EGL
+    // selon le driver NVIDIA/AMD/Intel). Sur macOS on laisse wgpu choisir
+    // Metal automatiquement. Sur Windows, le backend par défaut (DX12/Vulkan)
+    // fonctionne nativement.
+    #[cfg(target_os = "linux")]
+    let backends = wgpu::Backends::VULKAN | wgpu::Backends::GL;
+    #[cfg(not(target_os = "linux"))]
+    let backends = wgpu::Backends::PRIMARY;
+
     let wgpu_options = WgpuConfiguration {
         wgpu_setup: WgpuSetup::CreateNew(WgpuSetupCreateNew {
             instance_descriptor: wgpu::InstanceDescriptor {
-                backends: wgpu::Backends::VULKAN | wgpu::Backends::GL,
+                backends,
                 ..Default::default()
             },
             ..Default::default()
@@ -70,8 +79,9 @@ struct App {
     src_path: Option<PathBuf>,
     src_texture: Option<TextureHandle>,
 
-    // Résultat du filtre (mis à jour à chaque preview intermédiaire aussi)
-    result: Arc<Mutex<Option<RgbImage>>>,
+    // Résultat du filtre (mis à jour à chaque preview intermédiaire aussi).
+    // Stocké en RGBA pour supporter le mode transparent (canal alpha préservé).
+    result: Arc<Mutex<Option<RgbaImage>>>,
     result_texture: Option<TextureHandle>,
 
     // Dots du dernier calcul terminé (utilisés pour export SVG)
@@ -98,6 +108,17 @@ struct App {
 
     // Debounce UX 11 : dernier instant où un paramètre a changé
     last_param_change: Option<Instant>,
+
+    // Undo/redo : historique des FilterParams commités.
+    history: Vec<FilterParams>,
+    future: Vec<FilterParams>,
+    // `last_committed` est la version "live" au moment du dernier commit
+    // (sert à éviter de pousser 50 entrées consécutives sur un même slider).
+    last_committed: Option<FilterParams>,
+    // Drapeau : un changement vient d'être détecté, mais le debounce est en
+    // cours. Quand le compute se termine (et sans nouveau commit prévu),
+    // on pousse l'état actuel dans l'historique.
+    pending_commit: bool,
 
     // Mode d'affichage
     view_mode: ViewMode,
@@ -131,6 +152,10 @@ impl Default for App {
             last_compute_ms: None,
             compute_start: None,
             last_param_change: None,
+            history: Vec::new(),
+            future: Vec::new(),
+            last_committed: None,
+            pending_commit: false,
             view_mode: ViewMode::Side,
             zoom: 1.0,
             zoom_fit: true,
@@ -151,6 +176,53 @@ fn rgb_to_color_image(img: &RgbImage) -> ColorImage {
         size: [w as usize, h as usize],
         pixels,
     }
+}
+
+/// Conversion RGBA → ColorImage avec **damier transparent** pour visualiser l'alpha.
+/// Les pixels opaques (alpha=255) affichent leur couleur ; les transparents
+/// montrent un damier gris clair/gris foncé (effet "Photoshop"), avec les
+/// pixels partiellement opaques mélangés proportionnellement.
+fn rgba_to_color_image_checker(img: &RgbaImage) -> ColorImage {
+    let (w, h) = img.dimensions();
+    let mut pixels = Vec::with_capacity((w * h) as usize);
+    for y in 0..h {
+        for x in 0..w {
+            let p = img.get_pixel(x, y);
+            let a = p[3] as f32 / 255.0;
+            // Damier 8px, deux gris.
+            let checker_light = 200u8;
+            let checker_dark = 240u8;
+            let cell = ((x / 8) + (y / 8)) % 2;
+            let bg = if cell == 0 {
+                checker_light
+            } else {
+                checker_dark
+            };
+            // Composite sur le damier.
+            let inv = 1.0 - a;
+            let r = (p[0] as f32 * a + bg as f32 * inv + 0.5) as u8;
+            let g = (p[1] as f32 * a + bg as f32 * inv + 0.5) as u8;
+            let b = (p[2] as f32 * a + bg as f32 * inv + 0.5) as u8;
+            pixels.push(egui::Color32::from_rgb(r, g, b));
+        }
+    }
+    ColorImage {
+        size: [w as usize, h as usize],
+        pixels,
+    }
+}
+
+/// Helper: convertir `RgbImage` en `RgbaImage` opaque (alpha=255 partout).
+fn rgb_to_rgba_opaque(img: &RgbImage) -> RgbaImage {
+    let (w, h) = img.dimensions();
+    let mut out = RgbaImage::new(w, h);
+    for y in 0..h {
+        for x in 0..w {
+            let p = img.get_pixel(x, y);
+            out.put_pixel(x, y, Rgba([p[0], p[1], p[2], 255]));
+        }
+    }
+    out
 }
 
 fn gray_to_color_image(img: &ImgGrayImage) -> ColorImage {
@@ -190,6 +262,75 @@ impl App {
         self.start_compute(ctx);
     }
 
+    /// Commit d'un nouvel état dans l'historique (undo stack). Le redo stack est
+    /// remis à zéro. On évite de pousser des entrées consécutives identiques
+    /// (ex: drag sans fin du même slider).
+    fn commit_history(&mut self) {
+        let cur = self.params.clone();
+        if let Some(last) = &self.last_committed
+            && last == &cur
+        {
+            return; // pas de changement réel, on ignore
+        }
+        // Plafond à 50 entrées (FIFO).
+        if self.history.len() >= 50 {
+            self.history.remove(0);
+        }
+        if let Some(p) = self.last_committed.take() {
+            self.history.push(p);
+        }
+        self.last_committed = Some(cur);
+        self.future.clear();
+    }
+
+    /// `Ctrl+Z` : restore le FilterParams précédent.
+    fn undo(&mut self, ctx: &egui::Context) {
+        // Commit d'abord tout état pending pour qu'il figure dans l'historique
+        // avant qu'on ne rembobine (sinon le dernier réglage n'est pas undo-able).
+        if self.pending_commit {
+            self.commit_history();
+            self.pending_commit = false;
+        }
+        let Some(prev) = self.history.pop() else {
+            self.status = "Rien à annuler.".to_string();
+            return;
+        };
+        // L'état live actuel devient la tête du redo.
+        if let Some(prev_committed) = self.last_committed.take() {
+            self.future.push(prev_committed);
+        }
+        self.last_committed = Some(prev.clone());
+        self.params = prev;
+        // Annuler le compute en cours (peut venir d'un drag) et relancer.
+        if self.computing.load(Ordering::Relaxed) {
+            self.cancel.store(true, Ordering::Relaxed);
+            // La relance sera déclenchée par la logique de cancel-await, via le
+            // même mécanisme qui détecte params_changed. Sinon, on debounce.
+        }
+        self.last_param_change = Some(Instant::now()); // trigger compute via debounce
+        self.status = "Annulé.".to_string();
+        ctx.request_repaint();
+    }
+
+    /// `Ctrl+Y` (ou `Ctrl+Shift+Z`) : restore l'état suivant.
+    fn redo(&mut self, ctx: &egui::Context) {
+        let Some(next) = self.future.pop() else {
+            self.status = "Rien à refaire.".to_string();
+            return;
+        };
+        if let Some(prev_committed) = self.last_committed.take() {
+            self.history.push(prev_committed);
+        }
+        self.last_committed = Some(next.clone());
+        self.params = next;
+        if self.computing.load(Ordering::Relaxed) {
+            self.cancel.store(true, Ordering::Relaxed);
+        }
+        self.last_param_change = Some(Instant::now());
+        self.status = "Refait.".to_string();
+        ctx.request_repaint();
+    }
+
     fn start_compute(&mut self, ctx: &egui::Context) {
         let src = match &self.src_rgb {
             Some(s) => s.clone(),
@@ -218,6 +359,29 @@ impl App {
             let mut last_preview = Instant::now();
             let preview_interval = Duration::from_millis(100);
 
+            // Halftone + transparent : pas de preview progressive, on appelle
+            // apply_rgba une fois et on convertit en RGBA pour stockage.
+            if params.transparent || params.algorithm == Algorithm::Halftone {
+                let res = filter::apply_rgba(&src, &params);
+                match res {
+                    Ok((dst_rgba, dots)) => {
+                        // Publier au moins une fois pour que la GUI voie une preview.
+                        *progress.lock().unwrap_or_else(|e| e.into_inner()) = (1, 1);
+                        *result.lock().unwrap_or_else(|e| e.into_inner()) = Some(dst_rgba);
+                        *last_dots.lock().unwrap_or_else(|e| e.into_inner()) = Some(dots);
+                    }
+                    Err(e) => {
+                        if !cancel.load(Ordering::Relaxed) {
+                            *status_err.lock().unwrap_or_else(|e| e.into_inner()) =
+                                Some(format!("Erreur : {e}"));
+                        }
+                    }
+                }
+                computing.store(false, Ordering::Relaxed);
+                ctx.request_repaint();
+                return;
+            }
+
             let res = filter::apply_with_progress(
                 &src,
                 &params,
@@ -227,7 +391,8 @@ impl App {
                     let now = Instant::now();
                     // Always clone on last iteration, throttle intermediate previews
                     if iter == total || now.duration_since(last_preview) >= preview_interval {
-                        *result.lock().unwrap_or_else(|e| e.into_inner()) = Some(preview.clone());
+                        *result.lock().unwrap_or_else(|e| e.into_inner()) =
+                            Some(rgb_to_rgba_opaque(preview));
                         last_preview = now;
                         ctx.request_repaint();
                     }
@@ -235,7 +400,8 @@ impl App {
             );
             match res {
                 Ok((dst, dots)) => {
-                    *result.lock().unwrap_or_else(|e| e.into_inner()) = Some(dst);
+                    *result.lock().unwrap_or_else(|e| e.into_inner()) =
+                        Some(rgb_to_rgba_opaque(&dst));
                     *progress.lock().unwrap_or_else(|e| e.into_inner()) = (iters, iters);
                     *last_dots.lock().unwrap_or_else(|e| e.into_inner()) = Some(dots);
                 }
@@ -297,11 +463,44 @@ impl App {
         // UX 16 : valider/forcer l'extension
         let path = ensure_extension(path, "png");
         let guard = self.result.lock().unwrap_or_else(|e| e.into_inner());
-        if let Some(img) = guard.as_ref() {
-            match img.save(&path) {
-                Ok(_) => self.status = format!("Sauvegardé : {}", path.display()),
-                Err(e) => self.status = format!("Erreur sauvegarde : {e}"),
-            }
+        let Some(img) = guard.as_ref() else { return };
+
+        // Pour les formats sans alpha (JPEG, BMP), flat sur la bg_color.
+        // PNG et WebP préservent l'alpha nativement.
+        let ext = path
+            .extension()
+            .and_then(|e| e.to_str())
+            .map(|e| e.to_lowercase())
+            .unwrap_or_else(|| "png".to_string());
+
+        let result = if matches!(ext.as_str(), "png" | "webp" | "tif" | "tiff") {
+            // Préserve l'alpha.
+            img.save(&path)
+        } else if self.params.transparent {
+            // JPG/BMP sans alpha : composite sur fond bg_color avant save.
+            let (w, h) = img.dimensions();
+            let bg = self.params.bg_color;
+            let flat = RgbImage::from_fn(w, h, |x, y| {
+                let p = img.get_pixel(x, y);
+                let a = p[3] as f32 / 255.0;
+                let inv = 1.0 - a;
+                image::Rgb([
+                    (p[0] as f32 * a + bg[0] as f32 * inv) as u8,
+                    (p[1] as f32 * a + bg[1] as f32 * inv) as u8,
+                    (p[2] as f32 * a + bg[2] as f32 * inv) as u8,
+                ])
+            });
+            flat.save(&path)
+        } else {
+            // Pas transparent : simple to_rgb8.
+            image::DynamicImage::ImageRgba8(img.clone())
+                .to_rgb8()
+                .save(&path)
+        };
+
+        match result {
+            Ok(_) => self.status = format!("Sauvegardé : {}", path.display()),
+            Err(e) => self.status = format!("Erreur sauvegarde : {e}"),
         }
     }
 
@@ -353,7 +552,14 @@ impl App {
 
 fn ensure_extension(mut path: PathBuf, default_ext: &str) -> PathBuf {
     match path.extension().and_then(|e| e.to_str()) {
-        Some(ext) if matches!(ext.to_lowercase().as_str(), "png" | "jpg" | "jpeg" | "svg") => path,
+        Some(ext)
+            if matches!(
+                ext.to_lowercase().as_str(),
+                "png" | "jpg" | "jpeg" | "svg" | "webp" | "bmp" | "tif" | "tiff"
+            ) =>
+        {
+            path
+        }
         _ => {
             path.set_extension(default_ext);
             path
@@ -366,11 +572,16 @@ fn ensure_extension(mut path: PathBuf, default_ext: &str) -> PathBuf {
 impl eframe::App for App {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
         // ── U4: Keyboard shortcuts ────────────────────────────────────────────
-        let (kb_open, kb_save, kb_recalc) = ctx.input(|i| {
+        let (kb_open, kb_save, kb_recalc, kb_undo, kb_redo) = ctx.input(|i| {
             let open = i.modifiers.command && i.key_pressed(egui::Key::O);
             let save = i.modifiers.command && i.key_pressed(egui::Key::S);
             let recalc = i.key_pressed(egui::Key::Space) && !i.modifiers.command;
-            (open, save, recalc)
+            // Undo : Ctrl+Z (sans Shift). Redo : Ctrl+Y ou Ctrl+Shift+Z.
+            let undo = i.modifiers.command && !i.modifiers.shift && i.key_pressed(egui::Key::Z);
+            let redo = i.modifiers.command
+                && (i.key_pressed(egui::Key::Y)
+                    || (i.modifiers.shift && i.key_pressed(egui::Key::Z)));
+            (open, save, recalc, undo, redo)
         });
 
         if kb_open
@@ -399,6 +610,22 @@ impl eframe::App for App {
         if kb_recalc && self.src_rgb.is_some() && !self.computing.load(Ordering::Relaxed) {
             self.last_param_change = None;
             self.start_compute(ctx);
+        }
+
+        // ── Undo / Redo (Ctrl+Z / Ctrl+Y) ──────────────────────────────────
+        // On n'agit que si l'utilisateur n'est pas en train de taper dans un champ.
+        let wants_text = ctx.input(|i| {
+            i.pointer.any_down()
+                || i.raw
+                    .events
+                    .iter()
+                    .any(|e| matches!(e, egui::Event::PointerMoved(_)))
+        });
+        if kb_undo && !wants_text {
+            self.undo(ctx);
+        }
+        if kb_redo && !wants_text {
+            self.redo(ctx);
         }
 
         // ── Drag & drop ───────────────────────────────────────────────────────
@@ -446,6 +673,13 @@ impl eframe::App for App {
                 let ms = start.elapsed().as_millis() as u64;
                 self.last_compute_ms = Some(ms);
                 self.status = format!("Terminé en {}.", format_duration(ms));
+                // Commit undo-history : à chaque calcul terminé avec
+                // params réellement différents depuis le dernier commit, on
+                // pousse. `pending_commit` est mis à true quand params_changed.
+                if self.pending_commit {
+                    self.commit_history();
+                    self.pending_commit = false;
+                }
             }
         } else {
             // Pendant le calcul : invalider la texture pour prendre les nouvelles previews
@@ -492,12 +726,22 @@ impl eframe::App for App {
                             ("K-means", Algorithm::Kmeans),
                             ("Voronoi (Lloyd)", Algorithm::Voronoi),
                             ("Quadtree", Algorithm::Quadtree),
+                            ("Halftone (rosette)", Algorithm::Halftone),
                         ] {
                             if ui
                                 .selectable_label(self.params.algorithm == algo, label)
                                 .clicked()
                             {
                                 self.params.algorithm = algo;
+                                // Si on active Halftone et que le mode interne est Off,
+                                // on force Cmyk par défaut.
+                                if algo == Algorithm::Halftone
+                                    && self.params.halftone == HalftoneMode::Off
+                                {
+                                    self.params.halftone = HalftoneMode::Cmyk {
+                                        angles: [15.0, 75.0, 0.0, 45.0],
+                                    };
+                                }
                                 algo_changed = true;
                             }
                             ui.end_row();
@@ -507,10 +751,15 @@ impl eframe::App for App {
                     ui.separator();
 
                     let mut params_changed = algo_changed;
+                    let is_halftone = self.params.algorithm == Algorithm::Halftone;
+                    // En mode Halftone, les sliders de placement (variance, rayons,
+                    // boost, cols, num_points, iterations, grid_angle) sont inutiles
+                    // car le pipeline les ignore. On les grise pour clarté.
 
                     ui.label("Sensibilite variance");
                     let vs_changed = ui
-                        .add(
+                        .add_enabled(
+                            !is_halftone,
                             egui::Slider::new(&mut self.params.variance_sensitivity, 0.0..=1.0)
                                 .step_by(0.01),
                         )
@@ -529,7 +778,8 @@ impl eframe::App for App {
 
                     ui.label("Rayon min (fraction image)");
                     params_changed |= ui
-                        .add(
+                        .add_enabled(
+                            !is_halftone,
                             egui::Slider::new(&mut self.params.min_radius_ratio, 0.001..=0.02)
                                 .step_by(0.001),
                         )
@@ -537,7 +787,8 @@ impl eframe::App for App {
 
                     ui.label("Rayon max (fraction image)");
                     params_changed |= ui
-                        .add(
+                        .add_enabled(
+                            !is_halftone,
                             egui::Slider::new(&mut self.params.max_radius_ratio, 0.01..=0.3)
                                 .step_by(0.005),
                         )
@@ -545,7 +796,10 @@ impl eframe::App for App {
 
                     ui.label("Boost zones uniformes (×max)");
                     params_changed |= ui
-                        .add(egui::Slider::new(&mut self.params.max_boost, 1.0..=5.0).step_by(0.1))
+                        .add_enabled(
+                            !is_halftone,
+                            egui::Slider::new(&mut self.params.max_boost, 1.0..=5.0).step_by(0.1),
+                        )
                         .changed();
 
                     match self.params.algorithm {
@@ -553,6 +807,16 @@ impl eframe::App for App {
                             ui.label("Colonnes");
                             params_changed |= ui
                                 .add(egui::Slider::new(&mut self.params.cols, 10..=300))
+                                .changed();
+                            ui.label("Angle grille (°)");
+                            params_changed |= ui
+                                .add(
+                                    egui::Slider::new(
+                                        &mut self.params.grid_angle_deg,
+                                        -90.0..=90.0,
+                                    )
+                                    .step_by(1.0),
+                                )
                                 .changed();
                         }
                         Algorithm::Kmeans | Algorithm::Voronoi | Algorithm::Quadtree => {
@@ -574,6 +838,12 @@ impl eframe::App for App {
                                     .changed();
                             }
                         }
+                        Algorithm::Halftone => {
+                            // Pas de sous-params placement. Les sous-params
+                            // halftone (mode, screening, fréquence, rayons) sont
+                            // affichés plus bas dans la section dédiée.
+                            ui.small("(les paramètres de placement ci-dessus sont ignorés)");
+                        }
                     }
 
                     ui.separator();
@@ -594,6 +864,22 @@ impl eframe::App for App {
                         }
                         if let Some(ref mut n) = self.params.palette_size {
                             params_changed |= ui.add(egui::Slider::new(n, 2..=32)).changed();
+                        }
+                    });
+                    // Dithering Floyd-Steinberg : ne s'applique que si palette est activée.
+                    ui.horizontal(|ui| {
+                        ui.label("Dithering FS");
+                        let enabled = self.params.palette_size.is_some();
+                        let mut dither = self.params.dithering;
+                        if ui
+                            .add_enabled(enabled, egui::Checkbox::new(&mut dither, ""))
+                            .changed()
+                        {
+                            self.params.dithering = dither;
+                            params_changed = true;
+                        }
+                        if !enabled {
+                            ui.small("(active la palette pour utiliser le dithering)");
                         }
                     });
 
@@ -632,21 +918,46 @@ impl eframe::App for App {
                         .changed()
                         {
                             self.params.bg_color = [color.r(), color.g(), color.b()];
+                            self.params.transparent = false;
                             self.refresh_src_rgb();
                             params_changed = true;
                         }
                         // Raccourcis Blanc / Noir
                         if ui.small_button("Blanc").clicked() {
                             self.params.bg_color = [255, 255, 255];
+                            self.params.transparent = false;
                             self.refresh_src_rgb();
                             params_changed = true;
                         }
                         if ui.small_button("Noir").clicked() {
                             self.params.bg_color = [0, 0, 0];
+                            self.params.transparent = false;
                             self.refresh_src_rgb();
                             params_changed = true;
                         }
                     });
+                    // Mode transparent : produit RGBA à la sauvegarde. La preview
+                    // GUI reste sur fond coloré (le panneau résultat affiche du RGB).
+                    if ui
+                        .checkbox(&mut self.params.transparent, "Fond transparent (RGBA)")
+                        .changed()
+                    {
+                        params_changed = true;
+                    }
+
+                    ui.separator();
+
+                    // ── Correction gamma ──────────────────────────────────────
+                    ui.horizontal(|ui| {
+                        ui.label("Correction gamma");
+                        if ui
+                            .checkbox(&mut self.params.gamma_correct, "espace linéaire")
+                            .changed()
+                        {
+                            params_changed = true;
+                        }
+                    });
+                    ui.small("(moyennes perceptuelles, évite les mi-tons trop sombres)");
 
                     ui.separator();
 
@@ -667,6 +978,137 @@ impl eframe::App for App {
                             self.zoom_fit = true; // U3: use flag instead of zoom=0.0
                         }
                     });
+
+                    ui.separator();
+
+                    // ── Halftone multi-canal (rosette) ────────────────────────
+                    // Ne s'affiche que si l'algorithme Halftone est sélectionné.
+                    if self.params.algorithm == Algorithm::Halftone {
+                        ui.label("Mode halftone");
+                        ui.horizontal(|ui| {
+                            if ui
+                                .selectable_label(
+                                    matches!(self.params.halftone, HalftoneMode::Cmyk { .. }),
+                                    "CMYK",
+                                )
+                                .clicked()
+                            {
+                                self.params.halftone = HalftoneMode::Cmyk {
+                                    angles: [15.0, 75.0, 0.0, 45.0],
+                                };
+                                params_changed = true;
+                            }
+                            if ui
+                                .selectable_label(
+                                    matches!(self.params.halftone, HalftoneMode::Dominant { .. }),
+                                    "Dominant",
+                                )
+                                .clicked()
+                            {
+                                self.params.halftone = HalftoneMode::Dominant {
+                                    n: 5,
+                                    base_angle_deg: 15.0,
+                                };
+                                params_changed = true;
+                            }
+                        });
+                        // Sous-params dépendant du mode.
+                        match &mut self.params.halftone {
+                            HalftoneMode::Dominant { n, base_angle_deg } => {
+                                ui.horizontal(|ui| {
+                                    ui.label("Canaux");
+                                    let mut nv = *n as i32;
+                                    if ui
+                                        .add(egui::Slider::new(&mut nv, 2..=12).step_by(1.0))
+                                        .changed()
+                                    {
+                                        *n = nv as usize;
+                                        params_changed = true;
+                                    }
+                                });
+                                ui.horizontal(|ui| {
+                                    ui.label("Angle base (°)");
+                                    params_changed |= ui
+                                        .add(
+                                            egui::Slider::new(base_angle_deg, 0.0..=180.0)
+                                                .step_by(1.0),
+                                        )
+                                        .changed();
+                                });
+                            }
+                            HalftoneMode::Cmyk { angles } => {
+                                ui.small(format!(
+                                    "Angles C/M/Y/K : {:.0}° / {:.0}° / {:.0}° / {:.0}°",
+                                    angles[0], angles[1], angles[2], angles[3]
+                                ));
+                            }
+                            HalftoneMode::Off => {
+                                ui.small("(sélectionnez CMYK ou Dominant)");
+                            }
+                        }
+                        // Screening AM/FM
+                        ui.horizontal(|ui| {
+                            ui.label("Screening");
+                            if ui
+                                .selectable_label(
+                                    self.params.screening == Screening::Am,
+                                    "AM (grille)",
+                                )
+                                .clicked()
+                            {
+                                self.params.screening = Screening::Am;
+                                params_changed = true;
+                            }
+                            if ui
+                                .selectable_label(
+                                    self.params.screening == Screening::Fm,
+                                    "FM (blue noise)",
+                                )
+                                .clicked()
+                            {
+                                self.params.screening = Screening::Fm;
+                                params_changed = true;
+                            }
+                        });
+                        // Fréquence de trame
+                        ui.horizontal(|ui| {
+                            ui.label("Fréquence trame");
+                            params_changed |= ui
+                                .add(
+                                    egui::Slider::new(
+                                        &mut self.params.halftone_frequency,
+                                        20.0..=200.0,
+                                    )
+                                    .step_by(5.0),
+                                )
+                                .changed();
+                        });
+                        // Rayons halftone
+                        ui.horizontal(|ui| {
+                            ui.label("Rayon min (frac. min)");
+                            params_changed |= ui
+                                .add(
+                                    egui::Slider::new(
+                                        &mut self.params.halftone_min_radius_ratio,
+                                        0.001..=0.05,
+                                    )
+                                    .step_by(0.001),
+                                )
+                                .changed();
+                        });
+                        ui.horizontal(|ui| {
+                            ui.label("Rayon max (frac. step)");
+                            params_changed |= ui
+                                .add(
+                                    egui::Slider::new(
+                                        &mut self.params.halftone_max_dot_ratio,
+                                        0.3..=1.5,
+                                    )
+                                    .step_by(0.05),
+                                )
+                                .changed();
+                        });
+                    }
 
                     // ── Boutons Recalculer / Annuler ──────────────────────────
                     let has_src = self.src_rgb.is_some();
@@ -692,6 +1134,7 @@ impl eframe::App for App {
                             // Debounce : déclencher avec délai si params changed
                             if params_changed && has_src {
                                 self.last_param_change = Some(Instant::now());
+                                self.pending_commit = true;
                             }
                         }
                     });
@@ -727,12 +1170,15 @@ impl eframe::App for App {
                     if ui
                         .add_enabled(
                             has_result && !is_computing,
-                            egui::Button::new("Sauvegarder PNG…"),
+                            egui::Button::new("Sauvegarder image…"),
                         )
                         .clicked()
                         && let Some(path) = rfd::FileDialog::new()
                             .add_filter("PNG", &["png"])
                             .add_filter("JPEG", &["jpg", "jpeg"])
+                            .add_filter("WebP", &["webp"])
+                            .add_filter("BMP", &["bmp"])
+                            .add_filter("TIFF", &["tif", "tiff"])
                             .save_file()
                     {
                         self.save_result(path);
@@ -788,7 +1234,7 @@ impl eframe::App for App {
                 {
                     self.result_texture = Some(ctx.load_texture(
                         "result",
-                        rgb_to_color_image(img),
+                        rgba_to_color_image_checker(img),
                         TextureOptions::default(),
                     ));
                 }

@@ -1,0 +1,17 @@
+# cargo-audit configuration.
+#
+# Les advisories ci-dessous sont dans des dépendances transitives de
+# eframe/egui/rfd (frameworks GUI winit/wayland/accesskit) que nous ne
+# contrôlons pas directement. On ne peut pas les résoudre sans une mise à
+# jour upstream. On les ignore explicitement ici pour garder `cargo audit`
+# vert. La plupart ont été résolus par `cargo update` ; reste quick-xml.
+#
+# Format : `cargo audit --ignore <ID>` (flag CLI, pas de fichier audit.toml
+# dans cette version de cargo-audit pour `ignore`).
+
+ADVISORIES_IGNORED = [
+    # quick-xml 0.30.0: unbounded namespace-declaration (via accesskit/atspi/zbus_xml)
+    "RUSTSEC-2026-0195",
+    # quick-xml 0.30.0: quadratic runtime duplicate attributes
+    "RUSTSEC-2026-0194",
+]

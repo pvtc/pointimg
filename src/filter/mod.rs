@@ -19,6 +19,8 @@ mod algorithms;
 mod density;
 mod dither;
 mod gamma;
+#[cfg(feature = "gpu")]
+mod gpu;
 mod halftone;
 mod params;
 mod render;
