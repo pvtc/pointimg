@@ -30,25 +30,83 @@ pointimg/
 ├── Cargo.toml          — dependencies, two binaries + a lib
 ├── src/
 │   ├── lib.rs          — crate root; exposes `pub mod filter`
-│   ├── filter.rs       — all logic: algorithms, rendering, helpers
+│   ├── filter/         — all logic, split by concern
+│   │   ├── mod.rs      — module root: public API (apply, apply_with_progress,
+│   │   │               compute_dots), re-exports, unit tests
+│   │   ├── params.rs   — Algorithm, DotShape, FilterParams, Dot, validate_params,
+│   │   │               to_toml_string / from_toml_str (presets)
+│   │   ├── density.rs  — compute_density_map / compute_density_image (SAT)
+│   │   ├── render.rs   — render, draw_dot, anti-aliasing (4×4 supersampling),
+│   │   │               point_in_regular_polygon, quantize_dots/quantize_palette_centers,
+│   │   │               radius_for_dot, render_halftone (ink multiply compositing)
+│   │   ├── dither.rs   — floyd_steinberg (post-render palette quantization)
+│   │   ├── halftone.rs — HalftoneMode (Cmyk/Dominant), Screening (Am/Fm),
+│   │   │               separate_cmyk / separate_dominant / screen_am / screen_fm
+│   │   ├── gamma.rs    — sRGB ⇄ linéaire LUTs, image wrappers (gamma_correct)
+│   │   ├── svg.rs      — render_svg_from_dots / render_svg / render_svg_dynamic
+│   │   ├── seedgrid.rs — SeedGrid spatial acceleration
+│   │   ├── sampling.rs — importance_sample, make_rng_seed, lcg_next,
+│   │   │               nearest_neighbor_radii, build_dots_from_seeds
+│   │   ├── util.rs     — luminance, pixel_sum, pixel_variance, flatten_to_rgb
+│   │   └── algorithms/ — placement algorithms, one file each
+│   │       ├── grid.rs     — dots_grid
+│   │       ├── kmeans.rs   — dots_kmeans_progressive, compute_dots_kmeans,
+│   │       │               dots_from_kmeans_centers
+│   │       ├── quadtree.rs — dots_quadtree, subdivide
+│   │       └── voronoi.rs  — dots_voronoi_progressive, compute_dots_voronoi
 │   ├── main.rs         — CLI binary (`pointimg`)
 │   └── gui/
 │       └── main.rs     — GUI binary (`pointimg-gui`)
-└── assets/             — test images and outputs
+├── tests/              — integration tests (public API end-to-end)
+│   ├── pipeline.rs     — algorithm dimensions, progress, dots, flatten, density
+│   ├── svg.rs          — SVG header, shapes, bg color, empty-image error
+│   ├── reproducibility.rs — same seed → identical, different seed → diverge
+│   ├── palette.rs      — palette quantization reduces SVG fill colors
+│   └── halftone.rs     — CMYK rosette, dominant colors, FM screening, TOML presets
+└── benches/
+    └── filter.rs       — criterion benches (apply per algo, density, svg)
 ```
 
 | Crate | Role |
 |---|---|
 | `image 0.25` | Loading / saving / manipulating `RgbImage` |
 | `clap 4` | CLI argument parsing |
-| `rayon 1` | Parallel iteration (density map) |
+| `rayon 1` | Parallel iteration (density map, Lloyd, k-means) |
+| `anyhow 1` | Error handling (`Result`, `anyhow!`) |
 | `eframe 0.31` | egui framework (wgpu backend) — *feature-gated* `gui` |
 | `egui 0.31` | Immediate-mode GUI widgets — *feature-gated* `gui` |
 | `wgpu 24` | GPU backend (Vulkan + GL fallback) — *feature-gated* `gui` |
 | `rfd 0.15` | Native file dialogs — *feature-gated* `gui` |
+| `serde 1` | Serialization framework (`FilterParams` derive) |
+| `toml 0.8` | TOML preset files (`--preset` / `--save-preset`) |
+| `glob 0.3` | Glob expansion for batch `--input` (`*`, `?`, `[`) |
+| `serde 1` | Serialization framework (`FilterParams` derive, presets TOML) |
+| `criterion 0.5` | Benchmarks — *dev-dependency* |
+
+> **Optional features:** `avif` (pulls `image/avif`; AVIF encoder via `ravif`).
+> `gpu` (pulls `wgpu`, `pollster`, `bytemuck`; opt-in at runtime with
+> `POINTIMG_GPU=1`). WebP is included in `image`'s default formats.
+
+### Optional GPU density pass
+
+When compiled with `--features gpu` and `POINTIMG_GPU=1`,
+`compute_density_map` dispatches a WGSL compute shader with one invocation per
+pixel. It computes the 9×9 local RGB variance directly in parallel, then the
+CPU performs the same global normalization curve as the SAT path. This is a
+real GPU compute path, not a CPU thread wrapper.
+
+The shader uses centered deltas (`x - reference_pixel`) rather than
+`E[x²] - E[x]²` on raw 8-bit values to avoid f32 cancellation on uniform
+mid-gray images. A global mutex serializes device creation/readback because
+some native drivers are not safe when several test threads create devices at
+once. The default remains the exact CPU summed-area-table implementation:
+without `POINTIMG_GPU=1`, or when no adapter/device/readback is available, the
+function returns to the CPU path automatically.
 
 > **Feature-gating:** GUI dependencies are behind the `gui` feature
 > (enabled by default). To compile CLI-only: `cargo build --no-default-features`.
+> **MSRV:** Rust 1.88 (declared via `rust-version` in `Cargo.toml`,
+> enforced by the `msrv` CI job).
 
 ---
 
@@ -77,20 +135,56 @@ pointimg -i photo.jpg -o result.png --shape polygon --polygon-sides 6
 
 # Ellipse with rotation
 pointimg -i photo.jpg -o result.png --shape ellipse --ellipse-aspect 2.0 --ellipse-angle 45
+
+# Transparent background (RGBA output, alpha 0 between dots)
+pointimg -i photo.jpg -o result.png --bg transparent
+
+# Gamma correction (averages in linear color space)
+pointimg -i photo.jpg -o result.png --gamma
+
+# Palette 8 colors + Floyd-Steinberg dithering
+pointimg -i photo.jpg -o result.png --palette 8 --dithering
+
+# Save/recall preset TOML
+pointimg --save-preset out.toml --algorithm voronoi --num-points 1500 --gamma
+pointimg --preset out.toml -i photo.jpg -o result.png
+
+# Batch processing (glob or directory) + per-file pattern
+pointimg -i "photos/*.jpg" -o "out/{stem}_{n}.png" --algorithm grid --cols 50
+
+# Fast preview (downscale source before pipeline)
+pointimg -i big.jpg -o preview.png --preview 300x300 --algorithm voronoi
+
+# Halftone angled screen (Grid only)
+pointimg -i photo.jpg -o result.png --algorithm grid --grid-angle 30
+
+# Output formats (extension-driven)
+pointimg -i photo.jpg -o result.webp   # webp (default feature)
+cargo build --release --features avif   # opt-in AVIF
+pointimg -i photo.jpg -o result.avif
+
+# Halftone rosette (CMYK 4 canaux, angles 15°/75°/0°/45°)
+pointimg -i photo.jpg -o rosette.png --halftone cmyk --halftone-freq 60
+
+# Couleurs dominantes (k-means) — 6 canaux, angles répartis par section d'or
+pointimg -i photo.jpg -o dominants.png --halftone dominant-6 --halftone-freq 80
+
+# FM screening stochastique (blue noise) au lieu de AM (grille rotationée)
+pointimg -i photo.jpg -o stochastic.png --halftone cmyk --screening fm
 ```
 
 **All flags:**
 
 | Flag | Short | Default | Description |
 |---|---|---|---|
-| `--input` | `-i` | required | Source image (JPEG, PNG, RGBA supported) |
-| `--output` | `-o` | `output.png` | Output PNG image |
+| `--input` | `-i` | required | Source image, glob, or directory. Optional if `--save-preset` alone. |
+| `--output` | `-o` | `output.png` | Output file. Patterns: `{n}` (index), `{stem}` (source name sans ext), `{name}` (source full name). |
 | `--algorithm` | `-a` | `voronoi` | `grid` \| `kmeans` \| `voronoi` \| `quadtree` |
 | `--num-points` | `-n` | `800` | Number of points (kmeans/voronoi/quadtree) |
 | `--cols` | `-c` | `80` | Grid columns (grid only) |
 | `--min-radius` | | `0.003` | Min radius = fraction of `min(W,H)` |
 | `--max-radius` | | `0.06` | Max radius = fraction of `min(W,H)` |
-| `--bg` | `-b` | `white` | `white`, `black`, or `#rrggbb` |
+| `--bg` | `-b` | `white` | `white`, `black`, `transparent`/`none`, or `#rrggbb` |
 | `--shape` | | `circle` | `circle` \| `square` \| `ellipse` \| `polygon` |
 | `--ellipse-aspect` | | `1.5` | Width/height ratio (ellipse) |
 | `--ellipse-angle` | | `0.0` | Rotation angle in degrees (ellipse) |
@@ -101,6 +195,48 @@ pointimg -i photo.jpg -o result.png --shape ellipse --ellipse-aspect 2.0 --ellip
 | `--seed` | | *(random)* | RNG seed for exact reproduction |
 | `--palette` | | *(disabled)* | Number of colors in reduced palette |
 | `--svg` | | *(disabled)* | Also export SVG (same path, `.svg` extension) |
+| `--gamma` | | *(disabled)* | Gamma-correct perceptual averages (linear space) |
+| `--dithering` | | *(disabled)* | Floyd-Steinberg dithering on rendered image |
+| `--preset` | | *(disabled)* | Load `FilterParams` from a TOML preset file |
+| `--save-preset` | | *(disabled)* | Save current params to a TOML preset file and exit (if `--input` absent) |
+| `--verbose` | `-v` | *(0)* | `-v` = info, `-vv` = debug. Overridable via `RUST_LOG`. |
+| `--quiet` | `-q` | *(disabled)* | Suppress info messages (warnings only) |
+| `--preview` | | *(disabled)* | Downscale source to `WxH` (max, preserves aspect) before pipeline |
+| `--grid-angle` | | `0.0` | Rotation of grid placement in degrees (Grid only, halftone screen effect) |
+| `--halftone` | | `off` | `off` \| `cmyk` (4-channel rosette) \| `dominant-N` (N colors via k-means) |
+| `--screening` | | `am` | `am` (rotated-grid rosette) \| `fm` (stochastic blue noise) |
+| `--halftone-freq` | | `60.0` | AM cells per `min(W,H)` (≈ dot frequency in lpp at 1 dpi) |
+| `--halftone-min-radius` | | `0.002` | Min radius per ink dot (fraction of `min(W,H)`) |
+| `--halftone-max-dot` | | `0.85` | Max radius per ink dot (fraction of trame step) |
+
+**Output formats (driven by file extension):** PNG, JPEG, BMP, TIFF, WebP by default.
+AVIF requires `cargo build --features avif` (pulls in `ravif`). Transparent PNG
+(`--bg transparent`) produces RGBA; SVG omits the background `<rect>` when
+`transparent` is set.
+
+### Halftone multi-canal (rosette)
+
+L'algorithme `--halftone` active un pipeline alternatif (bypass `algorithm`):
+
+1. **Séparation en N canaux d'encre** — `Cmyk` produit Cyan=`[0,255,255]`,
+   Magenta=`[255,0,255]`, Yellow=`[255,255,0]`, Black=`[0,0,0]` à angles
+   `15° / 75° / 0° / 45°`. `Dominant { n, .. }` lance un k-means sur les pixels
+   source pour trouver N couleurs et distribue les angles à `base + i × 180°/n`.
+2. **Coverage par canal** — pour chaque pixel, l'encre i reçoit un coverage ∈ [0,1]
+   (formule CMYK standard + UCR pour CMYK ; similarité au centre le plus proche
+   pour dominant).
+3. **Screening** — `Am` place une grille rotationnée à l'angle du canal et émet
+   un dot par intersection, rayon proportionnel au coverage moyenné dans un disque
+   de rayon `step/2`. `Fm` accepte stochastiquement chaque dot de la grille avec
+   probabilité = coverage (densité variable, rayon quasi constant).
+4. **Compositeur multiply** — `render_halftone` part d'un papier blanc (ou
+   `bg_color` si non-transparent) et applique chaque dot en mode multiply
+   (transmission mask) — soustractif, commutatif: Magenta + Jaune = Rouge.
+   `blend_multiply_coverage` rasterise un dot anti-aliasé (AA 4×4) et multiplie
+   son mask par la couverture alpha.
+
+Les canaux K/C/M/Y sont totalement indépendantes de `algorithm` (Grid, Voronoi,
+etc.) — `--halftone` override complètement le pipeline historique.
 
 ### GUI
 
@@ -130,10 +266,19 @@ pub struct FilterParams {
     pub rng_seed: Option<u64>,         // None = system clock
     pub palette_size: Option<usize>,   // None = all colors
     pub dot_shape: DotShape,           // Circle by default
+    pub transparent: bool,             // RGBA transparent background output
+    pub gamma_correct: bool,           // averages in linear space
+    pub dithering: bool,               // Floyd-Steinberg on rendered image
+    pub grid_angle_deg: f32,           // Rotation angle of Grid placement (halftone screen)
+    pub halftone: HalftoneMode,        // Off | Cmyk{angles} | Dominant{n, base_angle_deg}
+    pub screening: Screening,          // Am (grid rotation) | Fm (stochastic blue noise)
+    pub halftone_frequency: f32,       // AM cells per min(W,H)
+    pub halftone_min_radius_ratio: f32,
+    pub halftone_max_dot_ratio: f32,
 }
 ```
 
-`is_bg_light()` — derived method from `bg_color` (perceptual luminance > 127.5).
+`is_bg_light()` — derived method from `bg_color` (perceptual luminance > 127.5). Faux si `transparent`.
 
 **`min_radius_ratio` / `max_radius_ratio`:** fractions of `min(width, height)` of the image.
 On an 800×600 image, `0.003` → 1.8 px and `0.06` → 36 px.
@@ -145,6 +290,14 @@ On an 800×600 image, `0.003` → 1.8 px and `0.06` → 36 px.
 
 **`max_boost`** caps the radius multiplier in uniform zones.
 `1.0` = no boost. `2.5` = a point in a totally flat zone can be 2.5× `r_max`.
+
+**Validation (`validate_params`):** all parameters are checked before any
+work starts — `min_radius_ratio > 0`, `max >= min`, `max <= 1.0`,
+`num_points > 0`, `cols > 0`, `palette_size >= 2` (if set),
+`variance_sensitivity ∈ [0, 1]`, `max_boost >= 1.0`, polygon `sides ∈ 3..=12`,
+ellipse `aspect ∈ (0, 10]`, image dimensions `≤ 65535` and
+`≤ 256M` pixels. An out-of-range value returns `Err` instead of panicking
+or silently misbehaving (e.g. `cols = 0` previously panicked on division).
 
 ---
 
@@ -254,7 +407,7 @@ sum = SAT[y2][x2] − SAT[y1][x2] − SAT[y2][x1] + SAT[y1][x1]
 
 ## 6. Radius Calculation (`radius_for_dot`)
 
-```rust
+```text
 fn radius_for_dot(lum: f32, local_density: f32, img_min_side: f32, params: &FilterParams) -> f32
 ```
 
@@ -433,7 +586,7 @@ only cells in the 3×3 neighborhood are examined (~4–8 seeds instead of k).
 
 ## 9. Rendering (draw order)
 
-```rust
+```text
 fn render(src: &RgbImage, dots: &[Dot], params: &FilterParams) -> RgbImage
 ```
 
@@ -446,8 +599,38 @@ order (largest to smallest) is done on a local copy of the slice.
 3. Draw from largest to smallest (painter's algorithm):
    - Large dots occupy the background (uniform zones).
    - Small detail dots overlap in the foreground.
-4. Each dot is drawn according to `params.dot_shape` (custom implementation,
-   not `imageproc`):
+4. Each dot is drawn anti-aliased according to `params.dot_shape`
+   (custom implementation, not `imageproc`):
+
+**Anti-aliasing (`coverage_aa` + `blend_coverage`):** each dot is rasterized
+with 4×4 supersampling (16 coverage levels per pixel). A corner pretest gives
+two fast paths — if all 4 pixel corners are inside the (convex) shape, the
+pixel is painted opaquely; if all 4 are outside *and* the centroid is
+outside, the pixel is skipped. Only edge pixels fall through to the 4×4
+subsample loop, keeping the cost low while eliminating the staircase
+aliasing of the previous all-or-nothing test. The dot center is kept as
+`f32` (sub-pixel position), so small dots and slight offsets never snap to
+integer coordinates.
+
+**Dithering (`floyd_steinberg`):** when `palette_size` is set and `dithering`
+is true, the rendered RGB buffer is post-quantified: each pixel is replaced
+by its nearest palette entry and the error (original − quantized) is
+distributed to the next-right, next-row-left, next-row-center, and
+next-row-right pixels with weights 7/16, 3/16, 5/16, 1/16. The palette
+centers come from the same k-means as the `quantize_dots` path
+(`compute_palette_centers`), but the dithering writes pixels directly instead
+of snapping individual dots. The result is a classic "offset print" look
+where the strategy averages out to the original intent. When `dithering` is
+false, the previous path (`quantize_dots`) is used unchanged (each dot takes
+the nearest palette center).
+
+**Gamma correction (`gamma.rs`):** when `gamma_correct` is true, the source
+image is linearized via a 256-entry sRGB→linéaire LUT, the entire pipeline
+runs on the linearized buffer (so averages become perceptually correct), and
+the result is re-encoded to sRGB via the inverse LUT before being returned.
+This avoids the "mud" midtones of mixed black/white averages (sRGB average
+127 vs the perceptually-correct ~188 in linear space). Previews emitted to
+the GUI callback are also re-encoded so they remain displayable.
 
 ```rust
 pub enum DotShape {
@@ -536,12 +719,23 @@ based on available space. Any manual zoom interaction
 | Shortcut | Action |
 |---|---|
 | `Ctrl+O` | Open an image (file dialog) |
-| `Ctrl+S` | Save the result (file dialog, PNG or JPEG) |
+| `Ctrl+S` | Save the result (file dialog, PNG/JPEG/WebP/BMP/TIFF) |
+| `Ctrl+Z` | Undo (last params change, 50-entry stack) |
+| `Ctrl+Y` or `Ctrl+Shift+Z` | Redo |
 | `Space` | Manually recalculate |
+
+**Undo / Redo architecture:** `App.history: Vec<FilterParams>` + `future:
+Vec<FilterParams>` + `last_committed: Option<FilterParams>`. Un changement de
+paramètre (slider, checkbox…) positionne `pending_commit=true`. Quand le calcul
+associé se termine (compute_start.take()), `commit_history()` pousse
+l'ancienne tête dans `history` et clears `future`. `FilterParams: PartialEq`
+évite de pousser un état identique (ex: drag sans variante). Undo repousse
+l'état courant vers `future`, restore depuis `history`, debounce relance le
+compute. 50 entrées max (FIFO).
 
 **GPU Backend:** forced to Vulkan (+ GL fallback) to avoid the EGL/Wayland
 crash with NVIDIA drivers on Wayland:
-```rust
+```text
 WgpuSetup::CreateNew { backends: VULKAN | GL, .. }
 ```
 
@@ -563,7 +757,7 @@ SVG size is identical to the source image in pixels.
 The SVG can be opened in a browser, Inkscape, or further vectorized.
 
 **Public API:**
-```rust
+```text
 pub fn render_svg_from_dots(w: u32, h: u32, dots: &[Dot], params: &FilterParams) -> Result<String>
 pub fn render_svg(src: &RgbImage, params: &FilterParams) -> Result<String>
 pub fn render_svg_dynamic(src: &DynamicImage, params: &FilterParams) -> Result<String>
@@ -577,39 +771,49 @@ pub fn render_svg_dynamic(src: &DynamicImage, params: &FilterParams) -> Result<S
 
 ```bash
 # Type checking without compiling
-cargo check
+cargo check --all-features
 
 # Automatic code formatting
 cargo fmt
 
 # Official Rust linter
-cargo clippy -- -D warnings
+cargo clippy --all-features -- -D warnings
 
-# Unit tests (26 tests in filter.rs)
+# Unit tests (41 tests in src/filter/mod.rs + dither + gamma)
 cargo test --lib
 
+# Integration tests (22 tests across tests/*.rs — pipeline, svg, repro,
+# palette, halftone)
+cargo test --all-features
+
+# Benchmarks (criterion)
+cargo bench
+
 # Generate Rust documentation
-cargo doc --open
+cargo doc --no-deps --all-features
 ```
 
 ### Installed
 
 ```bash
-# Clippy 1.92.0 (from rc-buggy)
-sudo apt-get install -t rc-buggy rust-clippy=1.92.0+dfsg1-1~exp1
-
 # cargo-audit — vulnerability detection in dependencies
-sudo apt install cargo-audit
+cargo install cargo-audit
 cargo audit
-# Note: cargo audit may fail if advisory-db contains CVSS 4.0 entries
-# (upstream bug RUSTSEC-2026-0026) — non-blocking
+# Note: the `audit` CI job runs this on each push (continue-on-error).
 ```
 
-### Suggested CI (GitHub Actions)
+### CI (GitHub Actions)
 
-```yaml
-- run: cargo fmt --check
-- run: cargo clippy -- -D warnings
-- run: cargo test --lib
-- run: cargo build --release
-```
+The full pipeline lives in `.github/workflows/ci.yml` and runs on every
+push/PR to `main`:
+
+- **fmt** — `cargo fmt --check`
+- **clippy** — matrix `ubuntu/macos/windows`, `cargo clippy --all-features -D warnings`
+- **test** — matrix `ubuntu/macos/windows`, `cargo test --lib --all-features`
+- **msrv** — `cargo +1.88 check --all-features --locked` (and `stable`)
+- **build** — `cargo build --release --all-features`
+- **docs** — `cargo doc --no-deps --all-features` with `--cfg docsrs`
+- **audit** — `cargo audit` (continue-on-error)
+
+All Rust jobs use `Swatinem/rust-cache@v2` for dependency caching.
+Release builds (cross-platform binaries) are in `.github/workflows/release.yml`.

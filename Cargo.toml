@@ -2,6 +2,8 @@
 name = "pointimg"
 version = "0.1.0"
 edition = "2024"
+rust-version = "1.88"
+description = "A pointillist filter that transforms images into compositions of colored dots"
 
 [lib]
 name = "pointimg"
@@ -18,7 +20,11 @@ required-features = ["gui"]
 
 [features]
 default = ["gui"]
-gui = ["dep:eframe", "dep:egui", "dep:wgpu", "dep:rfd"]
+gui = ["eframe", "egui", "wgpu", "rfd"]
+gpu = ["wgpu", "pollster", "bytemuck"]
+# Codec de sortie optionnel (l'encodage AVIF implique ravif, plus lourd à compiler).
+# WebP est déjà inclus par défaut dans la crate `image`.
+avif = ["image/avif"]
 
 [dependencies]
 image = "0.25"
@@ -27,10 +33,35 @@ clap = { version = "4", features = ["derive"] }
 rayon = "1"
 log = "0.4"
 env_logger = "0.11"
-eframe = { version = "0.31", default-features = false, features = ["wgpu", "wayland", "x11", "accesskit"], optional = true }
 egui = { version = "0.31", optional = true }
-wgpu = { version = "24", default-features = false, optional = true }
+wgpu = { version = "24", default-features = false, features = ["wgsl"], optional = true }
+pollster = { version = "0.4", optional = true }
+bytemuck = { version = "1", features = ["derive"], optional = true }
 rfd = { version = "0.15", optional = true }
+serde = { version = "1", features = ["derive"] }
+toml = "0.8"
+glob = "0.3"
+
+# Déclaration explicite pour les IDE/Cargo metadata ; les features Linux
+# supplémentaires sont ajoutées dans la dépendance target-specific ci-dessous.
+eframe = { version = "0.31", default-features = false, features = ["wgpu", "accesskit"], optional = true }
+
+# eframe est configuré par plateforme : les features wayland/x11 n'existent
+# que sur Linux. Sur macOS/Windows on garde uniquement wgpu + accesskit.
+[target.'cfg(target_os = "linux")'.dependencies]
+eframe = { version = "0.31", default-features = false, features = ["wgpu", "wayland", "x11", "accesskit"], optional = true }
+
+[target.'cfg(not(target_os = "linux"))'.dependencies]
+eframe = { version = "0.31", default-features = false, features = ["wgpu", "accesskit"], optional = true }
+
+# ─── Dev (tests/benches) ──────────────────────────────────────────────────────
+
+[dev-dependencies]
+criterion = "0.5"
+
+[[bench]]
+name = "filter"
+harness = false
 
 # ─── Profils ──────────────────────────────────────────────────────────────────
 
@@ -50,3 +81,9 @@ dead_code = "warn"
 [lints.clippy]
 perf = "warn"
 complexity = "warn"
+
+# ─── Documentation (docs.rs) ──────────────────────────────────────────────────
+
+[package.metadata.docs.rs]
+all-features = true
+rustdoc-args = ["--cfg", "docsrs"]
