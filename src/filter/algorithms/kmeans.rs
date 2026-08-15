@@ -44,7 +44,7 @@ where
             return Err(anyhow!("cancelled"));
         }
 
-        // Pré-normaliser les centres une seule fois par itération (perf 9)
+        // Normalize centers once per iteration instead of once per pixel.
         let centers_norm: Vec<[f32; 5]> = centers
             .iter()
             .map(|c| {
@@ -120,12 +120,12 @@ where
             }
         }
 
-        // Preview après chaque itération K-means (UX 12)
+        // Publish a preview after each K-means iteration.
         let dots = dots_from_kmeans_centers(&centers, density, width, height, img_min, params);
         let preview = render(src, &dots, params);
         on_progress(iter + 1, iters, &preview);
 
-        // P2: keep last iteration's result to avoid recomputing
+        // Keep the last iteration's result to avoid recomputing it.
         if iter + 1 == iters {
             return Ok((preview, dots));
         }
@@ -137,7 +137,7 @@ where
     Ok((img, dots))
 }
 
-/// K-means dot computation without rendering (Q2).
+/// K-means dot computation without rendering.
 pub(crate) fn compute_dots_kmeans(
     src: &RgbImage,
     density: &[f32],

@@ -1,6 +1,6 @@
 use anyhow::{Context, Result};
 use clap::{Parser, ValueEnum};
-use image::GenericImageView;
+use image::{GenericImageView, ImageReader};
 use log::LevelFilter;
 use pointimg::filter::{self, Algorithm, DotShape, FilterParams, HalftoneMode, Screening};
 use std::path::PathBuf;
@@ -53,7 +53,6 @@ struct Args {
     shape: ShapeArg,
 
     /// Ratio largeur/hauteur pour l'ellipse (ex. 1.5)
-    // U2: only relevant for --shape ellipse
     #[arg(long, default_value_t = 1.5, requires_if("ellipse", "shape"))]
     ellipse_aspect: f32,
 
@@ -350,6 +349,7 @@ fn main() -> Result<()> {
 
     let total = inputs.len();
     let default_output = args.output == "output.png";
+    let mut failures = 0usize;
     for (i, input_path) in inputs.iter().enumerate() {
         let out = resolve_output_path(&args.output, input_path, i, total, default_output, args.svg);
         if total > 1 {
@@ -357,10 +357,14 @@ fn main() -> Result<()> {
         }
         if let Err(e) = process_one(input_path, &out, &params, &args, preview_size) {
             log::error!("échec '{}': {}", input_path.display(), e);
+            failures += 1;
             // Continue le batch : on ne stoppe pas toute la file pour un fichier défectueux.
         }
     }
 
+    if failures > 0 {
+        anyhow::bail!("{} fichier(s) n'ont pas pu être traité(s)", failures);
+    }
     Ok(())
 }
 
@@ -519,6 +523,11 @@ fn process_one(
     args: &Args,
     preview_size: Option<(u32, u32)>,
 ) -> Result<()> {
+    let dimensions = ImageReader::open(input)
+        .with_context(|| format!("Impossible de lire les dimensions de '{}'", input.display()))?
+        .into_dimensions()
+        .with_context(|| format!("Dimensions invalides pour '{}'", input.display()))?;
+    filter::validate_image_dimensions(dimensions.0, dimensions.1)?;
     let src_orig =
         image::open(input).with_context(|| format!("Impossible d'ouvrir '{}'", input.display()))?;
     // Sous-échantillonnage preview si demandé.
@@ -547,13 +556,13 @@ fn process_one(
         let (w, h) = rgb.dimensions();
         let svg = filter::render_svg_from_dots(w, h, &dots, params)
             .with_context(|| "Erreur lors du rendu SVG")?;
-        std::fs::write(output, svg)
+        atomic_text_write(output, &svg)
             .with_context(|| format!("Impossible d'ecrire '{}'", output.display()))?;
         println!("SVG sauvegarde : {}", output.display());
     } else if params.transparent {
         let (dst, _dots) = filter::apply_rgba(&rgb, params)
             .with_context(|| "Erreur lors du calcul du filtre (RGBA)")?;
-        dst.save(output)
+        atomic_image_save(output, |tmp| dst.save(tmp))
             .with_context(|| format!("Impossible de sauvegarder '{}'", output.display()))?;
         println!("Sauvegarde (RGBA) : {}", output.display());
     } else {
@@ -567,9 +576,58 @@ fn process_one(
         if show_progress {
             eprintln!();
         }
-        dst.save(output)
+        atomic_image_save(output, |tmp| dst.save(tmp))
             .with_context(|| format!("Impossible de sauvegarder '{}'", output.display()))?;
         println!("Sauvegarde : {}", output.display());
     }
     Ok(())
+}
+
+fn temporary_output_path(path: &std::path::Path) -> PathBuf {
+    let name = path
+        .file_name()
+        .and_then(|name| name.to_str())
+        .unwrap_or("output");
+    let ext = path
+        .extension()
+        .and_then(|ext| ext.to_str())
+        .unwrap_or("png");
+    path.with_file_name(format!(".{name}.pointimg-{}.tmp.{ext}", std::process::id()))
+}
+
+fn atomic_image_save<F>(path: &std::path::Path, save: F) -> image::ImageResult<()>
+where
+    F: FnOnce(&std::path::Path) -> image::ImageResult<()>,
+{
+    let tmp = temporary_output_path(path);
+    if let Err(error) = save(&tmp) {
+        let _ = std::fs::remove_file(&tmp);
+        return Err(error);
+    }
+    if let Err(error) = replace_file(&tmp, path) {
+        let _ = std::fs::remove_file(&tmp);
+        return Err(image::ImageError::IoError(error));
+    }
+    Ok(())
+}
+
+fn atomic_text_write(path: &std::path::Path, contents: &str) -> std::io::Result<()> {
+    let tmp = temporary_output_path(path);
+    if let Err(error) = std::fs::write(&tmp, contents) {
+        let _ = std::fs::remove_file(&tmp);
+        return Err(error);
+    }
+    if let Err(error) = replace_file(&tmp, path) {
+        let _ = std::fs::remove_file(&tmp);
+        return Err(error);
+    }
+    Ok(())
+}
+
+fn replace_file(from: &std::path::Path, to: &std::path::Path) -> std::io::Result<()> {
+    #[cfg(windows)]
+    if to.exists() {
+        std::fs::remove_file(to)?;
+    }
+    std::fs::rename(from, to)
 }

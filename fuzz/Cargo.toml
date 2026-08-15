@@ -1,0 +1,27 @@
+[package]
+name = "pointimg-fuzz"
+version = "0.0.0"
+publish = false
+edition = "2021"
+
+[package.metadata]
+cargo-fuzz = true
+
+[dependencies]
+libfuzzer-sys = "0.4"
+image = "0.25"
+pointimg = { path = "..", default-features = false }
+
+[[bin]]
+name = "preset"
+path = "fuzz_targets/preset.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "image"
+path = "fuzz_targets/image.rs"
+test = false
+doc = false
+bench = false

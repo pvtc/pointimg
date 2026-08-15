@@ -85,7 +85,7 @@ where
         let preview = render(src, &dots, params);
         on_progress(iter + 1, iters, &preview);
 
-        // P2: keep last iteration's result to avoid recomputing
+        // Keep the last iteration's result to avoid recomputing it.
         if iter + 1 == iters {
             return Ok((preview, dots));
         }
@@ -97,7 +97,7 @@ where
     Ok((img, dots))
 }
 
-/// Voronoi dot computation without rendering (Q2).
+/// Voronoi dot computation without rendering.
 pub(crate) fn compute_dots_voronoi(
     src: &RgbImage,
     density: &[f32],

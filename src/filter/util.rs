@@ -44,10 +44,10 @@ pub(crate) fn pixel_variance(
 }
 
 /// Aplatir n'importe quelle `DynamicImage` vers RGB8 en composant l'alpha sur `bg`.
-/// Fix #4 : convertit d'abord en RGBA8 pour gérer tous les formats alpha
+/// Converts to RGBA8 first so all alpha-capable formats are handled consistently.
 /// (RGBA16, LumaA8, etc.), pas seulement ImageRgba8.
 pub fn flatten_to_rgb(img: &DynamicImage, bg: [u8; 3]) -> RgbImage {
-    // Q7: simplified — just check if the format has alpha and composite if so
+    // Composite only when the source actually contains an alpha channel.
     if !img.color().has_alpha() {
         return img.to_rgb8();
     }

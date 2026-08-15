@@ -4,6 +4,14 @@ use serde::{Deserialize, Serialize};
 
 use crate::filter::halftone::{HalftoneConfig, HalftoneMode, Screening};
 
+const PRESET_FORMAT_VERSION: u32 = 1;
+
+#[derive(Deserialize, Serialize)]
+struct PresetDocument {
+    preset_version: u32,
+    params: FilterParams,
+}
+
 #[derive(Clone, Copy, PartialEq, Debug, Serialize, Deserialize, ValueEnum)]
 pub enum Algorithm {
     Grid,
@@ -117,11 +125,27 @@ impl FilterParams {
 
     /// Sérialise les paramètres en une chaîne TOML, prête à écrire dans un fichier.
     pub fn to_toml_string(&self) -> Result<String> {
-        toml::to_string_pretty(self).map_err(|e| anyhow!("erreur de sérialisation presets : {e}"))
+        toml::to_string_pretty(&PresetDocument {
+            preset_version: PRESET_FORMAT_VERSION,
+            params: self.clone(),
+        })
+        .map_err(|e| anyhow!("erreur de sérialisation presets : {e}"))
     }
 
     /// Reconstruit les paramètres depuis une chaîne TOML.
     pub fn from_toml_str(s: &str) -> Result<Self> {
+        if let Ok(document) = toml::from_str::<PresetDocument>(s) {
+            if document.preset_version != PRESET_FORMAT_VERSION {
+                return Err(anyhow!(
+                    "version de preset {} non supportée (version actuelle : {})",
+                    document.preset_version,
+                    PRESET_FORMAT_VERSION
+                ));
+            }
+            return Ok(document.params);
+        }
+
+        // Les presets plats produits avant la version 1 restent lisibles.
         toml::from_str(s).map_err(|e| anyhow!("preset TOML invalide : {e}"))
     }
 }
@@ -164,9 +188,7 @@ pub struct Dot {
 }
 
 pub(crate) fn validate_params(w: u32, h: u32, params: &FilterParams) -> Result<()> {
-    if w == 0 || h == 0 {
-        return Err(anyhow!("Image vide ({}x{})", w, h));
-    }
+    validate_image_dimensions(w, h)?;
     if params.min_radius_ratio <= 0.0 {
         return Err(anyhow!("min_radius_ratio doit etre > 0"));
     }
@@ -177,7 +199,7 @@ pub(crate) fn validate_params(w: u32, h: u32, params: &FilterParams) -> Result<(
             params.min_radius_ratio
         ));
     }
-    // Q5: bound max_radius_ratio from above (> 1.0 makes no sense)
+    // A radius larger than the image scale is not meaningful.
     if params.max_radius_ratio > 1.0 {
         return Err(anyhow!(
             "max_radius_ratio ({}) doit etre <= 1.0",
@@ -187,8 +209,17 @@ pub(crate) fn validate_params(w: u32, h: u32, params: &FilterParams) -> Result<(
     if params.num_points == 0 {
         return Err(anyhow!("num_points doit etre > 0"));
     }
+    if params.num_points > 100_000 {
+        return Err(anyhow!("num_points doit etre <= 100000"));
+    }
     if params.cols == 0 {
         return Err(anyhow!("cols doit etre > 0"));
+    }
+    if params.cols > 8192 {
+        return Err(anyhow!("cols doit etre <= 8192"));
+    }
+    if params.iterations > 100 {
+        return Err(anyhow!("iterations doit etre <= 100"));
     }
     if let Some(n) = params.palette_size
         && n < 2
@@ -201,10 +232,31 @@ pub(crate) fn validate_params(w: u32, h: u32, params: &FilterParams) -> Result<(
             params.variance_sensitivity
         ));
     }
+    if params.palette_size.is_some_and(|n| n > 256) {
+        return Err(anyhow!("palette_size doit etre <= 256"));
+    }
     if params.max_boost < 1.0 {
         return Err(anyhow!(
             "max_boost doit etre >= 1.0, got {}",
             params.max_boost
+        ));
+    }
+    if params.halftone_frequency <= 0.0 {
+        return Err(anyhow!(
+            "halftone_frequency doit etre > 0, got {}",
+            params.halftone_frequency
+        ));
+    }
+    if params.halftone_min_radius_ratio < 0.0 {
+        return Err(anyhow!(
+            "halftone_min_radius_ratio doit etre >= 0, got {}",
+            params.halftone_min_radius_ratio
+        ));
+    }
+    if params.halftone_max_dot_ratio <= 0.0 {
+        return Err(anyhow!(
+            "halftone_max_dot_ratio doit etre > 0, got {}",
+            params.halftone_max_dot_ratio
         ));
     }
     if let DotShape::RegularPolygon { sides } = params.dot_shape
@@ -223,7 +275,55 @@ pub(crate) fn validate_params(w: u32, h: u32, params: &FilterParams) -> Result<(
             aspect
         ));
     }
+    for (name, value) in [
+        ("min_radius_ratio", params.min_radius_ratio),
+        ("max_radius_ratio", params.max_radius_ratio),
+        ("variance_sensitivity", params.variance_sensitivity),
+        ("max_boost", params.max_boost),
+        ("grid_angle_deg", params.grid_angle_deg),
+        ("halftone_frequency", params.halftone_frequency),
+        (
+            "halftone_min_radius_ratio",
+            params.halftone_min_radius_ratio,
+        ),
+        ("halftone_max_dot_ratio", params.halftone_max_dot_ratio),
+    ] {
+        if !value.is_finite() {
+            return Err(anyhow!("{} doit etre une valeur finie", name));
+        }
+    }
+    match params.dot_shape {
+        DotShape::Ellipse { aspect, angle_deg }
+            if !aspect.is_finite() || !angle_deg.is_finite() =>
+        {
+            return Err(anyhow!("les parametres de l'ellipse doivent etre finis"));
+        }
+        _ => {}
+    }
+    match &params.halftone {
+        HalftoneMode::Dominant { n, base_angle_deg } => {
+            if *n > 32 {
+                return Err(anyhow!("le nombre de couleurs dominantes doit etre <= 32"));
+            }
+            if !base_angle_deg.is_finite() {
+                return Err(anyhow!("base_angle_deg doit etre une valeur finie"));
+            }
+        }
+        HalftoneMode::Cmyk { angles } if angles.iter().any(|angle| !angle.is_finite()) => {
+            return Err(anyhow!("les angles CMJN doivent etre finis"));
+        }
+        _ => {}
+    }
+    Ok(())
+}
+
+/// Valide les dimensions avant de decoder l'image en memoire.
+pub fn validate_image_dimensions(w: u32, h: u32) -> Result<()> {
+    if w == 0 || h == 0 {
+        return Err(anyhow!("Image vide ({}x{})", w, h));
+    }
     const MAX_DIMENSION: u32 = 65535;
+    const MAX_PIXELS: u64 = 8 * 1024 * 1024;
     if w > MAX_DIMENSION || h > MAX_DIMENSION {
         return Err(anyhow!(
             "Image trop grande ({}x{}), maximum autorise: {}x{}",
@@ -233,7 +333,6 @@ pub(crate) fn validate_params(w: u32, h: u32, params: &FilterParams) -> Result<(
             MAX_DIMENSION
         ));
     }
-    const MAX_PIXELS: u64 = 256 * 1024 * 1024; // 256M pixels = ~1GB RAM (RGBA)
     let pixels = (w as u64) * (h as u64);
     if pixels > MAX_PIXELS {
         return Err(anyhow!(

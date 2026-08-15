@@ -37,7 +37,7 @@ impl SeedGrid {
 
     /// Renvoie l'indice du seed le plus proche de (fx, fy).
     ///
-    /// Bug 5 corrigé : la comparaison d'arrêt utilise min_possible² (distance au carré)
+    /// Uses the squared minimum possible distance for early stopping.
     /// comparé à best_dist qui est aussi une distance au carré.
     pub(crate) fn nearest(&self, fx: f32, fy: f32, seeds: &[(f32, f32)]) -> usize {
         let cx = ((fx / self.cell_w) as i64).clamp(0, self.cols as i64 - 1);
@@ -48,7 +48,7 @@ impl SeedGrid {
 
         let mut radius = 0i64;
         loop {
-            // Q4: proper minimum distance from query point to the ring at `radius`.
+            // Compute the minimum possible distance from the query point to the ring.
             // The closest point in ring `radius` is at least `(radius-1)` cells away
             // from the query cell center, but we need the distance from the query point
             // to the nearest edge of cells in the ring.

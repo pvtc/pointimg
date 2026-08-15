@@ -27,9 +27,9 @@ pub(crate) fn zone_density(
 // Variance locale dans un voisinage 9×9, normalisée 0→1.
 // sensitivity=0 → tout à 1 (uniforme), sensitivity=1 → variance pure.
 //
-// Bug 3 corrigé : calcul en f64 pour éviter la troncature entière.
+// Variance is accumulated in f64 to avoid precision loss.
 
-pub(crate) fn compute_density_map(src: &RgbImage, sensitivity: f32) -> Vec<f32> {
+pub fn compute_density_map(src: &RgbImage, sensitivity: f32) -> Vec<f32> {
     #[cfg(feature = "gpu")]
     if let Some(density) = crate::filter::gpu::compute_density_map(src, sensitivity) {
         return density;
@@ -41,7 +41,7 @@ pub(crate) fn compute_density_map(src: &RgbImage, sensitivity: f32) -> Vec<f32> 
     let h = height as usize;
     let n_pixels = w * h;
 
-    // ── Summed-area tables (SAT) — P1 ────────────────────────────────────
+    // Summed-area tables make each neighborhood query constant-time.
     // 6 tables: sum and sum-of-squares for R, G, B.
     // SAT uses (w+1)x(h+1) layout with zero padding row/col for branchless queries.
     // Replaces the O(81) per-pixel loop with O(1) per-pixel after O(n) precomputation.
@@ -99,7 +99,7 @@ pub(crate) fn compute_density_map(src: &RgbImage, sensitivity: f32) -> Vec<f32> 
             let sr2 = sat_query(&sat_r2, x0, y0, x1, y1);
             let sg2 = sat_query(&sat_g2, x0, y0, x1, y1);
             let sb2 = sat_query(&sat_b2, x0, y0, x1, y1);
-            // Var = E[X^2] - E[X]^2  — en f64 pour eviter troncature (bug 3 corrige)
+            // Use f64 to avoid precision loss in the variance calculation.
             let var_r = (sr2 / n - (sr / n).powi(2)).max(0.0);
             let var_g = (sg2 / n - (sg / n).powi(2)).max(0.0);
             let var_b = (sb2 / n - (sb / n).powi(2)).max(0.0);
@@ -107,7 +107,7 @@ pub(crate) fn compute_density_map(src: &RgbImage, sensitivity: f32) -> Vec<f32> 
         })
         .collect();
 
-    // C3: use 1e-6 instead of 1.0 to preserve contrast on near-solid images
+    // Keep a small floor to preserve contrast on nearly uniform images.
     let max_var = raw.iter().cloned().fold(0.0f32, f32::max).max(1e-6);
 
     raw.iter()
@@ -124,6 +124,10 @@ pub(crate) fn compute_density_map(src: &RgbImage, sensitivity: f32) -> Vec<f32> 
 pub fn compute_density_image(src: &RgbImage, sensitivity: f32) -> GrayImage {
     let (w, h) = src.dimensions();
     let density = compute_density_map(src, sensitivity);
+    density_to_image(&density, w, h)
+}
+
+pub fn density_to_image(density: &[f32], w: u32, h: u32) -> GrayImage {
     GrayImage::from_fn(w, h, |x, y| {
         let v = density[(y * w + x) as usize];
         Luma([(v * 255.0) as u8])

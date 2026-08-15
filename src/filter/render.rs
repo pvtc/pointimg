@@ -262,7 +262,7 @@ fn compute_centers(dots: &[Dot], n: usize) -> Vec<[f32; 3]> {
         })
         .collect();
 
-    // Q3: k-means with convergence check (max 10 iterations, stop early if converged)
+    // Stop early when the color centers have converged.
     for _ in 0..10 {
         let mut sums = vec![[0f64; 3]; n];
         let mut counts = vec![0u64; n];
@@ -423,11 +423,17 @@ pub fn render_rgba(src: &RgbImage, dots: &[Dot], params: &FilterParams) -> RgbaI
     let mut dst = RgbaImage::from_pixel(w, h, bg_pixel);
 
     let quantized: Vec<Dot>;
-    let dots_to_draw: &[Dot] = if let Some(n_colors) = params.palette_size {
-        quantized = quantize_dots(dots, n_colors.max(2));
-        &quantized
-    } else {
-        dots
+    let palette_centers: Vec<[u8; 3]>;
+    let (dots_to_draw, dither_palette): (&[Dot], &[[u8; 3]]) = match params.palette_size {
+        Some(n_colors) if params.dithering => {
+            palette_centers = quantize_palette_centers(dots, n_colors.max(2));
+            (dots, &palette_centers)
+        }
+        Some(n_colors) => {
+            quantized = quantize_dots(dots, n_colors.max(2));
+            (&quantized, &[])
+        }
+        None => (dots, &[]),
     };
 
     let mut sorted: Vec<&Dot> = dots_to_draw.iter().collect();
@@ -445,6 +451,23 @@ pub fn render_rgba(src: &RgbImage, dots: &[Dot], params: &FilterParams) -> RgbaI
             dot.color,
             params.dot_shape,
         );
+    }
+
+    if !dither_palette.is_empty() {
+        // Floyd-Steinberg travaille sur RGB ; l'alpha déjà calculé est conservé.
+        let mut rgb = RgbImage::from_fn(w, h, |x, y| {
+            let p = dst.get_pixel(x, y);
+            Rgb([p[0], p[1], p[2]])
+        });
+        crate::filter::dither::floyd_steinberg(&mut rgb, dither_palette);
+        for (x, y, pixel) in rgb.enumerate_pixels() {
+            if dst.get_pixel(x, y)[3] != 0 {
+                let out = dst.get_pixel_mut(x, y);
+                out[0] = pixel[0];
+                out[1] = pixel[1];
+                out[2] = pixel[2];
+            }
+        }
     }
     dst
 }

@@ -10,7 +10,7 @@ pub(crate) fn make_rng_seed(params: &FilterParams) -> u64 {
     params.rng_seed.unwrap_or_else(|| {
         std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
-            .map(|d| d.as_nanos() as u64) // Bug 8 corrigé : nanos complets > subsec_nanos
+            .map(|d| d.as_nanos() as u64)
             .unwrap_or(0xdeadbeef_cafebabe)
     })
 }
@@ -27,7 +27,7 @@ pub(crate) fn importance_sample(
         let mut rng: u64 = seed;
         return (0..k)
             .map(|_| {
-                // Bug 9 corrigé : utiliser un clamp strict pour éviter coord == width/height
+                // Clamp coordinates so they never reach the exclusive upper bound.
                 let x = ((lcg_next(&mut rng) * width as f32) as u32).min(width - 1);
                 let y = ((lcg_next(&mut rng) * height as f32) as u32).min(height - 1);
                 (x, y)
@@ -55,7 +55,7 @@ pub(crate) fn importance_sample(
         let idx = pixel_idx.min(n_pixels - 1);
         let px = (idx as u32) % width;
         let py = (idx as u32) / width;
-        // C2: sub-pixel jitter to reduce clustering/duplicates when k is large
+        // Add sub-pixel jitter to reduce clustering when k is large.
         let jx = lcg_next(&mut rng);
         let jy = lcg_next(&mut rng);
         let fx = (px as f32 + jx).min(width as f32 - 0.01);
@@ -68,7 +68,7 @@ pub(crate) fn importance_sample(
 
 /// Construit les Dots depuis les graines finales.
 ///
-/// Perf 7 corrigé : parallélisé avec rayon.
+/// Builds dots in parallel with rayon.
 pub(crate) fn build_dots_from_seeds(
     src: &RgbImage,
     density: &[f32],
@@ -195,6 +195,6 @@ pub(crate) fn lcg_next(state: &mut u64) -> f32 {
     *state = state
         .wrapping_mul(6364136223846793005)
         .wrapping_add(1442695040888963407);
-    // Fix #2 : >> 32 donne un u32 complet, divisé par u32::MAX → [0.0, 1.0]
+    // Use the full upper 32 bits to produce a value in [0.0, 1.0].
     ((*state >> 32) as f32) / (u32::MAX as f32)
 }
