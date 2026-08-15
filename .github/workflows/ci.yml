@@ -88,18 +88,21 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: taiki-e/install-action@cargo-audit
-      # quick-xml 0.30 est piné par zbus_xml 4.0 (dep transitif d'eframe/accesskit).
-      # Non fixable sans mise à jour upstream d'accesskit.
-      - run: |
-          cargo audit \
-            --ignore RUSTSEC-2026-0195 \
-            --ignore RUSTSEC-2026-0194
+      - run: cargo audit
 
   fuzz-build:
-    name: Fuzz targets compile
+    name: Fuzz smoke tests
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@stable
+      - uses: dtolnay/rust-toolchain@nightly
       - uses: Swatinem/rust-cache@v2
-      - run: cargo check --manifest-path fuzz/Cargo.toml
+      - uses: taiki-e/install-action@cargo-fuzz
+        with:
+          tool: cargo-fuzz
+      - run: cargo fuzz build --dev
+        working-directory: fuzz
+      - run: cargo fuzz run image --dev -- -runs=100
+        working-directory: fuzz
+      - run: cargo fuzz run preset --dev -- -runs=100
+        working-directory: fuzz

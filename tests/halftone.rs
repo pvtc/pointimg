@@ -103,6 +103,28 @@ fn halftone_fm_screening_produces_content() {
 }
 
 #[test]
+fn gamma_corrected_cmyk_halftone_produces_content() {
+    let img = RgbImage::from_fn(64, 64, |x, y| {
+        if (x / 8 + y / 8) % 2 == 0 {
+            image::Rgb([32, 96, 180])
+        } else {
+            image::Rgb([220, 180, 64])
+        }
+    });
+    let params = FilterParams {
+        halftone: HalftoneMode::Cmyk {
+            angles: [15.0, 75.0, 0.0, 45.0],
+        },
+        gamma_correct: true,
+        rng_seed: Some(4),
+        ..FilterParams::default()
+    };
+    let (out, dots) = filter::apply_rgba(&img, &params).unwrap();
+    assert_eq!(out.dimensions(), (64, 64));
+    assert!(!dots.is_empty());
+}
+
+#[test]
 fn halftone_off_path_unchanged() {
     // S'assure que HalftoneMode::Off retombe sur le pipeline historique.
     let img = checkerboard(32, 32);

@@ -49,6 +49,29 @@ static SRGB_TO_LINEAR: LazyLock<[u8; 256]> = LazyLock::new(build_srgb_to_linear_
 static LINEAR_TO_SRGB: LazyLock<[u8; 256]> = LazyLock::new(build_linear_to_srgb_lut);
 
 #[inline]
+pub(crate) fn srgb_to_linear_f32(v: u8) -> f32 {
+    let s = v as f32 / 255.0;
+    if s <= 0.04045 {
+        s / 12.92
+    } else {
+        ((s + 0.055) / 1.055).powf(2.4)
+    }
+}
+
+/// High-precision linear source used by the CMYK halftone path. The regular
+/// pointillist algorithms intentionally keep their compact RGB8 pipeline.
+pub(crate) fn srgb_to_linear_f32_image(src: &RgbImage) -> image::Rgb32FImage {
+    image::Rgb32FImage::from_fn(src.width(), src.height(), |x, y| {
+        let p = src.get_pixel(x, y);
+        Rgb([
+            srgb_to_linear_f32(p[0]),
+            srgb_to_linear_f32(p[1]),
+            srgb_to_linear_f32(p[2]),
+        ])
+    })
+}
+
+#[inline]
 pub(crate) fn srgb_to_linear_u8(v: u8) -> u8 {
     SRGB_TO_LINEAR[v as usize]
 }

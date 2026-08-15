@@ -13,6 +13,7 @@
 
 use crate::filter::params::Dot;
 use image::RgbImage;
+use image::{Rgb, Rgb32FImage};
 use serde::{Deserialize, Serialize};
 
 // ─── Types d'API publique (vivent ici, référencés par params.rs) ──────────────
@@ -106,6 +107,33 @@ pub(crate) fn dots_halftone(src: &RgbImage, cfg: &HalftoneConfig) -> Vec<Dot> {
     out
 }
 
+/// High-precision CMYK separation for gamma-corrected halftone rendering.
+/// Dominant-color screening keeps the historical RGB8 path for now because its
+/// palette extraction is intentionally defined in display RGB space.
+pub(crate) fn dots_halftone_linear(src: &Rgb32FImage, cfg: &HalftoneConfig) -> Vec<Dot> {
+    let HalftoneMode::Cmyk { angles } = cfg.mode else {
+        let rgb = RgbImage::from_fn(src.width(), src.height(), |x, y| {
+            let p = src.get_pixel(x, y);
+            Rgb([
+                (p[0].clamp(0.0, 1.0) * 255.0).round() as u8,
+                (p[1].clamp(0.0, 1.0) * 255.0).round() as u8,
+                (p[2].clamp(0.0, 1.0) * 255.0).round() as u8,
+            ])
+        });
+        return dots_halftone(&rgb, cfg);
+    };
+    let channels = separate_cmyk_linear(src, *angles);
+    let mut out = Vec::new();
+    for channel in channels {
+        let dots = match cfg.screening {
+            Screening::Am => screen_am_dimensions(src.width(), src.height(), channel, cfg),
+            Screening::Fm => screen_fm_dimensions(src.width(), src.height(), channel, cfg),
+        };
+        out.extend(dots);
+    }
+    out
+}
+
 // ─── Séparation CMYK ─────────────────────────────────────────────────────────
 
 /// Conversion RGB → CMYK avec Under Color Removal (UCR) simple :
@@ -163,6 +191,64 @@ fn separate_cmyk(src: &RgbImage, angles: [f32; 4]) -> Vec<InkChannel> {
         k_cov[idx] = k;
     }
 
+    vec![
+        InkChannel {
+            color: [0, 255, 255],
+            angle_deg: angles[0],
+            coverage: c_cov,
+        },
+        InkChannel {
+            color: [255, 0, 255],
+            angle_deg: angles[1],
+            coverage: m_cov,
+        },
+        InkChannel {
+            color: [255, 255, 0],
+            angle_deg: angles[2],
+            coverage: y_cov,
+        },
+        InkChannel {
+            color: [0, 0, 0],
+            angle_deg: angles[3],
+            coverage: k_cov,
+        },
+    ]
+}
+
+fn separate_cmyk_linear(src: &Rgb32FImage, angles: [f32; 4]) -> Vec<InkChannel> {
+    let (w, h) = src.dimensions();
+    let n = (w as usize) * (h as usize);
+    let mut c_cov = vec![0.0f32; n];
+    let mut m_cov = vec![0.0f32; n];
+    let mut y_cov = vec![0.0f32; n];
+    let mut k_cov = vec![0.0f32; n];
+    const UCR_THRESHOLD: f32 = 0.30;
+
+    for idx in 0..n {
+        let p = src.get_pixel(idx as u32 % w, idx as u32 / w);
+        let (r, g, b) = (
+            p[0].clamp(0.0, 1.0),
+            p[1].clamp(0.0, 1.0),
+            p[2].clamp(0.0, 1.0),
+        );
+        let k_inv = r.max(g).max(b);
+        let k = 1.0 - k_inv;
+        let scale = if k < 1.0 { 1.0 / k_inv.max(1e-6) } else { 0.0 };
+        let mut c = ((1.0 - r - k) * scale).clamp(0.0, 1.0);
+        let mut m = ((1.0 - g - k) * scale).clamp(0.0, 1.0);
+        let mut y = ((1.0 - b - k) * scale).clamp(0.0, 1.0);
+        let sum = c + m + y;
+        if sum > UCR_THRESHOLD {
+            let grey = c.min(m).min(y);
+            c -= grey * 0.5;
+            m -= grey * 0.5;
+            y -= grey * 0.5;
+        }
+        c_cov[idx] = c;
+        m_cov[idx] = m;
+        y_cov[idx] = y;
+        k_cov[idx] = k;
+    }
     vec![
         InkChannel {
             color: [0, 255, 255],
@@ -346,6 +432,10 @@ fn separate_dominant(
 #[allow(clippy::too_many_lines)]
 fn screen_am(src: &RgbImage, channel: InkChannel, cfg: &HalftoneConfig) -> Vec<Dot> {
     let (w, h) = src.dimensions();
+    screen_am_dimensions(w, h, channel, cfg)
+}
+
+fn screen_am_dimensions(w: u32, h: u32, channel: InkChannel, cfg: &HalftoneConfig) -> Vec<Dot> {
     let img_min = w.min(height_or_h(h, w)) as f32;
     // Pas de trame en pixels : plus fréquence est élevée → plus cellule petite.
     let step = (img_min / cfg.screen_frequency).max(2.0);
@@ -460,6 +550,10 @@ fn sample_coverage_disk(coverage: &[f32], w: u32, h: u32, px: f32, py: f32, r: f
 
 fn screen_fm(src: &RgbImage, channel: InkChannel, cfg: &HalftoneConfig) -> Vec<Dot> {
     let (w, h) = src.dimensions();
+    screen_fm_dimensions(w, h, channel, cfg)
+}
+
+fn screen_fm_dimensions(w: u32, h: u32, channel: InkChannel, cfg: &HalftoneConfig) -> Vec<Dot> {
     let img_min = w.min(h) as f32;
     let step = (img_min / cfg.screen_frequency).max(2.0);
     let half_diag = ((w as f32).hypot(h as f32)) / 2.0 + step;

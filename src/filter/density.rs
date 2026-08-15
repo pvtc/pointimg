@@ -27,7 +27,9 @@ pub(crate) fn zone_density(
 // Variance locale dans un voisinage 9×9, normalisée 0→1.
 // sensitivity=0 → tout à 1 (uniforme), sensitivity=1 → variance pure.
 //
-// Variance is accumulated in f64 to avoid precision loss.
+// A luminance SAT is sufficient for detail redistribution and uses two tables
+// instead of six RGB tables. Keep f64 because global prefix sums can be large
+// on the maximum supported image and are later subtracted to get local sums.
 
 pub fn compute_density_map(src: &RgbImage, sensitivity: f32) -> Vec<f32> {
     #[cfg(feature = "gpu")]
@@ -42,32 +44,24 @@ pub fn compute_density_map(src: &RgbImage, sensitivity: f32) -> Vec<f32> {
     let n_pixels = w * h;
 
     // Summed-area tables make each neighborhood query constant-time.
-    // 6 tables: sum and sum-of-squares for R, G, B.
+    // 2 tables: luminance sum and luminance sum-of-squares.
     // SAT uses (w+1)x(h+1) layout with zero padding row/col for branchless queries.
     // Replaces the O(81) per-pixel loop with O(1) per-pixel after O(n) precomputation.
     let sat_len = (w + 1) * (h + 1);
-    let mut sat_r = vec![0f64; sat_len];
-    let mut sat_g = vec![0f64; sat_len];
-    let mut sat_b = vec![0f64; sat_len];
-    let mut sat_r2 = vec![0f64; sat_len];
-    let mut sat_g2 = vec![0f64; sat_len];
-    let mut sat_b2 = vec![0f64; sat_len];
+    let mut sat_l = vec![0f64; sat_len];
+    let mut sat_l2 = vec![0f64; sat_len];
 
     let stride = w + 1;
     for y in 0..h {
         for x in 0..w {
             let p = src.get_pixel(x as u32, y as u32);
-            let (pr, pg, pb) = (p[0] as f64, p[1] as f64, p[2] as f64);
+            let luminance = 0.2126 * p[0] as f64 + 0.7152 * p[1] as f64 + 0.0722 * p[2] as f64;
             let idx = (y + 1) * stride + (x + 1);
             let left = idx - 1;
             let up = idx - stride;
             let diag = up - 1;
-            sat_r[idx] = pr + sat_r[left] + sat_r[up] - sat_r[diag];
-            sat_g[idx] = pg + sat_g[left] + sat_g[up] - sat_g[diag];
-            sat_b[idx] = pb + sat_b[left] + sat_b[up] - sat_b[diag];
-            sat_r2[idx] = pr * pr + sat_r2[left] + sat_r2[up] - sat_r2[diag];
-            sat_g2[idx] = pg * pg + sat_g2[left] + sat_g2[up] - sat_g2[diag];
-            sat_b2[idx] = pb * pb + sat_b2[left] + sat_b2[up] - sat_b2[diag];
+            sat_l[idx] = luminance + sat_l[left] + sat_l[up] - sat_l[diag];
+            sat_l2[idx] = luminance * luminance + sat_l2[left] + sat_l2[up] - sat_l2[diag];
         }
     }
 
@@ -93,17 +87,9 @@ pub fn compute_density_map(src: &RgbImage, sensitivity: f32) -> Vec<f32> {
             if n == 0.0 {
                 return 0.0;
             }
-            let sr = sat_query(&sat_r, x0, y0, x1, y1);
-            let sg = sat_query(&sat_g, x0, y0, x1, y1);
-            let sb = sat_query(&sat_b, x0, y0, x1, y1);
-            let sr2 = sat_query(&sat_r2, x0, y0, x1, y1);
-            let sg2 = sat_query(&sat_g2, x0, y0, x1, y1);
-            let sb2 = sat_query(&sat_b2, x0, y0, x1, y1);
-            // Use f64 to avoid precision loss in the variance calculation.
-            let var_r = (sr2 / n - (sr / n).powi(2)).max(0.0);
-            let var_g = (sg2 / n - (sg / n).powi(2)).max(0.0);
-            let var_b = (sb2 / n - (sb / n).powi(2)).max(0.0);
-            ((var_r + var_g + var_b) / 3.0) as f32
+            let sum = sat_query(&sat_l, x0, y0, x1, y1);
+            let sum_squared = sat_query(&sat_l2, x0, y0, x1, y1);
+            (sum_squared / n - (sum / n).powi(2)).max(0.0) as f32
         })
         .collect();
 

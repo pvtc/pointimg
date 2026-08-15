@@ -29,7 +29,8 @@ et la variance locale.
 pointimg/
 ├── Cargo.toml          — dépendances, deux binaires + une lib
 ├── src/
-│   ├── lib.rs          — racine de la crate lib ; expose `pub mod filter`
+│   ├── lib.rs          — racine de la crate lib ; expose `filter` et `color`
+│   ├── color.rs        — lecture ICC et conversion vers l'espace de travail sRGB
 │   ├── filter/         — logique séparée : algorithmes, rendu, helpers
 │   ├── main.rs         — binaire CLI (`pointimg`)
 │   └── gui/
@@ -40,6 +41,7 @@ pointimg/
 | Crate           | Rôle                                                             |
 | --------------- | ---------------------------------------------------------------- |
 | `image 0.25`    | Chargement / sauvegarde / manipulation de `RgbImage`             |
+| `moxcms 0.8`    | Transformations ICC pur Rust vers l'espace de travail sRGB     |
 | `clap 4`        | Parsing des arguments CLI                                        |
 | `rayon 1`       | Itération parallèle (carte de densité)                           |
 | `eframe 0.31`   | Framework egui (backend wgpu) — *feature-gated* `gui`            |
@@ -102,6 +104,19 @@ pointimg -i photo.jpg -o result.png --shape ellipse --ellipse-aspect 2.0 --ellip
 | `--palette`              |       | *(désactivé)* | Nombre de couleurs dans la palette réduite            |
 | `--svg`                  |       | *(désactivé)* | Exporter aussi en SVG (même chemin, extension `.svg`) |
 
+### Profils colorimétriques
+
+Les profils ICC embarqués sont lus par le décodeur `image` puis transformés vers
+sRGB avec `moxcms` avant la composition alpha et le pipeline du filtre. Le CLI
+accepte aussi `--input-profile srgb`, `--input-profile display-p3` ou un chemin
+ vers un fichier `.icc`. Le CLI peut convertir et embarquer un profil ICC de
+ sortie via `--output-profile chemin.icc`; sRGB reste le défaut.
+
+La correction gamma conserve le pipeline RGB8 pour Grid, K-means, Voronoi et
+Quadtree, car la simplification en points limite l'intérêt d'une précision plus
+élevée. Le chemin Halftone CMJN utilise toutefois des couvertures `f32` après
+linéarisation, là où la précision influence directement la trame d'encre.
+
 ### GUI
 
 ```bash
@@ -153,7 +168,8 @@ Sur une image 800×600, `0.003` → 1.8 px et `0.06` → 36 px.
 
 **Validation et limites :** les paramètres sont contrôlés avant tout calcul.
 Les images sont limitées à 65 535 pixels par côté et 8 millions de pixels au
-total. Le moteur accepte au plus 100 000 points, 8 192 colonnes, 100 itérations
+total. Le moteur accepte au plus 100 000 points, 50 000 points pour K-means/Voronoi,
+8 192 colonnes, 100 itérations
 et une palette de 2 à 256 couleurs. Les valeurs flottantes doivent être finies ;
 la fréquence halftone doit être strictement positive.
 
@@ -230,9 +246,9 @@ du voisinage en O(1) par pixel, au lieu du O(81) de l'approche naïve par boucle
 
 **Phase 1 — Construction des SAT :**
 
-Six tables à prefix-sum de dimensions `(w+1)×(h+1)` sont construites (zero-padded) :
-- `sum_r, sum_g, sum_b` — somme des valeurs de canal
-- `sq_r, sq_g, sq_b` — somme des carrés (pour le calcul de variance)
+Deux tables `f64` à prefix-sum de dimensions `(w+1)×(h+1)` sont construites (zero-padded) :
+- `sum_l` — somme de la luminance
+- `sq_l` — somme des carrés de luminance (pour le calcul de variance)
 
 Chaque table est remplie en une passe avec la formule SAT classique :
 ```
@@ -247,13 +263,13 @@ en O(1) via 4 lectures dans chaque SAT :
 sum = SAT[y2][x2] − SAT[y1][x2] − SAT[y2][x1] + SAT[y1][x1]
 ```
 
-1. Calculer la variance par canal R, G, B :
+1. Calculer la variance de luminance :
    ```
-   var_c = sum_sq_c/n  −  (sum_c/n)²
+   var_l = sum_sq_l/n  −  (sum_l/n)²
    ```
-2. Moyenner les trois variances :
+2. Utiliser cette variance comme mesure de détail :
    ```
-   raw = (var_R + var_G + var_B) / 3
+   raw = var_l
    ```
 3. Normaliser sur toute l'image (`max_var = max(tous les raw, 1e-6)`) :
    ```

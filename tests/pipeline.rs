@@ -24,6 +24,15 @@ fn input_dimension_limits_are_checked_before_processing() {
 }
 
 #[test]
+fn oversized_images_are_resized_to_pipeline_limits() {
+    let image = image::DynamicImage::ImageRgb8(image::RgbImage::new(8_000, 2_000));
+    let (resized, changed) = filter::resize_to_limits(image);
+    assert!(changed);
+    assert!(filter::validate_image_dimensions(resized.width(), resized.height()).is_ok());
+    assert!(filter::estimate_memory_bytes(resized.width(), resized.height()) > 0);
+}
+
+#[test]
 fn non_finite_parameters_are_rejected() {
     let img = checkerboard(8, 8);
     let params = FilterParams {
@@ -56,6 +65,26 @@ fn invalid_halftone_frequency_is_rejected() {
         ..FilterParams::default()
     };
     assert!(filter::apply(&img, &params).is_err());
+}
+
+#[test]
+fn halftone_without_mode_is_rejected() {
+    let img = checkerboard(16, 16);
+    let params = FilterParams {
+        algorithm: Algorithm::Halftone,
+        ..FilterParams::default()
+    };
+    assert!(filter::apply(&img, &params).is_err());
+}
+
+#[test]
+fn iterative_algorithms_reject_excessive_point_counts() {
+    let params = FilterParams {
+        algorithm: Algorithm::Voronoi,
+        num_points: 50_001,
+        ..FilterParams::default()
+    };
+    assert!(filter::validate_params(64, 64, &params).is_err());
 }
 
 #[test]
@@ -311,6 +340,15 @@ fn filter_params_toml_round_trip_preserves_fields() {
     assert_eq!(back.dot_shape, params.dot_shape);
     assert_eq!(back.transparent, params.transparent);
     assert_eq!(back.gamma_correct, params.gamma_correct);
+}
+
+#[test]
+fn invalid_preset_parameters_are_rejected_before_serialization() {
+    let params = FilterParams {
+        min_radius_ratio: 0.0,
+        ..FilterParams::default()
+    };
+    assert!(params.to_toml_string().is_err());
 }
 
 #[test]

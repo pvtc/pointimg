@@ -67,6 +67,11 @@ enum ViewMode {
     DensityMap, // aperçu de la density map
 }
 
+struct HistoryEntry {
+    params: FilterParams,
+    label: String,
+}
+
 // ─── État de l'application ────────────────────────────────────────────────────
 
 struct App {
@@ -83,6 +88,8 @@ struct App {
     // Stocké en RGBA pour supporter le mode transparent (canal alpha préservé).
     result: Arc<Mutex<Option<RgbaImage>>>,
     result_texture: Option<TextureHandle>,
+    result_revision: Arc<AtomicU64>,
+    result_texture_revision: u64,
 
     // Dots du dernier calcul terminé (utilisés pour export SVG)
     last_dots: Arc<Mutex<Option<Vec<Dot>>>>,
@@ -116,8 +123,8 @@ struct App {
     last_param_change: Option<Instant>,
 
     // Undo/redo : historique des FilterParams commités.
-    history: Vec<FilterParams>,
-    future: Vec<FilterParams>,
+    history: Vec<HistoryEntry>,
+    future: Vec<HistoryEntry>,
     // `last_committed` est la version "live" au moment du dernier commit
     // (sert à éviter de pousser 50 entrées consécutives sur un même slider).
     last_committed: Option<FilterParams>,
@@ -148,6 +155,8 @@ impl Default for App {
             src_texture: None,
             result: Arc::new(Mutex::new(None)),
             result_texture: None,
+            result_revision: Arc::new(AtomicU64::new(0)),
+            result_texture_revision: 0,
             last_dots: Arc::new(Mutex::new(None)),
             density_image: None,
             density_texture: None,
@@ -260,6 +269,55 @@ fn format_duration(ms: u64) -> String {
     }
 }
 
+fn format_memory(bytes: u64) -> String {
+    if bytes >= 1024 * 1024 * 1024 {
+        format!("{:.1} Go", bytes as f64 / (1024.0 * 1024.0 * 1024.0))
+    } else {
+        format!("{} Mo", bytes / (1024 * 1024))
+    }
+}
+
+fn generation_is_current(generation: &AtomicU64, expected: u64) -> bool {
+    generation.load(Ordering::Acquire) == expected
+}
+
+fn describe_parameter_change(before: &FilterParams, after: &FilterParams) -> String {
+    if before.algorithm != after.algorithm {
+        return format!(
+            "Algorithme : {:?} → {:?}",
+            before.algorithm, after.algorithm
+        );
+    }
+    if before.num_points != after.num_points {
+        return format!(
+            "Nombre de points : {} → {}",
+            before.num_points, after.num_points
+        );
+    }
+    if before.cols != after.cols {
+        return format!("Colonnes : {} → {}", before.cols, after.cols);
+    }
+    if before.iterations != after.iterations {
+        return format!("Itérations : {} → {}", before.iterations, after.iterations);
+    }
+    if before.dot_shape != after.dot_shape {
+        return "Forme des points modifiée".to_string();
+    }
+    if before.palette_size != after.palette_size {
+        return "Palette modifiée".to_string();
+    }
+    if before.bg_color != after.bg_color || before.transparent != after.transparent {
+        return "Fond modifié".to_string();
+    }
+    if before.gamma_correct != after.gamma_correct {
+        return "Correction gamma modifiée".to_string();
+    }
+    if before.halftone != after.halftone || before.screening != after.screening {
+        return "Paramètres halftone modifiés".to_string();
+    }
+    "Paramètres modifiés".to_string()
+}
+
 // ─── Logique de l'application ─────────────────────────────────────────────────
 
 impl App {
@@ -267,6 +325,9 @@ impl App {
         if self.computing.load(Ordering::Relaxed) {
             // Annuler le calcul en cours, puis relancer
             self.cancel.store(true, Ordering::Relaxed);
+            // The cached dots belong to the previous parameter set and must not
+            // be offered for SVG export while the replacement is pending.
+            *self.last_dots.lock().unwrap_or_else(|e| e.into_inner()) = None;
             return;
         }
         self.start_compute(ctx);
@@ -287,7 +348,8 @@ impl App {
             self.history.remove(0);
         }
         if let Some(p) = self.last_committed.take() {
-            self.history.push(p);
+            let label = describe_parameter_change(&p, &cur);
+            self.history.push(HistoryEntry { params: p, label });
         }
         self.last_committed = Some(cur);
         self.future.clear();
@@ -307,10 +369,13 @@ impl App {
         };
         // L'état live actuel devient la tête du redo.
         if let Some(prev_committed) = self.last_committed.take() {
-            self.future.push(prev_committed);
+            self.future.push(HistoryEntry {
+                params: prev_committed,
+                label: "État annulé".to_string(),
+            });
         }
-        self.last_committed = Some(prev.clone());
-        self.params = prev;
+        self.last_committed = Some(prev.params.clone());
+        self.params = prev.params;
         // Annuler le compute en cours (peut venir d'un drag) et relancer.
         if self.computing.load(Ordering::Relaxed) {
             self.cancel.store(true, Ordering::Relaxed);
@@ -329,10 +394,13 @@ impl App {
             return;
         };
         if let Some(prev_committed) = self.last_committed.take() {
-            self.history.push(prev_committed);
+            self.history.push(HistoryEntry {
+                params: prev_committed,
+                label: "État rétabli".to_string(),
+            });
         }
-        self.last_committed = Some(next.clone());
-        self.params = next;
+        self.last_committed = Some(next.params.clone());
+        self.params = next.params;
         if self.computing.load(Ordering::Relaxed) {
             self.cancel.store(true, Ordering::Relaxed);
         }
@@ -350,6 +418,7 @@ impl App {
             Some(s) => s.clone(),
             None => return,
         };
+        *self.last_dots.lock().unwrap_or_else(|e| e.into_inner()) = None;
         let params = self.params.clone();
         let result = Arc::clone(&self.result);
         let computing = Arc::clone(&self.computing);
@@ -357,6 +426,7 @@ impl App {
         let progress = Arc::clone(&self.progress);
         let status_err = Arc::clone(&self.compute_error);
         let last_dots = Arc::clone(&self.last_dots);
+        let result_revision = Arc::clone(&self.result_revision);
         let density_data = Arc::clone(&self.density_data);
         let compute_generation = Arc::clone(&self.compute_generation);
         let ctx = ctx.clone();
@@ -382,15 +452,16 @@ impl App {
                 let res = filter::apply_rgba(&src, &params);
                 match res {
                     Ok((dst_rgba, dots)) => {
-                        if compute_generation.load(Ordering::Acquire) == generation {
+                        if generation_is_current(&compute_generation, generation) {
                             // Publier au moins une fois pour que la GUI voie une preview.
                             *progress.lock().unwrap_or_else(|e| e.into_inner()) = (1, 1);
                             *result.lock().unwrap_or_else(|e| e.into_inner()) = Some(dst_rgba);
+                            result_revision.fetch_add(1, Ordering::Release);
                             *last_dots.lock().unwrap_or_else(|e| e.into_inner()) = Some(dots);
                         }
                     }
                     Err(e) => {
-                        if compute_generation.load(Ordering::Acquire) == generation
+                        if generation_is_current(&compute_generation, generation)
                             && !cancel.load(Ordering::Relaxed)
                         {
                             *status_err.lock().unwrap_or_else(|e| e.into_inner()) =
@@ -414,7 +485,7 @@ impl App {
                     &cancel,
                     density,
                     |iter, total, preview: &RgbImage| {
-                        if compute_generation.load(Ordering::Acquire) != generation {
+                        if !generation_is_current(&compute_generation, generation) {
                             return;
                         }
                         *progress.lock().unwrap_or_else(|e| e.into_inner()) = (iter, total);
@@ -422,6 +493,7 @@ impl App {
                         if iter == total || now.duration_since(last_preview) >= preview_interval {
                             *result.lock().unwrap_or_else(|e| e.into_inner()) =
                                 Some(rgb_to_rgba_opaque(preview));
+                            result_revision.fetch_add(1, Ordering::Release);
                             last_preview = now;
                             ctx.request_repaint();
                         }
@@ -433,7 +505,7 @@ impl App {
                     &params,
                     &cancel,
                     |iter, total, preview: &RgbImage| {
-                        if compute_generation.load(Ordering::Acquire) != generation {
+                        if !generation_is_current(&compute_generation, generation) {
                             return;
                         }
                         *progress.lock().unwrap_or_else(|e| e.into_inner()) = (iter, total);
@@ -442,6 +514,7 @@ impl App {
                         if iter == total || now.duration_since(last_preview) >= preview_interval {
                             *result.lock().unwrap_or_else(|e| e.into_inner()) =
                                 Some(rgb_to_rgba_opaque(preview));
+                            result_revision.fetch_add(1, Ordering::Release);
                             last_preview = now;
                             ctx.request_repaint();
                         }
@@ -450,15 +523,16 @@ impl App {
             };
             match res {
                 Ok((dst, dots)) => {
-                    if compute_generation.load(Ordering::Acquire) == generation {
+                    if generation_is_current(&compute_generation, generation) {
                         *result.lock().unwrap_or_else(|e| e.into_inner()) =
                             Some(rgb_to_rgba_opaque(&dst));
+                        result_revision.fetch_add(1, Ordering::Release);
                         *progress.lock().unwrap_or_else(|e| e.into_inner()) = (iters, iters);
                         *last_dots.lock().unwrap_or_else(|e| e.into_inner()) = Some(dots);
                     }
                 }
                 Err(e) => {
-                    if compute_generation.load(Ordering::Acquire) == generation
+                    if generation_is_current(&compute_generation, generation)
                         && !cancel.load(Ordering::Relaxed)
                     {
                         *status_err.lock().unwrap_or_else(|e| e.into_inner()) =
@@ -485,12 +559,17 @@ impl App {
                 return;
             }
         };
-        if let Err(e) = filter::validate_image_dimensions(dimensions.0, dimensions.1) {
-            self.status = e.to_string();
+        if dimensions.0 == 0 || dimensions.1 == 0 {
+            self.status = format!("Image vide ({}x{})", dimensions.0, dimensions.1);
             return;
         }
-        match image::open(&path) {
-            Ok(img) => {
+        match pointimg::color::decode_to_srgb(&path, "auto") {
+            Ok((img, profile_converted, was_resized)) => {
+                let original_dimensions = dimensions;
+                // Invalidate workers before replacing the source. An old worker
+                // may still be unwinding, but it must not publish its result.
+                self.compute_generation.fetch_add(1, Ordering::AcqRel);
+                self.cancel.store(true, Ordering::Release);
                 // Use the shared alpha-compositing implementation.
                 let rgb = filter::flatten_to_rgb(&img, self.params.bg_color);
                 self.density_image = None;
@@ -501,8 +580,21 @@ impl App {
                 self.src_texture = None;
                 self.result_texture = None;
                 *self.result.lock().unwrap_or_else(|e| e.into_inner()) = None;
+                self.result_revision.fetch_add(1, Ordering::Release);
                 *self.last_dots.lock().unwrap_or_else(|e| e.into_inner()) = None;
-                self.status = format!("Image chargée : {}", path.display());
+                self.status = if was_resized {
+                    format!(
+                        "Image chargée et réduite de {}x{} à {}x{} pour respecter la mémoire.",
+                        original_dimensions.0,
+                        original_dimensions.1,
+                        self.src_rgb.as_ref().map_or(0, |image| image.width()),
+                        self.src_rgb.as_ref().map_or(0, |image| image.height())
+                    )
+                } else if profile_converted {
+                    "Profil ICC converti vers sRGB.".to_string()
+                } else {
+                    format!("Image chargée : {}", path.display())
+                };
                 self.start_density_compute(ctx);
                 self.start_compute(ctx);
             }
@@ -702,6 +794,8 @@ fn confirm_overwrite(path: &std::path::Path) -> bool {
 }
 
 fn temporary_path(path: &std::path::Path) -> PathBuf {
+    use std::sync::atomic::{AtomicU64, Ordering};
+    static NEXT_TEMP_ID: AtomicU64 = AtomicU64::new(0);
     let name = path
         .file_name()
         .and_then(|name| name.to_str())
@@ -710,7 +804,18 @@ fn temporary_path(path: &std::path::Path) -> PathBuf {
         .extension()
         .and_then(|ext| ext.to_str())
         .unwrap_or("png");
-    path.with_file_name(format!(".{name}.pointimg-{}.tmp.{ext}", std::process::id()))
+    let id = NEXT_TEMP_ID.fetch_add(1, Ordering::Relaxed);
+    let timestamp = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_or(0, |duration| duration.as_nanos());
+    path.with_file_name(format!(
+        ".{}.pointimg-{}-{}-{}.tmp.{}",
+        name,
+        std::process::id(),
+        timestamp,
+        id,
+        ext
+    ))
 }
 
 fn atomic_image_save<F>(path: &std::path::Path, save: F) -> image::ImageResult<()>
@@ -852,15 +957,6 @@ impl eframe::App for App {
         // ── Résultat prêt ─────────────────────────────────────────────────────
         let computing = self.computing.load(Ordering::Relaxed);
         if !computing {
-            // Invalider la texture résultat à chaque frame pour prendre les previews
-            let has_new = self
-                .result
-                .lock()
-                .unwrap_or_else(|e| e.into_inner())
-                .is_some();
-            if has_new {
-                self.result_texture = None;
-            }
             // Calculer le temps si on vient de terminer
             if let Some(start) = self.compute_start.take() {
                 let ms = start.elapsed().as_millis() as u64;
@@ -874,10 +970,6 @@ impl eframe::App for App {
                     self.pending_commit = false;
                 }
             }
-        } else {
-            // Pendant le calcul : invalider la texture pour prendre les nouvelles previews
-            // (le worker appelle ctx.request_repaint() à chaque itération)
-            self.result_texture = None;
         }
 
         // ── Erreur du thread ──────────────────────────────────────────────────
@@ -961,6 +1053,10 @@ impl eframe::App for App {
 
                     let mut params_changed = algo_changed;
                     let is_halftone = self.params.algorithm == Algorithm::Halftone;
+                    if self.params.max_radius_ratio < self.params.min_radius_ratio {
+                        self.params.max_radius_ratio = self.params.min_radius_ratio;
+                        params_changed = true;
+                    }
                     // En mode Halftone, les sliders de placement (variance, rayons,
                     // boost, cols, num_points, iterations, grid_angle) sont inutiles
                     // car le pipeline les ignore. On les grise pour clarté.
@@ -978,23 +1074,38 @@ impl eframe::App for App {
                     }
                     params_changed |= vs_changed;
 
-                    ui.label("Rayon min (fraction image)");
-                    params_changed |= ui
-                        .add_enabled(
-                            !is_halftone,
-                            egui::Slider::new(&mut self.params.min_radius_ratio, 0.001..=0.02)
-                                .step_by(0.001),
-                        )
-                        .changed();
-
-                    ui.label("Rayon max (fraction image)");
-                    params_changed |= ui
-                        .add_enabled(
-                            !is_halftone,
-                            egui::Slider::new(&mut self.params.max_radius_ratio, 0.01..=0.3)
-                                .step_by(0.005),
-                        )
-                        .changed();
+                    ui.label("Rayons des points (fraction image)");
+                    let mut min_radius = self.params.min_radius_ratio;
+                    let mut max_radius = self.params.max_radius_ratio.max(min_radius);
+                    let radius_limit = 0.3_f32.max(max_radius).min(1.0);
+                    let mut radius_changed = false;
+                    ui.horizontal(|ui| {
+                        ui.label("Min");
+                        radius_changed |= ui
+                            .add_enabled(
+                                !is_halftone,
+                                egui::Slider::new(&mut min_radius, 0.001..=max_radius)
+                                    .step_by(0.001)
+                                    .show_value(true),
+                            )
+                            .changed();
+                        ui.label("Max");
+                        radius_changed |= ui
+                            .add_enabled(
+                                !is_halftone,
+                                egui::Slider::new(&mut max_radius, min_radius..=radius_limit)
+                                    .step_by(0.005)
+                                    .show_value(true),
+                            )
+                            .changed();
+                    });
+                    if radius_changed {
+                        // Each slider is constrained by the other one, and the
+                        // final clamp also protects values loaded from presets.
+                        self.params.min_radius_ratio = min_radius.min(max_radius);
+                        self.params.max_radius_ratio = max_radius.max(min_radius);
+                    }
+                    params_changed |= radius_changed;
 
                     ui.label("Boost zones uniformes (×max)");
                     params_changed |= ui
@@ -1408,9 +1519,27 @@ impl eframe::App for App {
                     ui.separator();
 
                     // Statut + temps de calcul
+                    if let Some(src) = &self.src_rgb {
+                        ui.small(format!(
+                            "Mémoire estimée : {}",
+                            format_memory(filter::estimate_memory_bytes(src.width(), src.height()))
+                        ));
+                    }
                     if let Some(ms) = self.last_compute_ms {
                         ui.small(format!("Dernier calcul : {}", format_duration(ms)));
                     }
+                    ui.collapsing("Historique des réglages", |ui| {
+                        if self.history.is_empty() && self.future.is_empty() {
+                            ui.small("Aucune modification enregistrée.");
+                        } else {
+                            for entry in self.history.iter().rev().take(8) {
+                                ui.small(format!("✓ {}", entry.label));
+                            }
+                            for entry in self.future.iter().rev().take(8) {
+                                ui.small(format!("↶ {}", entry.label));
+                            }
+                        }
+                    });
                     ui.label(&self.status);
                 });
             });
@@ -1431,7 +1560,8 @@ impl eframe::App for App {
             }
             {
                 let guard = self.result.lock().unwrap_or_else(|e| e.into_inner());
-                if self.result_texture.is_none()
+                let revision = self.result_revision.load(Ordering::Acquire);
+                if self.result_texture_revision != revision
                     && let Some(img) = guard.as_ref()
                 {
                     self.result_texture = Some(ctx.load_texture(
@@ -1439,6 +1569,7 @@ impl eframe::App for App {
                         rgba_to_color_image_checker(img),
                         TextureOptions::default(),
                     ));
+                    self.result_texture_revision = revision;
                 }
             }
             if let Some(density) = &self.density_image
@@ -1622,4 +1753,32 @@ fn show_panel_zoomable(
             }
         });
     });
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn history_labels_changed_algorithm() {
+        let before = FilterParams::default();
+        let after = FilterParams {
+            algorithm: Algorithm::Grid,
+            ..before.clone()
+        };
+        assert!(describe_parameter_change(&before, &after).contains("Algorithme"));
+    }
+
+    #[test]
+    fn memory_format_is_human_readable() {
+        assert_eq!(format_memory(8 * 1024 * 1024), "8 Mo");
+    }
+
+    #[test]
+    fn stale_worker_generation_is_rejected() {
+        let generation = AtomicU64::new(7);
+        assert!(generation_is_current(&generation, 7));
+        generation.store(8, Ordering::Release);
+        assert!(!generation_is_current(&generation, 7));
+    }
 }

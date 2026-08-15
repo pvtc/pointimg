@@ -1,6 +1,6 @@
 //! Tests de validité du rendu SVG via l'API publique.
 
-use pointimg::filter::{self, Algorithm, DotShape, FilterParams};
+use pointimg::filter::{self, Algorithm, Dot, DotShape, FilterParams};
 use std::sync::atomic::AtomicBool;
 
 fn checkerboard(w: u32, h: u32) -> image::RgbImage {
@@ -92,4 +92,20 @@ fn render_svg_empty_image_errors() {
     let params = FilterParams::default();
     let err = filter::render_svg_from_dots(0, 0, &[], &params);
     assert!(err.is_err(), "image vide doit échouer");
+}
+
+#[test]
+fn render_svg_rejects_non_finite_dots() {
+    let params = FilterParams {
+        algorithm: Algorithm::Grid,
+        cols: 4,
+        ..FilterParams::default()
+    };
+    let dots = [Dot {
+        x: f32::NAN,
+        y: 1.0,
+        color: [0, 0, 0],
+        radius: 1.0,
+    }];
+    assert!(filter::render_svg_from_dots(10, 10, &dots, &params).is_err());
 }

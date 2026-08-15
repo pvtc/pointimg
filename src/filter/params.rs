@@ -5,6 +5,8 @@ use serde::{Deserialize, Serialize};
 use crate::filter::halftone::{HalftoneConfig, HalftoneMode, Screening};
 
 const PRESET_FORMAT_VERSION: u32 = 1;
+pub const MAX_IMAGE_DIMENSION: u32 = 65_535;
+pub const MAX_IMAGE_PIXELS: u64 = 8 * 1024 * 1024;
 
 #[derive(Deserialize, Serialize)]
 struct PresetDocument {
@@ -125,6 +127,9 @@ impl FilterParams {
 
     /// Sérialise les paramètres en une chaîne TOML, prête à écrire dans un fichier.
     pub fn to_toml_string(&self) -> Result<String> {
+        // Presets are also created without an input image. Validate all
+        // parameter-level constraints using a minimal valid image size.
+        validate_params(1, 1, self)?;
         toml::to_string_pretty(&PresetDocument {
             preset_version: PRESET_FORMAT_VERSION,
             params: self.clone(),
@@ -187,7 +192,7 @@ pub struct Dot {
     pub radius: f32,
 }
 
-pub(crate) fn validate_params(w: u32, h: u32, params: &FilterParams) -> Result<()> {
+pub fn validate_params(w: u32, h: u32, params: &FilterParams) -> Result<()> {
     validate_image_dimensions(w, h)?;
     if params.min_radius_ratio <= 0.0 {
         return Err(anyhow!("min_radius_ratio doit etre > 0"));
@@ -211,6 +216,13 @@ pub(crate) fn validate_params(w: u32, h: u32, params: &FilterParams) -> Result<(
     }
     if params.num_points > 100_000 {
         return Err(anyhow!("num_points doit etre <= 100000"));
+    }
+    if matches!(params.algorithm, Algorithm::Kmeans | Algorithm::Voronoi)
+        && params.num_points > 50_000
+    {
+        return Err(anyhow!(
+            "num_points doit etre <= 50000 pour K-means/Voronoi"
+        ));
     }
     if params.cols == 0 {
         return Err(anyhow!("cols doit etre > 0"));
@@ -239,6 +251,11 @@ pub(crate) fn validate_params(w: u32, h: u32, params: &FilterParams) -> Result<(
         return Err(anyhow!(
             "max_boost doit etre >= 1.0, got {}",
             params.max_boost
+        ));
+    }
+    if params.algorithm == Algorithm::Halftone && params.halftone == HalftoneMode::Off {
+        return Err(anyhow!(
+            "l'algorithme Halftone nécessite un mode cmyk ou dominant"
         ));
     }
     if params.halftone_frequency <= 0.0 {
@@ -322,23 +339,21 @@ pub fn validate_image_dimensions(w: u32, h: u32) -> Result<()> {
     if w == 0 || h == 0 {
         return Err(anyhow!("Image vide ({}x{})", w, h));
     }
-    const MAX_DIMENSION: u32 = 65535;
-    const MAX_PIXELS: u64 = 8 * 1024 * 1024;
-    if w > MAX_DIMENSION || h > MAX_DIMENSION {
+    if w > MAX_IMAGE_DIMENSION || h > MAX_IMAGE_DIMENSION {
         return Err(anyhow!(
             "Image trop grande ({}x{}), maximum autorise: {}x{}",
             w,
             h,
-            MAX_DIMENSION,
-            MAX_DIMENSION
+            MAX_IMAGE_DIMENSION,
+            MAX_IMAGE_DIMENSION
         ));
     }
     let pixels = (w as u64) * (h as u64);
-    if pixels > MAX_PIXELS {
+    if pixels > MAX_IMAGE_PIXELS {
         return Err(anyhow!(
             "Image trop grande ({} pixels), maximum: {} pixels",
             pixels,
-            MAX_PIXELS
+            MAX_IMAGE_PIXELS
         ));
     }
     Ok(())

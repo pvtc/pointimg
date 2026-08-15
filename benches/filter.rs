@@ -111,6 +111,12 @@ fn bench_density_map(c: &mut Criterion) {
     });
 }
 
+fn bench_memory_estimate(c: &mut Criterion) {
+    c.bench_function("estimated_working_memory_8mp", |b| {
+        b.iter(|| filter::estimate_memory_bytes(4096, 2048));
+    });
+}
+
 fn bench_svg(c: &mut Criterion) {
     let img = bench_image();
     let cancel = AtomicBool::new(false);
@@ -131,6 +137,7 @@ criterion_group!(
     bench_halftone,
     bench_rgba_palette_dither,
     bench_density_map,
+    bench_memory_estimate,
     bench_svg
 );
 criterion_main!(benches);
