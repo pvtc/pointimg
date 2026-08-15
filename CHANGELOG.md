@@ -9,6 +9,16 @@ et ce projet adhère au [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ### Ajouté
 
+- **Presets versionnés** : les presets générés utilisent `preset_version = 1`
+  et une table `[params]`. Les anciens presets TOML plats restent lisibles et
+  les versions futures inconnues sont refusées explicitement.
+- **Protection des workers GUI** : les calculs et density maps sont associés à
+  une génération. Un worker annulé ou obsolète ne peut plus publier un résultat,
+  une erreur ou une density map à la place d'un calcul plus récent.
+- **Benchmarks de performance** : mesures Criterion ajoutées pour le halftone
+  CMYK/AM et le chemin RGBA avec palette+dithering, avec débit exprimé en pixels.
+- **Fuzzing image renforcé** : la cible fuzz utilise l'API `image::Limits`
+  compatible avec les versions actuelles de la crate.
 - **Anti-aliasing 4×4 supersampling** des dots (`coverage_aa` + `blend_coverage`).
   Les bords de points ne sont plus crénelés. (`src/filter/render.rs`)
 - **Validation complète** des paramètres : `cols > 0`, `palette_size >= 2`,
@@ -68,12 +78,25 @@ et ce projet adhère au [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 - Flags CLI : `--halftone`, `--screening`, `--halftone-freq`,
   `--halftone-min-radius`, `--halftone-max-dot`.
 
-### Corrections (`Item 22`)
+### Corrigé
 
 - **Angle de trame `--grid-angle`** : rotation de la grille (algorithme Grid)
   autour du centre de l'image. Effet "halftone screen" expérimental.
+- **Validation uniforme** : `apply()` valide désormais aussi les paramètres des
+  algorithmes Grid et Quadtree ; les fréquences et rayons halftone invalides,
+  non finis ou négatifs sont rejetés.
+- **Density map mise en cache** : une map de longueur incorrecte retourne une
+  erreur au lieu de provoquer un panic.
+- **Dithering RGBA** : le chemin transparent applique maintenant la même
+  quantification Floyd-Steinberg que le chemin RGB, tout en conservant l'alpha.
+- **Sauvegardes atomiques** : les fichiers temporaires sont supprimés en cas
+  d'erreur et le remplacement de fichiers existants est géré pour Windows.
+- **Batch CLI** : le traitement continue après une erreur, mais retourne
+  désormais un code d'échec si au moins un fichier n'a pas pu être traité.
+- **Documentation des limites** : les plafonds de ressources et la portée des
+  paramètres par algorithme sont documentés dans les README et l'architecture.
 
-### Refactor interne (`Items 6 + 7`)
+### Modifié
 
 - **`Algorithm` dérive `clap::ValueEnum`** directement — suppression du
   wrapper `AlgoArg` et des redondances conversion `From<AlgoArg>`.
@@ -81,11 +104,11 @@ et ce projet adhère au [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
   depuis les flags CLI est centralisée (main.rs ne fait plus que router).
   La GUI reste inchangée (elle construit `DotShape` directement depuis sliders).
 
-### Documentation (`Item 9`)
+### Documentation
 
 - **`CHANGELOG.md`** au format [Keep a Changelog](https://keepachangelog.com).
 
-### GUI (`Item 19`)
+### Interface graphique
 
 - **Undo / Redo** (`Ctrl+Z` / `Ctrl+Y` ou `Ctrl+Shift+Z`) : pile d'états
   `FilterParams` avec debounce sur drag. 50 entrées max (FIFO).
@@ -100,7 +123,7 @@ et ce projet adhère au [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ### Affichage GUI transparent
 
-- Preview RGBA composite sur damier 8×8 (gris clair/gris foncé, effet Photosop)
+- Preview RGBA composite sur damier 8×8 (gris clair/gris foncé, effet Photoshop)
   via `rgba_to_color_image_checker`. La zone transparente est visible entre dots.
 
 ### Accélération GPU

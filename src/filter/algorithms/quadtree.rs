@@ -31,7 +31,7 @@ fn subdivide(
     params: &FilterParams,
     dots: &mut Vec<Dot>,
 ) {
-    // Bug 7 corrigé : cellule 1×1 → émet un dot au lieu de silencieusement ignorer
+    // Emit a dot for 1×1 cells instead of silently dropping them.
     if w == 0 || h == 0 {
         return;
     }

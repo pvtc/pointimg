@@ -21,7 +21,7 @@ A pointillist filter that transforms images into compositions of colored dots of
 - **Anti-aliased rendering**: 4×4 supersampled dots (no staircase edges)
 - **Batch processing**: glob/directory input, per-file output pattern (`{n}`, `{stem}`, `{name}`)
 - **Fast preview**: downscale source before pipeline via `--preview WxH`
-- **Presets**: load/save `FilterParams` as TOML
+- **Presets**: load/save versioned `FilterParams` as TOML (legacy flat presets remain readable)
 - **Floyd-Steinberg dithering** on quantized palette (offset-print look)
 - **Halftone screen angle**: rotate the Grid lattice via `--grid-angle`
 - **CMYK rosette** & **N-colors dominant** halftone (`--halftone cmyk|dominant-N`) — true ink-over-ink multiply compositing, AM rotating-screen or FM stochastic-blue-noise screening
@@ -31,8 +31,8 @@ A pointillist filter that transforms images into compositions of colored dots of
 
 ## Examples
 
-| Source | Result (Voronoi, 1200 points) |
-|---|---|
+| Source       | Result (Voronoi, 1200 points)                                                                                |
+| ------------ | ------------------------------------------------------------------------------------------------------------ |
 | sample photo | [`assets/examples/pexels-kofishelbyfotos-38152015.jpg`](assets/examples/pexels-kofishelbyfotos-38152015.jpg) |
 
 Sample test images: [`kilauea25_0.jpeg`](assets/examples/kilauea25_0.jpeg),
@@ -122,6 +122,20 @@ pointimg -i photo.jpg -o stochastic.png --halftone cmyk --screening fm
 
 Run `pointimg --help` for the complete list of options.
 
+### Resource limits and parameter scope
+
+For safety, images are limited to 8,388,608 pixels and 65,535 pixels per side.
+The pipeline also rejects invalid or non-finite values before processing: up to
+100,000 points, 8,192 grid columns, 100 iterations, and a palette of 2 to 256
+colors. `num_points`, `iterations`, `variance_sensitivity`, and `max_boost` are
+used by K-means/Voronoi/Quadtree; `cols` and `grid-angle` are Grid-only. The
+halftone frequency and halftone radii apply only to the halftone algorithm.
+
+Presets written by current versions contain `preset_version = 1` and a nested
+`[params]` table. Presets written by older versions with parameters at the TOML
+root remain supported. Unknown future versions are rejected explicitly rather
+than being interpreted with potentially different defaults.
+
 ## GUI Usage
 
 ```bash
@@ -134,13 +148,13 @@ pointimg-gui
 
 **Keyboard shortcuts:**
 
-| Shortcut | Action |
-|---|---|
-| `Ctrl+O` | Open an image |
-| `Ctrl+S` | Save the result |
-| `Ctrl+Z` | Undo (last params change) |
-| `Ctrl+Y` or `Ctrl+Shift+Z` | Redo |
-| `Space` | Recalculate |
+| Shortcut                   | Action                    |
+| -------------------------- | ------------------------- |
+| `Ctrl+O`                   | Open an image             |
+| `Ctrl+S`                   | Save the result           |
+| `Ctrl+Z`                   | Undo (last params change) |
+| `Ctrl+Y` or `Ctrl+Shift+Z` | Redo                      |
+| `Space`                    | Recalculate               |
 
 ## Tests
 

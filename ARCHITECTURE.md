@@ -67,21 +67,20 @@ pointimg/
     └── filter.rs       — criterion benches (apply per algo, density, svg)
 ```
 
-| Crate | Role |
-|---|---|
-| `image 0.25` | Loading / saving / manipulating `RgbImage` |
-| `clap 4` | CLI argument parsing |
-| `rayon 1` | Parallel iteration (density map, Lloyd, k-means) |
-| `anyhow 1` | Error handling (`Result`, `anyhow!`) |
-| `eframe 0.31` | egui framework (wgpu backend) — *feature-gated* `gui` |
-| `egui 0.31` | Immediate-mode GUI widgets — *feature-gated* `gui` |
-| `wgpu 24` | GPU backend (Vulkan + GL fallback) — *feature-gated* `gui` |
-| `rfd 0.15` | Native file dialogs — *feature-gated* `gui` |
-| `serde 1` | Serialization framework (`FilterParams` derive) |
-| `toml 0.8` | TOML preset files (`--preset` / `--save-preset`) |
-| `glob 0.3` | Glob expansion for batch `--input` (`*`, `?`, `[`) |
-| `serde 1` | Serialization framework (`FilterParams` derive, presets TOML) |
-| `criterion 0.5` | Benchmarks — *dev-dependency* |
+| Crate           | Role                                                             |
+| --------------- | ---------------------------------------------------------------- |
+| `image 0.25`    | Loading / saving / manipulating `RgbImage`                       |
+| `clap 4`        | CLI argument parsing                                             |
+| `rayon 1`       | Parallel iteration (density map, Lloyd, k-means)                 |
+| `anyhow 1`      | Error handling (`Result`, `anyhow!`)                             |
+| `eframe 0.31`   | egui framework (wgpu backend) — *feature-gated* `gui`            |
+| `egui 0.31`     | Immediate-mode GUI widgets — *feature-gated* `gui`               |
+| `wgpu 24`       | GPU backend (Vulkan + GL fallback) — *feature-gated* `gui`       |
+| `rfd 0.15`      | Native file dialogs — *feature-gated* `gui`                      |
+| `serde 1`       | Serialization framework (`FilterParams` derive)                  |
+| `toml 0.8`      | TOML preset files (`--preset` / `--save-preset`)                 |
+| `glob 0.3`      | Glob expansion for batch `--input` (`*`, `?`, `[`)               |
+| `criterion 0.5` | Benchmarks — *dev-dependency*                                    |
 
 > **Optional features:** `avif` (pulls `image/avif`; AVIF encoder via `ravif`).
 > `gpu` (pulls `wgpu`, `pollster`, `bytemuck`; opt-in at runtime with
@@ -175,39 +174,39 @@ pointimg -i photo.jpg -o stochastic.png --halftone cmyk --screening fm
 
 **All flags:**
 
-| Flag | Short | Default | Description |
-|---|---|---|---|
-| `--input` | `-i` | required | Source image, glob, or directory. Optional if `--save-preset` alone. |
-| `--output` | `-o` | `output.png` | Output file. Patterns: `{n}` (index), `{stem}` (source name sans ext), `{name}` (source full name). |
-| `--algorithm` | `-a` | `voronoi` | `grid` \| `kmeans` \| `voronoi` \| `quadtree` |
-| `--num-points` | `-n` | `800` | Number of points (kmeans/voronoi/quadtree) |
-| `--cols` | `-c` | `80` | Grid columns (grid only) |
-| `--min-radius` | | `0.003` | Min radius = fraction of `min(W,H)` |
-| `--max-radius` | | `0.06` | Max radius = fraction of `min(W,H)` |
-| `--bg` | `-b` | `white` | `white`, `black`, `transparent`/`none`, or `#rrggbb` |
-| `--shape` | | `circle` | `circle` \| `square` \| `ellipse` \| `polygon` |
-| `--ellipse-aspect` | | `1.5` | Width/height ratio (ellipse) |
-| `--ellipse-angle` | | `0.0` | Rotation angle in degrees (ellipse) |
-| `--polygon-sides` | | `6` | Number of sides (polygon, 3-12) |
-| `--iterations` | | `10` | Lloyd / k-means iterations |
-| `--variance-sensitivity` | | `0.7` | Variance redistribution strength `[0,1]` |
-| `--max-boost` | | `2.5` | Max multiplier in uniform zones |
-| `--seed` | | *(random)* | RNG seed for exact reproduction |
-| `--palette` | | *(disabled)* | Number of colors in reduced palette |
-| `--svg` | | *(disabled)* | Also export SVG (same path, `.svg` extension) |
-| `--gamma` | | *(disabled)* | Gamma-correct perceptual averages (linear space) |
-| `--dithering` | | *(disabled)* | Floyd-Steinberg dithering on rendered image |
-| `--preset` | | *(disabled)* | Load `FilterParams` from a TOML preset file |
-| `--save-preset` | | *(disabled)* | Save current params to a TOML preset file and exit (if `--input` absent) |
-| `--verbose` | `-v` | *(0)* | `-v` = info, `-vv` = debug. Overridable via `RUST_LOG`. |
-| `--quiet` | `-q` | *(disabled)* | Suppress info messages (warnings only) |
-| `--preview` | | *(disabled)* | Downscale source to `WxH` (max, preserves aspect) before pipeline |
-| `--grid-angle` | | `0.0` | Rotation of grid placement in degrees (Grid only, halftone screen effect) |
-| `--halftone` | | `off` | `off` \| `cmyk` (4-channel rosette) \| `dominant-N` (N colors via k-means) |
-| `--screening` | | `am` | `am` (rotated-grid rosette) \| `fm` (stochastic blue noise) |
-| `--halftone-freq` | | `60.0` | AM cells per `min(W,H)` (≈ dot frequency in lpp at 1 dpi) |
-| `--halftone-min-radius` | | `0.002` | Min radius per ink dot (fraction of `min(W,H)`) |
-| `--halftone-max-dot` | | `0.85` | Max radius per ink dot (fraction of trame step) |
+| Flag                     | Short | Default      | Description                                                                                         |
+| ------------------------ | ----- | ------------ | --------------------------------------------------------------------------------------------------- |
+| `--input`                | `-i`  | required     | Source image, glob, or directory. Optional if `--save-preset` alone.                                |
+| `--output`               | `-o`  | `output.png` | Output file. Patterns: `{n}` (index), `{stem}` (source name sans ext), `{name}` (source full name). |
+| `--algorithm`            | `-a`  | `voronoi`    | `grid` \| `kmeans` \| `voronoi` \| `quadtree`                                                       |
+| `--num-points`           | `-n`  | `800`        | Number of points (kmeans/voronoi/quadtree)                                                          |
+| `--cols`                 | `-c`  | `80`         | Grid columns (grid only)                                                                            |
+| `--min-radius`           |       | `0.003`      | Min radius = fraction of `min(W,H)`                                                                 |
+| `--max-radius`           |       | `0.06`       | Max radius = fraction of `min(W,H)`                                                                 |
+| `--bg`                   | `-b`  | `white`      | `white`, `black`, `transparent`/`none`, or `#rrggbb`                                                |
+| `--shape`                |       | `circle`     | `circle` \| `square` \| `ellipse` \| `polygon`                                                      |
+| `--ellipse-aspect`       |       | `1.5`        | Width/height ratio (ellipse)                                                                        |
+| `--ellipse-angle`        |       | `0.0`        | Rotation angle in degrees (ellipse)                                                                 |
+| `--polygon-sides`        |       | `6`          | Number of sides (polygon, 3-12)                                                                     |
+| `--iterations`           |       | `10`         | Lloyd / k-means iterations                                                                          |
+| `--variance-sensitivity` |       | `0.7`        | Variance redistribution strength `[0,1]`                                                            |
+| `--max-boost`            |       | `2.5`        | Max multiplier in uniform zones                                                                     |
+| `--seed`                 |       | *(random)*   | RNG seed for exact reproduction                                                                     |
+| `--palette`              |       | *(disabled)* | Number of colors in reduced palette                                                                 |
+| `--svg`                  |       | *(disabled)* | Also export SVG (same path, `.svg` extension)                                                       |
+| `--gamma`                |       | *(disabled)* | Gamma-correct perceptual averages (linear space)                                                    |
+| `--dithering`            |       | *(disabled)* | Floyd-Steinberg dithering on rendered image                                                         |
+| `--preset`               |       | *(disabled)* | Load `FilterParams` from a TOML preset file                                                         |
+| `--save-preset`          |       | *(disabled)* | Save current params to a TOML preset file and exit (if `--input` absent)                            |
+| `--verbose`              | `-v`  | *(0)*        | `-v` = info, `-vv` = debug. Overridable via `RUST_LOG`.                                             |
+| `--quiet`                | `-q`  | *(disabled)* | Suppress info messages (warnings only)                                                              |
+| `--preview`              |       | *(disabled)* | Downscale source to `WxH` (max, preserves aspect) before pipeline                                   |
+| `--grid-angle`           |       | `0.0`        | Rotation of grid placement in degrees (Grid only, halftone screen effect)                           |
+| `--halftone`             |       | `off`        | `off` \| `cmyk` (4-channel rosette) \| `dominant-N` (N colors via k-means)                          |
+| `--screening`            |       | `am`         | `am` (rotated-grid rosette) \| `fm` (stochastic blue noise)                                         |
+| `--halftone-freq`        |       | `60.0`       | AM cells per `min(W,H)` (≈ dot frequency in lpp at 1 dpi)                                           |
+| `--halftone-min-radius`  |       | `0.002`      | Min radius per ink dot (fraction of `min(W,H)`)                                                     |
+| `--halftone-max-dot`     |       | `0.85`       | Max radius per ink dot (fraction of trame step)                                                     |
 
 **Output formats (driven by file extension):** PNG, JPEG, BMP, TIFF, WebP by default.
 AVIF requires `cargo build --features avif` (pulls in `ravif`). Transparent PNG
@@ -293,11 +292,29 @@ On an 800×600 image, `0.003` → 1.8 px and `0.06` → 36 px.
 
 **Validation (`validate_params`):** all parameters are checked before any
 work starts — `min_radius_ratio > 0`, `max >= min`, `max <= 1.0`,
-`num_points > 0`, `cols > 0`, `palette_size >= 2` (if set),
+`num_points > 0` and `≤ 100000`, `cols > 0` and `≤ 8192`,
+`iterations ≤ 100`, `palette_size ∈ [2, 256]` (if set),
 `variance_sensitivity ∈ [0, 1]`, `max_boost >= 1.0`, polygon `sides ∈ 3..=12`,
-ellipse `aspect ∈ (0, 10]`, image dimensions `≤ 65535` and
-`≤ 256M` pixels. An out-of-range value returns `Err` instead of panicking
-or silently misbehaving (e.g. `cols = 0` previously panicked on division).
+ellipse `aspect ∈ (0, 10]`, halftone frequency `> 0`, and image dimensions
+`≤ 65535` and `≤ 8M` pixels. An out-of-range value returns `Err` instead of
+panicking or silently misbehaving (e.g. `cols = 0` previously panicked on
+division).
+
+### Preset format
+
+Presets written by `to_toml_string()` use an explicit version envelope:
+
+```toml
+preset_version = 1
+
+[params]
+algorithm = "Voronoi"
+num_points = 800
+```
+
+The reader still accepts the pre-versioned flat format for migration. Unknown
+versions are rejected so that a future schema cannot silently change the meaning
+of a parameter.
 
 ---
 
@@ -675,17 +692,24 @@ App::update() [each frame]            filter::apply_with_progress(…, cb)
 
 **Inter-thread sharing:**
 
-| Arc | Type | Role |
-|---|---|---|
-| `result` | `Arc<Mutex<Option<RgbImage>>>` | Image produced by worker |
-| `last_dots` | `Arc<Mutex<Option<Vec<Dot>>>>` | Dots from last calculation (SVG export) |
-| `computing` | `Arc<AtomicBool>` | "calculation in progress" flag |
-| `cancel` | `Arc<AtomicBool>` | Cancellation request (checked between iterations) |
-| `progress` | `Arc<Mutex<(usize, usize)>>` | (current_iter, total_iter) for progress bar |
-| `compute_error` | `Arc<Mutex<Option<String>>>` | Error from compute thread |
+| Arc                  | Type                                  | Role                                                        |
+| -------------------- | ------------------------------------- | ----------------------------------------------------------- |
+| `result`             | `Arc<Mutex<Option<RgbImage>>>`        | Image produced by worker                                    |
+| `last_dots`          | `Arc<Mutex<Option<Vec<Dot>>>>`        | Dots from last calculation (SVG export)                     |
+| `computing`          | `Arc<AtomicBool>`                     | "calculation in progress" flag                              |
+| `cancel`             | `Arc<AtomicBool>`                     | Cancellation request (checked between iterations)           |
+| `compute_generation` | `Arc<AtomicU64>`                      | Rejects results from obsolete compute workers               |
+| `density_generation` | `Arc<AtomicU64>`                      | Rejects stale density maps after image/parameter changes    |
+| `progress`           | `Arc<Mutex<(usize, usize)>>`          | (current_iter, total_iter) for progress bar                 |
+| `compute_error`      | `Arc<Mutex<Option<String>>>`          | Error from compute thread                                   |
 
 All `Mutex::lock()` use `unwrap_or_else(|e| e.into_inner())` to recover
 content even if the worker panicked (poison-safe).
+
+Workers are generation-tagged. Cancelling a worker is cooperative, so a
+generation check is also performed before publishing previews, final images,
+dots, density data, or errors. This prevents a slow obsolete worker from
+overwriting a newer result after a rapid slider change or image replacement.
 
 **ViewMode (before/after comparison):**
 
@@ -702,7 +726,8 @@ enum ViewMode { Side, ResultOnly, SourceOnly, DensityMap }
 at load time (including alpha composition), and reused for each recalculation.
 `refresh_src_rgb()` is only called when `bg_color` changes.
 The density map preview is **automatically recalculated** when
-`variance_sensitivity` changes (in addition to load and `bg_color` change).
+`variance_sensitivity` changes (in addition to load and `bg_color` change), and
+its worker publishes only if its generation is still current.
 
 **Throttled progressive preview:** for Voronoi and K-means, each Lloyd
 iteration can publish an intermediate result via the callback. Image cloning
@@ -716,13 +741,13 @@ based on available space. Any manual zoom interaction
 
 **Keyboard shortcuts:**
 
-| Shortcut | Action |
-|---|---|
-| `Ctrl+O` | Open an image (file dialog) |
-| `Ctrl+S` | Save the result (file dialog, PNG/JPEG/WebP/BMP/TIFF) |
-| `Ctrl+Z` | Undo (last params change, 50-entry stack) |
-| `Ctrl+Y` or `Ctrl+Shift+Z` | Redo |
-| `Space` | Manually recalculate |
+| Shortcut                   | Action                                                |
+| -------------------------- | ----------------------------------------------------- |
+| `Ctrl+O`                   | Open an image (file dialog)                           |
+| `Ctrl+S`                   | Save the result (file dialog, PNG/JPEG/WebP/BMP/TIFF) |
+| `Ctrl+Z`                   | Undo (last params change, 50-entry stack)             |
+| `Ctrl+Y` or `Ctrl+Shift+Z` | Redo                                                  |
+| `Space`                    | Manually recalculate                                  |
 
 **Undo / Redo architecture:** `App.history: Vec<FilterParams>` + `future:
 Vec<FilterParams>` + `last_committed: Option<FilterParams>`. Un changement de

@@ -4,16 +4,16 @@
 /// - Thread principal = thread egui (obligatoire sur macOS/Windows)
 /// - Calcul du filtre dans un thread séparé via `std::thread::spawn`
 /// - Communication : `Arc<Mutex<Option<RgbImage>>>` + `AtomicBool` computing + cancel token
-/// - Density map cachée : recalculée uniquement au chargement d'une nouvelle image
+/// - Density map de preview : calculée hors thread GUI et publiée quand prête
 /// - Preview progressive : pour Voronoï/K-means, chaque itération publie un résultat intermédiaire
 /// - Dots cachés : stockés dans App après chaque calcul complet, utilisés pour l'export SVG
 use pointimg::filter::{self, Algorithm, Dot, DotShape, FilterParams, HalftoneMode, Screening};
 
 use eframe::egui;
 use egui::{ColorImage, TextureHandle, TextureOptions};
-use image::{DynamicImage, GenericImageView, GrayImage as ImgGrayImage, RgbImage, Rgba, RgbaImage};
+use image::{DynamicImage, GrayImage as ImgGrayImage, ImageReader, RgbImage, Rgba, RgbaImage};
 use std::path::PathBuf;
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
@@ -87,9 +87,11 @@ struct App {
     // Dots du dernier calcul terminé (utilisés pour export SVG)
     last_dots: Arc<Mutex<Option<Vec<Dot>>>>,
 
-    // Density map mise en cache (recalculée uniquement au chargement d'image)
+    // Density map de preview, calculée hors thread GUI.
     density_image: Option<ImgGrayImage>,
     density_texture: Option<TextureHandle>,
+    density_result: Arc<Mutex<Option<ImgGrayImage>>>,
+    density_data: Arc<Mutex<Option<Arc<Vec<f32>>>>>,
 
     // Progression (iter_courant, iter_total)
     progress: Arc<Mutex<(usize, usize)>>,
@@ -98,6 +100,10 @@ struct App {
     computing: Arc<AtomicBool>,
     // Token d'annulation
     cancel: Arc<AtomicBool>,
+    // Identifie le dernier calcul demandé. Les workers obsolètes ne publient rien.
+    compute_generation: Arc<AtomicU64>,
+    // Identifie la dernière density map demandée.
+    density_generation: Arc<AtomicU64>,
 
     // Erreur du thread de calcul
     compute_error: Arc<Mutex<Option<String>>>,
@@ -106,7 +112,7 @@ struct App {
     last_compute_ms: Option<u64>,
     compute_start: Option<Instant>,
 
-    // Debounce UX 11 : dernier instant où un paramètre a changé
+    // Last instant at which a parameter changed, used for debounce.
     last_param_change: Option<Instant>,
 
     // Undo/redo : historique des FilterParams commités.
@@ -125,7 +131,7 @@ struct App {
 
     // Niveau de zoom (1.0 = 100%)
     zoom: f32,
-    // U3: flag for "fit to panel" mode
+    // Whether the preview should fit the available panel.
     zoom_fit: bool,
 
     // Message de statut
@@ -145,9 +151,13 @@ impl Default for App {
             last_dots: Arc::new(Mutex::new(None)),
             density_image: None,
             density_texture: None,
+            density_result: Arc::new(Mutex::new(None)),
+            density_data: Arc::new(Mutex::new(None)),
             progress: Arc::new(Mutex::new((0, 0))),
             computing: Arc::new(AtomicBool::new(false)),
             cancel: Arc::new(AtomicBool::new(false)),
+            compute_generation: Arc::new(AtomicU64::new(0)),
+            density_generation: Arc::new(AtomicU64::new(0)),
             compute_error: Arc::new(Mutex::new(None)),
             last_compute_ms: None,
             compute_start: None,
@@ -332,6 +342,10 @@ impl App {
     }
 
     fn start_compute(&mut self, ctx: &egui::Context) {
+        if self.computing.load(Ordering::Acquire) {
+            self.cancel.store(true, Ordering::Release);
+            return;
+        }
         let src = match &self.src_rgb {
             Some(s) => s.clone(),
             None => return,
@@ -343,7 +357,10 @@ impl App {
         let progress = Arc::clone(&self.progress);
         let status_err = Arc::clone(&self.compute_error);
         let last_dots = Arc::clone(&self.last_dots);
+        let density_data = Arc::clone(&self.density_data);
+        let compute_generation = Arc::clone(&self.compute_generation);
         let ctx = ctx.clone();
+        let generation = compute_generation.fetch_add(1, Ordering::AcqRel) + 1;
 
         computing.store(true, Ordering::Relaxed);
         cancel.store(false, Ordering::Relaxed);
@@ -354,7 +371,7 @@ impl App {
 
         std::thread::spawn(move || {
             let iters = params.iterations;
-            // P3: throttle preview cloning to at most once per 100ms to avoid
+            // Throttle preview cloning to at most once per 100ms to avoid
             // cloning a full image (potentially 36MB on 4K) at every iteration
             let mut last_preview = Instant::now();
             let preview_interval = Duration::from_millis(100);
@@ -365,83 +382,118 @@ impl App {
                 let res = filter::apply_rgba(&src, &params);
                 match res {
                     Ok((dst_rgba, dots)) => {
-                        // Publier au moins une fois pour que la GUI voie une preview.
-                        *progress.lock().unwrap_or_else(|e| e.into_inner()) = (1, 1);
-                        *result.lock().unwrap_or_else(|e| e.into_inner()) = Some(dst_rgba);
-                        *last_dots.lock().unwrap_or_else(|e| e.into_inner()) = Some(dots);
+                        if compute_generation.load(Ordering::Acquire) == generation {
+                            // Publier au moins une fois pour que la GUI voie une preview.
+                            *progress.lock().unwrap_or_else(|e| e.into_inner()) = (1, 1);
+                            *result.lock().unwrap_or_else(|e| e.into_inner()) = Some(dst_rgba);
+                            *last_dots.lock().unwrap_or_else(|e| e.into_inner()) = Some(dots);
+                        }
                     }
                     Err(e) => {
-                        if !cancel.load(Ordering::Relaxed) {
+                        if compute_generation.load(Ordering::Acquire) == generation
+                            && !cancel.load(Ordering::Relaxed)
+                        {
                             *status_err.lock().unwrap_or_else(|e| e.into_inner()) =
                                 Some(format!("Erreur : {e}"));
                         }
                     }
                 }
-                computing.store(false, Ordering::Relaxed);
+                computing.store(false, Ordering::Release);
                 ctx.request_repaint();
                 return;
             }
 
-            let res = filter::apply_with_progress(
-                &src,
-                &params,
-                &cancel,
-                |iter, total, preview: &RgbImage| {
-                    *progress.lock().unwrap_or_else(|e| e.into_inner()) = (iter, total);
-                    let now = Instant::now();
-                    // Always clone on last iteration, throttle intermediate previews
-                    if iter == total || now.duration_since(last_preview) >= preview_interval {
-                        *result.lock().unwrap_or_else(|e| e.into_inner()) =
-                            Some(rgb_to_rgba_opaque(preview));
-                        last_preview = now;
-                        ctx.request_repaint();
-                    }
-                },
-            );
+            let cached_density = density_data
+                .lock()
+                .unwrap_or_else(|e| e.into_inner())
+                .clone();
+            let res = if let Some(density) = cached_density.as_deref() {
+                filter::apply_with_progress_cached(
+                    &src,
+                    &params,
+                    &cancel,
+                    density,
+                    |iter, total, preview: &RgbImage| {
+                        if compute_generation.load(Ordering::Acquire) != generation {
+                            return;
+                        }
+                        *progress.lock().unwrap_or_else(|e| e.into_inner()) = (iter, total);
+                        let now = Instant::now();
+                        if iter == total || now.duration_since(last_preview) >= preview_interval {
+                            *result.lock().unwrap_or_else(|e| e.into_inner()) =
+                                Some(rgb_to_rgba_opaque(preview));
+                            last_preview = now;
+                            ctx.request_repaint();
+                        }
+                    },
+                )
+            } else {
+                filter::apply_with_progress(
+                    &src,
+                    &params,
+                    &cancel,
+                    |iter, total, preview: &RgbImage| {
+                        if compute_generation.load(Ordering::Acquire) != generation {
+                            return;
+                        }
+                        *progress.lock().unwrap_or_else(|e| e.into_inner()) = (iter, total);
+                        let now = Instant::now();
+                        // Always clone on last iteration, throttle intermediate previews
+                        if iter == total || now.duration_since(last_preview) >= preview_interval {
+                            *result.lock().unwrap_or_else(|e| e.into_inner()) =
+                                Some(rgb_to_rgba_opaque(preview));
+                            last_preview = now;
+                            ctx.request_repaint();
+                        }
+                    },
+                )
+            };
             match res {
                 Ok((dst, dots)) => {
-                    *result.lock().unwrap_or_else(|e| e.into_inner()) =
-                        Some(rgb_to_rgba_opaque(&dst));
-                    *progress.lock().unwrap_or_else(|e| e.into_inner()) = (iters, iters);
-                    *last_dots.lock().unwrap_or_else(|e| e.into_inner()) = Some(dots);
+                    if compute_generation.load(Ordering::Acquire) == generation {
+                        *result.lock().unwrap_or_else(|e| e.into_inner()) =
+                            Some(rgb_to_rgba_opaque(&dst));
+                        *progress.lock().unwrap_or_else(|e| e.into_inner()) = (iters, iters);
+                        *last_dots.lock().unwrap_or_else(|e| e.into_inner()) = Some(dots);
+                    }
                 }
                 Err(e) => {
-                    if !cancel.load(Ordering::Relaxed) {
+                    if compute_generation.load(Ordering::Acquire) == generation
+                        && !cancel.load(Ordering::Relaxed)
+                    {
                         *status_err.lock().unwrap_or_else(|e| e.into_inner()) =
                             Some(format!("Erreur : {e}"));
                     }
                 }
             }
-            computing.store(false, Ordering::Relaxed);
+            computing.store(false, Ordering::Release);
             ctx.request_repaint();
         });
     }
 
     fn load_image(&mut self, path: PathBuf, ctx: &egui::Context) {
+        let dimensions = match ImageReader::open(&path) {
+            Ok(reader) => match reader.into_dimensions() {
+                Ok(dimensions) => dimensions,
+                Err(e) => {
+                    self.status = format!("Erreur lecture dimensions : {e}");
+                    return;
+                }
+            },
+            Err(e) => {
+                self.status = format!("Erreur lecture dimensions : {e}");
+                return;
+            }
+        };
+        if let Err(e) = filter::validate_image_dimensions(dimensions.0, dimensions.1) {
+            self.status = e.to_string();
+            return;
+        }
         match image::open(&path) {
             Ok(img) => {
-                const MAX_DIMENSION: u32 = 65535;
-                const MAX_PIXELS: u64 = 256 * 1024 * 1024; // 256M pixels ≈ 1GB RAM (RGBA)
-                let (w, h) = img.dimensions();
-                let pixels = (w as u64) * (h as u64);
-
-                if w > MAX_DIMENSION || h > MAX_DIMENSION {
-                    self.status = format!(
-                        "Image trop grande : {}x{} (max {}x{})",
-                        w, h, MAX_DIMENSION, MAX_DIMENSION
-                    );
-                    return;
-                }
-                if pixels > MAX_PIXELS {
-                    self.status =
-                        format!("Image trop grande : {} pixels (max {})", pixels, MAX_PIXELS);
-                    return;
-                }
-                // Utiliser filter::flatten_to_rgb (bug 2 : pas de duplication)
+                // Use the shared alpha-compositing implementation.
                 let rgb = filter::flatten_to_rgb(&img, self.params.bg_color);
-                // Density map mise en cache ici
-                let density = filter::compute_density_image(&rgb, self.params.variance_sensitivity);
-                self.density_image = Some(density);
+                self.density_image = None;
                 self.density_texture = None;
                 self.src_dynamic = Some(img);
                 self.src_rgb = Some(rgb);
@@ -451,6 +503,7 @@ impl App {
                 *self.result.lock().unwrap_or_else(|e| e.into_inner()) = None;
                 *self.last_dots.lock().unwrap_or_else(|e| e.into_inner()) = None;
                 self.status = format!("Image chargée : {}", path.display());
+                self.start_density_compute(ctx);
                 self.start_compute(ctx);
             }
             Err(e) => {
@@ -459,9 +512,45 @@ impl App {
         }
     }
 
+    fn load_preset(&mut self, path: PathBuf, ctx: &egui::Context) {
+        let result = std::fs::read_to_string(&path)
+            .map_err(|e| e.to_string())
+            .and_then(|contents| FilterParams::from_toml_str(&contents).map_err(|e| e.to_string()));
+        match result {
+            Ok(params) => {
+                self.params = params;
+                self.refresh_src_rgb(ctx);
+                self.last_param_change = Some(Instant::now());
+                self.status = format!("Preset chargé : {}", path.display());
+            }
+            Err(e) => self.status = format!("Erreur chargement preset : {e}"),
+        }
+    }
+
+    fn save_preset(&mut self, path: PathBuf) {
+        let path = ensure_extension(path, "toml");
+        if !confirm_overwrite(&path) {
+            self.status = "Sauvegarde annulée.".to_string();
+            return;
+        }
+        let result = self
+            .params
+            .to_toml_string()
+            .map_err(|e| e.to_string())
+            .and_then(|contents| atomic_text_write(&path, &contents).map_err(|e| e.to_string()));
+        match result {
+            Ok(()) => self.status = format!("Preset sauvegardé : {}", path.display()),
+            Err(e) => self.status = format!("Erreur sauvegarde preset : {e}"),
+        }
+    }
+
     fn save_result(&mut self, path: PathBuf) {
-        // UX 16 : valider/forcer l'extension
+        // Validate and normalize the selected extension.
         let path = ensure_extension(path, "png");
+        if !confirm_overwrite(&path) {
+            self.status = "Sauvegarde annulée.".to_string();
+            return;
+        }
         let guard = self.result.lock().unwrap_or_else(|e| e.into_inner());
         let Some(img) = guard.as_ref() else { return };
 
@@ -475,7 +564,7 @@ impl App {
 
         let result = if matches!(ext.as_str(), "png" | "webp" | "tif" | "tiff") {
             // Préserve l'alpha.
-            img.save(&path)
+            atomic_image_save(&path, |tmp| img.save(tmp))
         } else if self.params.transparent {
             // JPG/BMP sans alpha : composite sur fond bg_color avant save.
             let (w, h) = img.dimensions();
@@ -490,12 +579,14 @@ impl App {
                     (p[2] as f32 * a + bg[2] as f32 * inv) as u8,
                 ])
             });
-            flat.save(&path)
+            atomic_image_save(&path, |tmp| flat.save(tmp))
         } else {
             // Pas transparent : simple to_rgb8.
-            image::DynamicImage::ImageRgba8(img.clone())
-                .to_rgb8()
-                .save(&path)
+            atomic_image_save(&path, |tmp| {
+                image::DynamicImage::ImageRgba8(img.clone())
+                    .to_rgb8()
+                    .save(tmp)
+            })
         };
 
         match result {
@@ -506,6 +597,10 @@ impl App {
 
     fn save_svg(&mut self, path: PathBuf) {
         let path = ensure_extension(path, "svg");
+        if !confirm_overwrite(&path) {
+            self.status = "Sauvegarde annulée.".to_string();
+            return;
+        }
         // Utiliser render_svg_from_dots si on a les dots (archi 19)
         let dots_guard = self.last_dots.lock().unwrap_or_else(|e| e.into_inner());
         if let Some(dots) = dots_guard.as_ref()
@@ -513,7 +608,7 @@ impl App {
         {
             let (w, h) = src.dimensions();
             match filter::render_svg_from_dots(w, h, dots, &self.params) {
-                Ok(svg) => match std::fs::write(&path, svg) {
+                Ok(svg) => match atomic_text_write(&path, &svg) {
                     Ok(_) => self.status = format!("SVG sauvegardé : {}", path.display()),
                     Err(e) => self.status = format!("Erreur écriture SVG : {e}"),
                 },
@@ -525,7 +620,7 @@ impl App {
         // Fallback : recalculer
         if let Some(src) = &self.src_rgb {
             match filter::render_svg(src, &self.params) {
-                Ok(svg) => match std::fs::write(&path, svg) {
+                Ok(svg) => match atomic_text_write(&path, &svg) {
                     Ok(_) => self.status = format!("SVG sauvegardé : {}", path.display()),
                     Err(e) => self.status = format!("Erreur écriture SVG : {e}"),
                 },
@@ -535,20 +630,44 @@ impl App {
     }
 
     /// Reconstruit src_rgb depuis src_dynamic si bg_color a changé.
-    fn refresh_src_rgb(&mut self) {
+    fn refresh_src_rgb(&mut self, ctx: &egui::Context) {
         if let Some(img) = &self.src_dynamic {
-            // filter::flatten_to_rgb gère la composition alpha (bug 2)
+            // The shared helper handles alpha composition.
             let new_rgb = filter::flatten_to_rgb(img, self.params.bg_color);
-            let density = filter::compute_density_image(&new_rgb, self.params.variance_sensitivity);
-            self.density_image = Some(density);
+            self.density_image = None;
             self.density_texture = None;
             self.src_rgb = Some(new_rgb);
             self.src_texture = None;
+            self.start_density_compute(ctx);
         }
+    }
+
+    fn start_density_compute(&self, ctx: &egui::Context) {
+        let Some(src) = self.src_rgb.clone() else {
+            return;
+        };
+        let sensitivity = self.params.variance_sensitivity;
+        let result = Arc::clone(&self.density_result);
+        let data = Arc::clone(&self.density_data);
+        let density_generation = Arc::clone(&self.density_generation);
+        let ctx = ctx.clone();
+        let generation = density_generation.fetch_add(1, Ordering::AcqRel) + 1;
+        *result.lock().unwrap_or_else(|e| e.into_inner()) = None;
+        *data.lock().unwrap_or_else(|e| e.into_inner()) = None;
+        std::thread::spawn(move || {
+            let (w, h) = src.dimensions();
+            let density = filter::compute_density_map(&src, sensitivity);
+            if density_generation.load(Ordering::Acquire) == generation {
+                *data.lock().unwrap_or_else(|e| e.into_inner()) = Some(Arc::new(density.clone()));
+                *result.lock().unwrap_or_else(|e| e.into_inner()) =
+                    Some(filter::density_to_image(&density, w, h));
+                ctx.request_repaint();
+            }
+        });
     }
 }
 
-// ─── UX 16 : validation d'extension ──────────────────────────────────────────
+// ─── Output extension validation ─────────────────────────────────────────────
 
 fn ensure_extension(mut path: PathBuf, default_ext: &str) -> PathBuf {
     match path.extension().and_then(|e| e.to_str()) {
@@ -567,11 +686,85 @@ fn ensure_extension(mut path: PathBuf, default_ext: &str) -> PathBuf {
     }
 }
 
+fn confirm_overwrite(path: &std::path::Path) -> bool {
+    if !path.exists() {
+        return true;
+    }
+    matches!(
+        rfd::MessageDialog::new()
+            .set_level(rfd::MessageLevel::Warning)
+            .set_title("Remplacer le fichier ?")
+            .set_description(format!("Le fichier '{}' existe déjà.", path.display()))
+            .set_buttons(rfd::MessageButtons::YesNo)
+            .show(),
+        rfd::MessageDialogResult::Yes
+    )
+}
+
+fn temporary_path(path: &std::path::Path) -> PathBuf {
+    let name = path
+        .file_name()
+        .and_then(|name| name.to_str())
+        .unwrap_or("output");
+    let ext = path
+        .extension()
+        .and_then(|ext| ext.to_str())
+        .unwrap_or("png");
+    path.with_file_name(format!(".{name}.pointimg-{}.tmp.{ext}", std::process::id()))
+}
+
+fn atomic_image_save<F>(path: &std::path::Path, save: F) -> image::ImageResult<()>
+where
+    F: FnOnce(&std::path::Path) -> image::ImageResult<()>,
+{
+    let tmp = temporary_path(path);
+    if let Err(error) = save(&tmp) {
+        let _ = std::fs::remove_file(&tmp);
+        return Err(error);
+    }
+    if let Err(error) = replace_file(&tmp, path) {
+        let _ = std::fs::remove_file(&tmp);
+        return Err(image::ImageError::IoError(error));
+    }
+    Ok(())
+}
+
+fn atomic_text_write(path: &std::path::Path, contents: &str) -> std::io::Result<()> {
+    let tmp = temporary_path(path);
+    if let Err(error) = std::fs::write(&tmp, contents) {
+        let _ = std::fs::remove_file(&tmp);
+        return Err(error);
+    }
+    if let Err(error) = replace_file(&tmp, path) {
+        let _ = std::fs::remove_file(&tmp);
+        return Err(error);
+    }
+    Ok(())
+}
+
+fn replace_file(from: &std::path::Path, to: &std::path::Path) -> std::io::Result<()> {
+    #[cfg(windows)]
+    if to.exists() {
+        std::fs::remove_file(to)?;
+    }
+    std::fs::rename(from, to)
+}
+
 // ─── Interface egui ───────────────────────────────────────────────────────────
 
 impl eframe::App for App {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
-        // ── U4: Keyboard shortcuts ────────────────────────────────────────────
+        if let Some(density) = self
+            .density_result
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .take()
+        {
+            self.density_image = Some(density);
+            self.density_texture = None;
+        }
+
+        // ── Keyboard shortcuts ────────────────────────────────────────────────
         let (kb_open, kb_save, kb_recalc, kb_undo, kb_redo) = ctx.input(|i| {
             let open = i.modifiers.command && i.key_pressed(egui::Key::O);
             let save = i.modifiers.command && i.key_pressed(egui::Key::S);
@@ -646,7 +839,7 @@ impl eframe::App for App {
             self.start_compute(ctx);
         }
 
-        // ── Debounce UX 11 : déclencher le calcul 300ms après le dernier changement ──
+        // ── Debounce: trigger 300ms after the last change ──────────────────────
         if let Some(t) = self.last_param_change {
             if t.elapsed() >= Duration::from_millis(300) && self.src_rgb.is_some() {
                 self.last_param_change = None;
@@ -699,7 +892,7 @@ impl eframe::App for App {
 
         // ── Panneau de contrôle ───────────────────────────────────────────────
         egui::SidePanel::left("controls")
-            .resizable(true) // UX 15
+            .resizable(true)
             .min_width(290.0)
             .show(ctx, |ui| {
                 egui::ScrollArea::vertical().show(ui, |ui| {
@@ -715,6 +908,22 @@ impl eframe::App for App {
                         self.load_image(path, ctx);
                     }
                     ui.small("(ou glisser-déposer une image dans la fenêtre)");
+                    ui.horizontal(|ui| {
+                        if ui.button("Charger preset").clicked()
+                            && let Some(path) = rfd::FileDialog::new()
+                                .add_filter("Preset TOML", &["toml"])
+                                .pick_file()
+                        {
+                            self.load_preset(path, ctx);
+                        }
+                        if ui.button("Sauver preset").clicked()
+                            && let Some(path) = rfd::FileDialog::new()
+                                .add_filter("Preset TOML", &["toml"])
+                                .save_file()
+                        {
+                            self.save_preset(path);
+                        }
+                    });
 
                     ui.separator();
                     ui.label("Algorithme");
@@ -765,14 +974,7 @@ impl eframe::App for App {
                         )
                         .changed();
                     if vs_changed {
-                        // C1: recalculate density image when variance_sensitivity changes
-                        if let Some(src) = &self.src_rgb {
-                            self.density_image = Some(filter::compute_density_image(
-                                src,
-                                self.params.variance_sensitivity,
-                            ));
-                            self.density_texture = None;
-                        }
+                        self.start_density_compute(ctx);
                     }
                     params_changed |= vs_changed;
 
@@ -904,7 +1106,7 @@ impl eframe::App for App {
 
                     ui.separator();
 
-                    // ── Fond UX 14 : color picker ─────────────────────────────
+                    // ── Background color picker ───────────────────────────────
                     ui.label("Couleur de fond");
                     ui.horizontal(|ui| {
                         let old_color = self.params.bg_color;
@@ -919,20 +1121,20 @@ impl eframe::App for App {
                         {
                             self.params.bg_color = [color.r(), color.g(), color.b()];
                             self.params.transparent = false;
-                            self.refresh_src_rgb();
+                            self.refresh_src_rgb(ctx);
                             params_changed = true;
                         }
                         // Raccourcis Blanc / Noir
                         if ui.small_button("Blanc").clicked() {
                             self.params.bg_color = [255, 255, 255];
                             self.params.transparent = false;
-                            self.refresh_src_rgb();
+                            self.refresh_src_rgb(ctx);
                             params_changed = true;
                         }
                         if ui.small_button("Noir").clicked() {
                             self.params.bg_color = [0, 0, 0];
                             self.params.transparent = false;
-                            self.refresh_src_rgb();
+                            self.refresh_src_rgb(ctx);
                             params_changed = true;
                         }
                     });
@@ -968,14 +1170,14 @@ impl eframe::App for App {
                             .add(egui::Slider::new(&mut self.zoom, 0.1..=4.0).step_by(0.1))
                             .changed()
                         {
-                            self.zoom_fit = false; // U3: manual zoom disables fit
+                            self.zoom_fit = false; // Manual zoom disables fit.
                         }
                         if ui.small_button("1:1").clicked() {
                             self.zoom = 1.0;
                             self.zoom_fit = false;
                         }
                         if ui.small_button("Fit").clicked() {
-                            self.zoom_fit = true; // U3: use flag instead of zoom=0.0
+                            self.zoom_fit = true; // Re-enable fit mode.
                         }
                     });
 
@@ -1110,7 +1312,7 @@ impl eframe::App for App {
                         });
                     }
 
-                    // ── Boutons Recalculer / Annuler ──────────────────────────
+                    // ── Recalculate / cancel buttons ─────────────────────────
                     let has_src = self.src_rgb.is_some();
                     let is_computing = computing;
                     let is_cancelling = self.cancel.load(Ordering::Relaxed);
@@ -1139,7 +1341,7 @@ impl eframe::App for App {
                         }
                     });
 
-                    // Barre de progression pour Voronoï / K-means (UX 12)
+                    // Progress bar for Voronoi / K-means.
                     if is_computing || is_cancelling {
                         let (cur, tot) = *self.progress.lock().unwrap_or_else(|e| e.into_inner());
                         if tot > 0 {
@@ -1249,8 +1451,7 @@ impl eframe::App for App {
                 ));
             }
 
-            // UX 13 : zoom/pan via ScrollArea
-            // U3: use zoom_fit flag instead of magic 0.0 value
+            // Zoom and pan via ScrollArea.
             let zoom = if self.zoom_fit { 0.0 } else { self.zoom };
 
             match self.view_mode {
@@ -1382,7 +1583,7 @@ fn show_shape_selector(ui: &mut egui::Ui, shape: &mut DotShape) -> bool {
 
 // ─── Affichage image avec zoom/pan ────────────────────────────────────────────
 
-/// Affiche une image dans un panel avec zoom et scrollbar (UX 13).
+/// Displays an image in a panel with zoom and scrolling.
 /// zoom=0.0 signifie "fit" (comportement original).
 fn show_panel_zoomable(
     ui: &mut egui::Ui,

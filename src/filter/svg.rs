@@ -8,14 +8,13 @@ use std::f32::consts::PI;
 /// Rend les dots en SVG (chaîne de caractères).
 /// Chaque dot devient un élément SVG selon `params.dot_shape`.
 ///
-/// Bug 6 corrigé : utilise `params.bg_color` au lieu de hard-coder blanc/noir.
-/// Archi 19 : accepte les dots précalculés pour éviter de relancer le filtre.
+/// Accepts precomputed dots to avoid running the filter twice.
 pub fn render_svg_from_dots(w: u32, h: u32, dots: &[Dot], params: &FilterParams) -> Result<String> {
     if w == 0 || h == 0 {
         return Err(anyhow!("Image vide"));
     }
 
-    // Q1: avoid cloning dots when no quantization is needed
+    // Avoid cloning dots when no quantization is needed.
     let quantized: Vec<Dot>;
     let dots_final: &[Dot] = if let Some(n_colors) = params.palette_size {
         quantized = quantize_dots(dots, n_colors.max(2));
@@ -24,7 +23,7 @@ pub fn render_svg_from_dots(w: u32, h: u32, dots: &[Dot], params: &FilterParams)
         dots
     };
 
-    // Bug 6 corrigé : bg_color comme source de vérité
+    // Use the configured background as the single source of truth.
     let mut svg = format!(
         r#"<svg xmlns="http://www.w3.org/2000/svg" width="{w}" height="{h}" viewBox="0 0 {w} {h}">"#
     );

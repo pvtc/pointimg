@@ -30,22 +30,22 @@ pointimg/
 ├── Cargo.toml          — dépendances, deux binaires + une lib
 ├── src/
 │   ├── lib.rs          — racine de la crate lib ; expose `pub mod filter`
-│   ├── filter.rs       — toute la logique : algorithmes, rendu, helpers
+│   ├── filter/         — logique séparée : algorithmes, rendu, helpers
 │   ├── main.rs         — binaire CLI (`pointimg`)
 │   └── gui/
 │       └── main.rs     — binaire GUI (`pointimg-gui`)
 └── assets/             — images de test et sorties
 ```
 
-| Crate | Rôle |
-|---|---|
-| `image 0.25` | Chargement / sauvegarde / manipulation de `RgbImage` |
-| `clap 4` | Parsing des arguments CLI |
-| `rayon 1` | Itération parallèle (carte de densité) |
-| `eframe 0.31` | Framework egui (backend wgpu) — *feature-gated* `gui` |
-| `egui 0.31` | Widgets GUI en mode immédiat — *feature-gated* `gui` |
-| `wgpu 24` | Backend GPU (Vulkan + GL en fallback) — *feature-gated* `gui` |
-| `rfd 0.15` | Boîtes de dialogue fichier natives — *feature-gated* `gui` |
+| Crate           | Rôle                                                             |
+| --------------- | ---------------------------------------------------------------- |
+| `image 0.25`    | Chargement / sauvegarde / manipulation de `RgbImage`             |
+| `clap 4`        | Parsing des arguments CLI                                        |
+| `rayon 1`       | Itération parallèle (carte de densité)                           |
+| `eframe 0.31`   | Framework egui (backend wgpu) — *feature-gated* `gui`            |
+| `egui 0.31`     | Widgets GUI en mode immédiat — *feature-gated* `gui`             |
+| `wgpu 24`       | Backend GPU (Vulkan + GL en fallback) — *feature-gated* `gui`    |
+| `rfd 0.15`      | Boîtes de dialogue fichier natives — *feature-gated* `gui`       |
 
 > **Feature-gating :** les dépendances GUI sont derrière la feature `gui`
 > (activée par défaut). Compiler en CLI-only : `cargo build --no-default-features`.
@@ -81,26 +81,26 @@ pointimg -i photo.jpg -o result.png --shape ellipse --ellipse-aspect 2.0 --ellip
 
 **Tous les flags :**
 
-| Flag | Court | Défaut | Description |
-|---|---|---|---|
-| `--input` | `-i` | requis | Image source (JPEG, PNG, RGBA supporté) |
-| `--output` | `-o` | `output.png` | Image de sortie PNG |
-| `--algorithm` | `-a` | `voronoi` | `grid` \| `kmeans` \| `voronoi` \| `quadtree` |
-| `--num-points` | `-n` | `800` | Nombre de points (kmeans/voronoi/quadtree) |
-| `--cols` | `-c` | `80` | Colonnes de grille (grid uniquement) |
-| `--min-radius` | | `0.003` | Rayon min = fraction de `min(W,H)` |
-| `--max-radius` | | `0.06` | Rayon max = fraction de `min(W,H)` |
-| `--bg` | `-b` | `white` | `white`, `black`, ou `#rrggbb` |
-| `--shape` | | `circle` | `circle` \| `square` \| `ellipse` \| `polygon` |
-| `--ellipse-aspect` | | `1.5` | Ratio largeur/hauteur (ellipse) |
-| `--ellipse-angle` | | `0.0` | Angle de rotation en degrés (ellipse) |
-| `--polygon-sides` | | `6` | Nombre de côtés (polygon, 3-12) |
-| `--iterations` | | `10` | Itérations Lloyd / k-means |
-| `--variance-sensitivity` | | `0.7` | Force de redistribution par variance `[0,1]` |
-| `--max-boost` | | `2.5` | Multiplicateur max dans les zones uniformes |
-| `--seed` | | *(aléatoire)* | Seed RNG pour reproduction exacte |
-| `--palette` | | *(désactivé)* | Nombre de couleurs dans la palette réduite |
-| `--svg` | | *(désactivé)* | Exporter aussi en SVG (même chemin, extension `.svg`) |
+| Flag                     | Court | Défaut        | Description                                           |
+| ------------------------ | ----- | ------------- | ----------------------------------------------------- |
+| `--input`                | `-i`  | requis        | Image source (JPEG, PNG, RGBA supporté)               |
+| `--output`               | `-o`  | `output.png`  | Image de sortie PNG                                   |
+| `--algorithm`            | `-a`  | `voronoi`     | `grid` \| `kmeans` \| `voronoi` \| `quadtree`         |
+| `--num-points`           | `-n`  | `800`         | Nombre de points (kmeans/voronoi/quadtree)            |
+| `--cols`                 | `-c`  | `80`          | Colonnes de grille (grid uniquement)                  |
+| `--min-radius`           |       | `0.003`       | Rayon min = fraction de `min(W,H)`                    |
+| `--max-radius`           |       | `0.06`        | Rayon max = fraction de `min(W,H)`                    |
+| `--bg`                   | `-b`  | `white`       | `white`, `black`, ou `#rrggbb`                        |
+| `--shape`                |       | `circle`      | `circle` \| `square` \| `ellipse` \| `polygon`        |
+| `--ellipse-aspect`       |       | `1.5`         | Ratio largeur/hauteur (ellipse)                       |
+| `--ellipse-angle`        |       | `0.0`         | Angle de rotation en degrés (ellipse)                 |
+| `--polygon-sides`        |       | `6`           | Nombre de côtés (polygon, 3-12)                       |
+| `--iterations`           |       | `10`          | Itérations Lloyd / k-means                            |
+| `--variance-sensitivity` |       | `0.7`         | Force de redistribution par variance `[0,1]`          |
+| `--max-boost`            |       | `2.5`         | Multiplicateur max dans les zones uniformes           |
+| `--seed`                 |       | *(aléatoire)* | Seed RNG pour reproduction exacte                     |
+| `--palette`              |       | *(désactivé)* | Nombre de couleurs dans la palette réduite            |
+| `--svg`                  |       | *(désactivé)* | Exporter aussi en SVG (même chemin, extension `.svg`) |
 
 ### GUI
 
@@ -130,6 +130,11 @@ pub struct FilterParams {
     pub rng_seed: Option<u64>,         // None = horloge système
     pub palette_size: Option<usize>,   // None = toutes les couleurs
     pub dot_shape: DotShape,           // Circle par défaut
+    pub transparent: bool,             // fond RGBA transparent
+    pub gamma_correct: bool,           // moyennes en espace linéaire
+    pub dithering: bool,               // Floyd-Steinberg
+    pub halftone: HalftoneMode,        // Off | Cmyk | Dominant
+    pub screening: Screening,          // Am | Fm
 }
 ```
 
@@ -145,6 +150,27 @@ Sur une image 800×600, `0.003` → 1.8 px et `0.06` → 36 px.
 
 **`max_boost`** plafonne le multiplicateur de rayon dans les zones uniformes.
 `1.0` = pas de boost. `2.5` = un point en zone totalement plate peut faire 2.5× `r_max`.
+
+**Validation et limites :** les paramètres sont contrôlés avant tout calcul.
+Les images sont limitées à 65 535 pixels par côté et 8 millions de pixels au
+total. Le moteur accepte au plus 100 000 points, 8 192 colonnes, 100 itérations
+et une palette de 2 à 256 couleurs. Les valeurs flottantes doivent être finies ;
+la fréquence halftone doit être strictement positive.
+
+### Format des presets
+
+Les presets sauvegardés utilisent une enveloppe versionnée :
+
+```toml
+preset_version = 1
+
+[params]
+algorithm = "Voronoi"
+num_points = 800
+```
+
+Les anciens presets dont les paramètres sont directement à la racine restent
+lisibles. Les versions futures inconnues sont refusées explicitement.
 
 ---
 
@@ -254,7 +280,7 @@ sum = SAT[y2][x2] − SAT[y1][x2] − SAT[y2][x1] + SAT[y1][x1]
 
 ## 6. Calcul du rayon (`radius_for_dot`)
 
-```rust
+```text
 fn radius_for_dot(lum: f32, local_density: f32, img_min_side: f32, params: &FilterParams) -> f32
 ```
 
@@ -434,7 +460,7 @@ seules les cellules du voisinage 3×3 sont examinées (~4–8 seeds au lieu de k
 
 ## 9. Rendu (ordre de dessin)
 
-```rust
+```text
 fn render(src: &RgbImage, dots: &[Dot], params: &FilterParams) -> RgbImage
 ```
 
@@ -493,14 +519,16 @@ App::update() [chaque frame]          filter::apply_with_progress(…, cb)
 
 **Partage inter-thread :**
 
-| Arc | Type | Rôle |
-|---|---|---|
-| `result` | `Arc<Mutex<Option<RgbImage>>>` | Image produite par le worker |
-| `last_dots` | `Arc<Mutex<Option<Vec<Dot>>>>` | Dots du dernier calcul (export SVG) |
-| `computing` | `Arc<AtomicBool>` | Flag "calcul en cours" |
-| `cancel` | `Arc<AtomicBool>` | Demande d'annulation (vérifié entre itérations) |
-| `progress` | `Arc<Mutex<(usize, usize)>>` | (iter_actuelle, iter_totale) pour la barre |
-| `compute_error` | `Arc<Mutex<Option<String>>>` | Erreur du thread de calcul |
+| Arc                  | Type                                  | Rôle                                                    |
+| -------------------- | ------------------------------------- | ------------------------------------------------------- |
+| `result`             | `Arc<Mutex<Option<RgbImage>>>`        | Image produite par le worker                            |
+| `last_dots`          | `Arc<Mutex<Option<Vec<Dot>>>>`        | Dots du dernier calcul (export SVG)                     |
+| `computing`          | `Arc<AtomicBool>`                     | Flag "calcul en cours"                                  |
+| `cancel`             | `Arc<AtomicBool>`                     | Demande d'annulation (vérifié entre itérations)         |
+| `compute_generation` | `Arc<AtomicU64>`                      | Ignore les résultats des workers obsolètes              |
+| `density_generation` | `Arc<AtomicU64>`                      | Ignore les density maps obsolètes                       |
+| `progress`           | `Arc<Mutex<(usize, usize)>>`          | (iter_actuelle, iter_totale) pour la barre              |
+| `compute_error`      | `Arc<Mutex<Option<String>>>`          | Erreur du thread de calcul                              |
 
 Tous les `Mutex::lock()` utilisent `unwrap_or_else(|e| e.into_inner())` pour récupérer
 le contenu même si le worker a paniqué (poison-safe).
@@ -534,15 +562,15 @@ en fonction de l'espace disponible. Toute interaction manuelle avec le zoom
 
 **Raccourcis clavier :**
 
-| Raccourci | Action |
-|---|---|
-| `Ctrl+O` | Ouvrir une image (dialogue fichier) |
-| `Ctrl+S` | Sauvegarder le résultat (dialogue fichier, PNG ou JPEG) |
-| `Espace` | Relancer le calcul manuellement |
+| Raccourci | Action                                                   |
+| --------- | -------------------------------------------------------- |
+| `Ctrl+O`  | Ouvrir une image (dialogue fichier)                      |
+| `Ctrl+S`  | Sauvegarder le résultat (dialogue fichier, PNG ou JPEG)  |
+| `Espace`  | Relancer le calcul manuellement                          |
 
 **Backend GPU :** forcé sur Vulkan (+ GL en fallback) pour éviter le crash
 EGL/Wayland avec les drivers NVIDIA sur Wayland :
-```rust
+```text
 WgpuSetup::CreateNew { backends: VULKAN | GL, .. }
 ```
 
@@ -564,7 +592,7 @@ La taille du SVG est identique à l'image source en pixels.
 Le SVG peut être ouvert dans un navigateur, Inkscape, ou vectorisé davantage.
 
 **API publique :**
-```rust
+```text
 pub fn render_svg_from_dots(w: u32, h: u32, dots: &[Dot], params: &FilterParams) -> Result<String>
 pub fn render_svg(src: &RgbImage, params: &FilterParams) -> Result<String>
 pub fn render_svg_dynamic(src: &DynamicImage, params: &FilterParams) -> Result<String>

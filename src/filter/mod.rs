@@ -29,9 +29,9 @@ mod seedgrid;
 mod svg;
 mod util;
 
-pub use density::compute_density_image;
+pub use density::{compute_density_image, compute_density_map, density_to_image};
 pub use halftone::{HalftoneMode, Screening};
-pub use params::{Algorithm, Dot, DotShape, FilterParams};
+pub use params::{Algorithm, Dot, DotShape, FilterParams, validate_image_dimensions};
 pub use render::{render_halftone, render_rgba};
 pub use svg::{render_svg, render_svg_dynamic, render_svg_from_dots};
 pub use util::flatten_to_rgb;
@@ -40,7 +40,6 @@ use algorithms::{
     compute_dots_kmeans, compute_dots_voronoi, dots_grid, dots_kmeans_progressive, dots_quadtree,
     dots_voronoi_progressive,
 };
-use density::compute_density_map;
 use halftone::dots_halftone;
 use params::validate_params;
 use render::render;
@@ -77,6 +76,7 @@ fn apply_with_progress_inner<F>(
     src: &RgbImage,
     params: &FilterParams,
     cancel: &std::sync::atomic::AtomicBool,
+    cached_density: Option<&[f32]>,
     mut on_progress: F,
 ) -> Result<(RgbImage, Vec<Dot>)>
 where
@@ -86,21 +86,27 @@ where
     let (w, h) = src.dimensions();
     validate_params(w, h, params)?;
 
-    let density = compute_density_map(src, params.variance_sensitivity);
+    let owned_density;
+    let density = if let Some(cached) = cached_density {
+        cached
+    } else {
+        owned_density = compute_density_map(src, params.variance_sensitivity);
+        &owned_density
+    };
 
     match params.algorithm {
         Algorithm::Voronoi => {
-            dots_voronoi_progressive(src, &density, params, cancel, &mut on_progress)
+            dots_voronoi_progressive(src, density, params, cancel, &mut on_progress)
         }
         Algorithm::Kmeans => {
-            dots_kmeans_progressive(src, &density, params, cancel, &mut on_progress)
+            dots_kmeans_progressive(src, density, params, cancel, &mut on_progress)
         }
         _ => {
             if cancel.load(Ordering::Relaxed) {
                 return Err(anyhow!("cancelled"));
             }
             let dots = match params.algorithm {
-                Algorithm::Grid => dots_grid(src, &density, params),
+                Algorithm::Grid => dots_grid(src, density, params),
                 Algorithm::Quadtree => dots_quadtree(src, params),
                 _ => unreachable!(),
             };
@@ -112,6 +118,8 @@ where
 }
 
 fn apply_inner(src: &RgbImage, params: &FilterParams) -> Result<RgbImage> {
+    let (w, h) = src.dimensions();
+    validate_params(w, h, params)?;
     match params.algorithm {
         Algorithm::Halftone if params.halftone != HalftoneMode::Off => {
             let (rgba, _) = apply_rgba_inner(src, params)?;
@@ -128,7 +136,8 @@ fn apply_inner(src: &RgbImage, params: &FilterParams) -> Result<RgbImage> {
         }
         Algorithm::Voronoi | Algorithm::Kmeans => {
             let never_cancel = std::sync::atomic::AtomicBool::new(false);
-            let (img, _) = apply_with_progress_inner(src, params, &never_cancel, |_, _, _| {})?;
+            let (img, _) =
+                apply_with_progress_inner(src, params, &never_cancel, None, |_, _, _| {})?;
             Ok(img)
         }
         Algorithm::Halftone if params.halftone == HalftoneMode::Off => {
@@ -200,6 +209,7 @@ pub fn apply_dynamic(src: &DynamicImage, params: &FilterParams) -> Result<RgbIma
             &lin,
             &params_lin,
             &std::sync::atomic::AtomicBool::new(false),
+            None,
             |_, _, _| {},
         )?;
         Ok(gamma::linear_to_srgb_image(&dst_lin))
@@ -250,14 +260,41 @@ where
             on_progress(iter, total, &preview_srgb);
         };
         let (dst_lin, dots_lin) =
-            apply_with_progress_inner(&lin, &params_lin, cancel, &mut wrapped)?;
+            apply_with_progress_inner(&lin, &params_lin, cancel, None, &mut wrapped)?;
         Ok((
             gamma::linear_to_srgb_image(&dst_lin),
             dots_to_srgb(&dots_lin),
         ))
     } else {
-        apply_with_progress_inner(src, params, cancel, on_progress)
+        apply_with_progress_inner(src, params, cancel, None, on_progress)
     }
+}
+
+/// Variante de `apply_with_progress` utilisant une density map deja calculee.
+pub fn apply_with_progress_cached<F>(
+    src: &RgbImage,
+    params: &FilterParams,
+    cancel: &std::sync::atomic::AtomicBool,
+    density: &[f32],
+    on_progress: F,
+) -> Result<(RgbImage, Vec<Dot>)>
+where
+    F: FnMut(usize, usize, &RgbImage),
+{
+    let expected = (src.width() as usize)
+        .checked_mul(src.height() as usize)
+        .ok_or_else(|| anyhow!("dimensions d'image trop grandes"))?;
+    if density.len() != expected {
+        return Err(anyhow!(
+            "density map invalide : {} valeurs, {} attendues",
+            density.len(),
+            expected
+        ));
+    }
+    if params.gamma_correct {
+        return apply_with_progress(src, params, cancel, on_progress);
+    }
+    apply_with_progress_inner(src, params, cancel, Some(density), on_progress)
 }
 
 pub fn apply(src: &RgbImage, params: &FilterParams) -> Result<RgbImage> {
@@ -268,6 +305,7 @@ pub fn apply(src: &RgbImage, params: &FilterParams) -> Result<RgbImage> {
             &lin,
             &params_lin,
             &std::sync::atomic::AtomicBool::new(false),
+            None,
             |_, _, _| {},
         )?;
         Ok(gamma::linear_to_srgb_image(&dst_lin))
@@ -299,7 +337,7 @@ pub fn apply_rgba(src: &RgbImage, params: &FilterParams) -> Result<(image::RgbaI
 }
 
 /// Calcule les dots (sans rendu PNG) — permet de mettre en cache pour la GUI.
-/// Q2: avoids rendering a full PNG image that would be discarded.
+/// Computes dots directly without rendering an intermediate image.
 pub fn compute_dots(src: &RgbImage, params: &FilterParams) -> Result<Vec<Dot>> {
     if params.gamma_correct {
         let lin = gamma::srgb_to_linear_image(src);
