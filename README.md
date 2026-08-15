@@ -17,7 +17,7 @@ A pointillist filter that transforms images into compositions of colored dots of
 - **CLI** with all parameters accessible
 - **Reduced palette** option (color quantization)
 - **Customizable background**: white, black, any color `#rrggbb`, or `transparent` (RGBA output)
-- **Gamma correction** option: averages are computed in linear color space to avoid muddy midtones
+- **Gamma correction** option: averages are computed in linear color space; CMYK halftone keeps an `f32` path while other algorithms remain RGB8
 - **Anti-aliased rendering**: 4×4 supersampled dots (no staircase edges)
 - **Batch processing**: glob/directory input, per-file output pattern (`{n}`, `{stem}`, `{name}`)
 - **Fast preview**: downscale source before pipeline via `--preview WxH`
@@ -26,6 +26,7 @@ A pointillist filter that transforms images into compositions of colored dots of
 - **Halftone screen angle**: rotate the Grid lattice via `--grid-angle`
 - **CMYK rosette** & **N-colors dominant** halftone (`--halftone cmyk|dominant-N`) — true ink-over-ink multiply compositing, AM rotating-screen or FM stochastic-blue-noise screening
 - **Output formats**: PNG/JPEG/BMP/TIFF/WebP by default; AVIF via `--features avif`
+- **Color profiles**: embedded ICC input profiles are detected automatically; sRGB, Display-P3, and `.icc` files are accepted with `--input-profile` and `--output-profile`
 - **Optional GPU density pass**: build with `--features gpu`, enable with
   `POINTIMG_GPU=1`; CPU/SAT fallback remains automatic
 
@@ -69,6 +70,12 @@ cargo build --release --no-default-features
 ```bash
 # Voronoi, 1500 points, white background
 pointimg -i photo.jpg -o result.png --algorithm voronoi --num-points 1500
+
+# Use an input color profile (embedded profiles are detected automatically)
+pointimg -i photo-p3.jpg -o result.png --input-profile display-p3
+
+# Convert to and embed an output ICC profile
+pointimg -i photo.jpg -o result.png --output-profile display-p3.icc
 
 # Grid, black background
 pointimg -i photo.jpg -o result.png --algorithm grid --cols 60 --bg black
@@ -126,10 +133,14 @@ Run `pointimg --help` for the complete list of options.
 
 For safety, images are limited to 8,388,608 pixels and 65,535 pixels per side.
 The pipeline also rejects invalid or non-finite values before processing: up to
-100,000 points, 8,192 grid columns, 100 iterations, and a palette of 2 to 256
-colors. `num_points`, `iterations`, `variance_sensitivity`, and `max_boost` are
+100,000 points (50,000 for K-means/Voronoi), 8,192 grid columns, 100 iterations,
+and a palette of 2 to 256 colors. `num_points`, `iterations`, `variance_sensitivity`, and `max_boost` are
 used by K-means/Voronoi/Quadtree; `cols` and `grid-angle` are Grid-only. The
 halftone frequency and halftone radii apply only to the halftone algorithm.
+
+Images exceeding 8,388,608 pixels or 65,535 pixels per side are automatically
+downscaled while preserving aspect ratio, with a warning in the GUI and CLI
+logs. The estimated working memory is shown in the GUI.
 
 Presets written by current versions contain `preset_version = 1` and a nested
 `[params]` table. Presets written by older versions with parameters at the TOML
@@ -159,7 +170,7 @@ pointimg-gui
 ## Tests
 
 ```bash
-cargo test --all-features    # 63 tests (41 lib + 22 integration)
+cargo test --all-features    # 84 tests
 cargo clippy --all-features -- -D warnings
 cargo bench                   # criterion benchmarks (benches/filter.rs)
 ```

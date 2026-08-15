@@ -31,17 +31,19 @@ mod util;
 
 pub use density::{compute_density_image, compute_density_map, density_to_image};
 pub use halftone::{HalftoneMode, Screening};
-pub use params::{Algorithm, Dot, DotShape, FilterParams, validate_image_dimensions};
+pub use params::{
+    Algorithm, Dot, DotShape, FilterParams, MAX_IMAGE_DIMENSION, MAX_IMAGE_PIXELS,
+    validate_image_dimensions, validate_params,
+};
 pub use render::{render_halftone, render_rgba};
 pub use svg::{render_svg, render_svg_dynamic, render_svg_from_dots};
-pub use util::flatten_to_rgb;
+pub use util::{estimate_memory_bytes, flatten_to_rgb, resize_to_limits};
 
 use algorithms::{
     compute_dots_kmeans, compute_dots_voronoi, dots_grid, dots_kmeans_progressive, dots_quadtree,
     dots_voronoi_progressive,
 };
-use halftone::dots_halftone;
-use params::validate_params;
+use halftone::{dots_halftone, dots_halftone_linear};
 use render::render;
 
 use image::{DynamicImage, RgbImage};
@@ -195,6 +197,10 @@ fn apply_rgba_inner(src: &RgbImage, params: &FilterParams) -> Result<(image::Rgb
     Ok((img, dots))
 }
 
+fn is_cmyk_halftone(params: &FilterParams) -> bool {
+    params.algorithm == Algorithm::Halftone && matches!(params.halftone, HalftoneMode::Cmyk { .. })
+}
+
 // ── API publique : wrappers appliquant la correction gamma si `params.gamma_correct`.
 
 /// Applique le filtre sur une `DynamicImage` (supporte RGBA, niveaux de gris, etc.)
@@ -245,6 +251,12 @@ where
     if params.algorithm == Algorithm::Halftone && params.halftone != HalftoneMode::Off {
         if cancel.load(Ordering::Relaxed) {
             return Err(anyhow!("cancelled"));
+        }
+        if params.gamma_correct {
+            let (rgba, dots) = apply_rgba(src, params)?;
+            let rgb = image::DynamicImage::ImageRgba8(rgba).to_rgb8();
+            on_progress(1, 1, &rgb);
+            return Ok((rgb, dots));
         }
         let (rgba, dots) = apply_rgba_inner(src, params)?;
         let rgb = image::DynamicImage::ImageRgba8(rgba).to_rgb8();
@@ -299,6 +311,10 @@ where
 
 pub fn apply(src: &RgbImage, params: &FilterParams) -> Result<RgbImage> {
     if params.gamma_correct {
+        if is_cmyk_halftone(params) {
+            let (rgba, _) = apply_rgba(src, params)?;
+            return Ok(image::DynamicImage::ImageRgba8(rgba).to_rgb8());
+        }
         let lin = gamma::srgb_to_linear_image(src);
         let params_lin = linearized_clone(params);
         let (dst_lin, _) = apply_with_progress_inner(
@@ -324,6 +340,13 @@ pub fn apply(src: &RgbImage, params: &FilterParams) -> Result<RgbImage> {
 /// puis ré-encode les canaux RGB du buffer RGBA (alpha inchangé) en sRGB.
 pub fn apply_rgba(src: &RgbImage, params: &FilterParams) -> Result<(image::RgbaImage, Vec<Dot>)> {
     if params.gamma_correct {
+        if is_cmyk_halftone(params) {
+            let lin = gamma::srgb_to_linear_f32_image(src);
+            let params_lin = linearized_clone(params);
+            let dots = dots_halftone_linear(&lin, &params_lin.halftone_config());
+            let image = render::render_halftone(src, &dots, params);
+            return Ok((image, dots));
+        }
         let lin = gamma::srgb_to_linear_image(src);
         let params_lin = linearized_clone(params);
         let (dst_lin, dots_lin) = apply_rgba_inner(&lin, &params_lin)?;
@@ -340,6 +363,11 @@ pub fn apply_rgba(src: &RgbImage, params: &FilterParams) -> Result<(image::RgbaI
 /// Computes dots directly without rendering an intermediate image.
 pub fn compute_dots(src: &RgbImage, params: &FilterParams) -> Result<Vec<Dot>> {
     if params.gamma_correct {
+        if is_cmyk_halftone(params) {
+            let lin = gamma::srgb_to_linear_f32_image(src);
+            let params_lin = linearized_clone(params);
+            return Ok(dots_halftone_linear(&lin, &params_lin.halftone_config()));
+        }
         let lin = gamma::srgb_to_linear_image(src);
         let params_lin = linearized_clone(params);
         let dots_lin = compute_dots_inner(&lin, &params_lin)?;

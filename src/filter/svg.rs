@@ -1,4 +1,4 @@
-use crate::filter::params::{Dot, DotShape, FilterParams};
+use crate::filter::params::{Dot, DotShape, FilterParams, validate_params};
 use crate::filter::render::quantize_dots;
 use crate::filter::util::flatten_to_rgb;
 use anyhow::{Result, anyhow};
@@ -12,6 +12,12 @@ use std::f32::consts::PI;
 pub fn render_svg_from_dots(w: u32, h: u32, dots: &[Dot], params: &FilterParams) -> Result<String> {
     if w == 0 || h == 0 {
         return Err(anyhow!("Image vide"));
+    }
+    validate_params(w, h, params)?;
+    if dots.iter().any(|dot| {
+        !dot.x.is_finite() || !dot.y.is_finite() || !dot.radius.is_finite() || dot.radius <= 0.0
+    }) {
+        return Err(anyhow!("Le rendu SVG contient un point invalide"));
     }
 
     // Avoid cloning dots when no quantization is needed.

@@ -1,4 +1,41 @@
-use image::{DynamicImage, Rgb, RgbImage};
+use image::{DynamicImage, GenericImageView, Rgb, RgbImage};
+
+use super::params::{MAX_IMAGE_DIMENSION, MAX_IMAGE_PIXELS};
+
+/// Estimates the peak working-set size of the CPU pipeline.
+/// This is deliberately conservative: it includes source, density, two f64
+/// integral tables, result buffers and a fixed decoder/GUI overhead.
+pub fn estimate_memory_bytes(width: u32, height: u32) -> u64 {
+    let pixels = u64::from(width).saturating_mul(u64::from(height));
+    pixels
+        .saturating_mul(3 + 4 + 16 + 4 + 4)
+        .saturating_add(64 * 1024 * 1024)
+}
+
+/// Resizes an image so it satisfies the pipeline limits while preserving its
+/// aspect ratio. Returns the resized image and whether a resize occurred.
+pub fn resize_to_limits(img: DynamicImage) -> (DynamicImage, bool) {
+    let (width, height) = img.dimensions();
+    if width == 0 || height == 0 {
+        return (img, false);
+    }
+    let pixel_scale = (MAX_IMAGE_PIXELS as f64 / (u64::from(width) * u64::from(height)) as f64)
+        .sqrt()
+        .min(1.0);
+    let dimension_scale = (f64::from(MAX_IMAGE_DIMENSION) / f64::from(width))
+        .min(f64::from(MAX_IMAGE_DIMENSION) / f64::from(height))
+        .min(1.0);
+    let scale = pixel_scale.min(dimension_scale);
+    if scale >= 1.0 {
+        return (img, false);
+    }
+    let new_width = (f64::from(width) * scale).floor().max(1.0) as u32;
+    let new_height = (f64::from(height) * scale).floor().max(1.0) as u32;
+    (
+        img.resize(new_width, new_height, image::imageops::FilterType::Triangle),
+        true,
+    )
+}
 
 pub(crate) fn luminance(r: u8, g: u8, b: u8) -> f32 {
     (0.2126 * r as f32 + 0.7152 * g as f32 + 0.0722 * b as f32) / 255.0

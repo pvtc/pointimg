@@ -17,7 +17,7 @@ Filtre pointilliste qui transforme une image en une composition de points color�
 - **CLI** avec tous les paramètres accessibles
 - **Palette réduite** optionnelle (quantification des couleurs)
 - **Fond personnalisable** : blanc, noir, n'importe quelle couleur `#rrggbb`, ou `transparent` (sortie RGBA)
-- **Correction gamma** optionnelle : les moyennes sont calculées en espace linéaire (évite les mi-tons trop sombres)
+- **Correction gamma** optionnelle : les moyennes sont calculées en espace linéaire ; le chemin CMJN halftone conserve une précision `f32`, tandis que les autres algorithmes restent en RGB8
 - **Rendu anti-aliasé** : supersampling 4×4 (pas d'effet escalier)
 - **Traitement par lot** : glob/dossier en entrée, pattern par fichier (`{n}`, `{stem}`, `{name}`)
 - **Prévisualisation rapide** : sous-échantillonnage source via `--preview WxH`
@@ -26,6 +26,7 @@ Filtre pointilliste qui transforme une image en une composition de points color�
 - **Angle de trame halftone** : rotation de la grille via `--grid-angle`
 - **Rosette CMJN** & **halftone N couleurs dominantes** (`--halftone cmyk|dominant-N`) — mélange soustractif multiply, screening AM (grille rotationée) ou FM (blue noise stochastique)
 - **Formats de sortie** : PNG/JPEG/BMP/TIFF/WebP par défaut ; AVIF via `--features avif`
+- **Profils colorimétriques** : profils ICC d'entrée détectés automatiquement, sRGB, Display-P3 ou fichiers `.icc` via `--input-profile` et `--output-profile`
 - **Density map GPU optionnelle** : compiler avec `--features gpu`, activer avec
   `POINTIMG_GPU=1` ; fallback CPU/SAT automatique
 - **Protection des ressources** : dimensions vérifiées avant décodage, maximum 8M de pixels,
@@ -73,6 +74,12 @@ cargo build --release --no-default-features
 ```bash
 # Voronoi, 1500 points, fond blanc
 pointimg -i photo.jpg -o result.png --algorithm voronoi --num-points 1500
+
+# Utiliser un profil ICC d'entrée (détection automatique par défaut)
+pointimg -i photo-p3.jpg -o result.png --input-profile display-p3
+
+# Convertir et embarquer un profil ICC de sortie
+pointimg -i photo.jpg -o result.png --output-profile display-p3.icc
 
 # Grille, fond noir
 pointimg -i photo.jpg -o result.png --algorithm grid --cols 60 --bg black
@@ -130,7 +137,8 @@ Voir `pointimg --help` pour la liste complète des options.
 
 Pour protéger la mémoire, les images sont limitées à 8 388 608 pixels et à
 65 535 pixels par côté. Les valeurs invalides ou non finies sont rejetées avant
-le traitement : 100 000 points maximum, 8 192 colonnes, 100 itérations et une
+le traitement : 100 000 points maximum, 50 000 pour K-means/Voronoi, 8 192
+colonnes, 100 itérations et une
 palette de 2 à 256 couleurs. `num_points`, `iterations`, `variance_sensitivity`
 et `max_boost` concernent K-means/Voronoi/Quadtree ; `cols` et `grid-angle`
 concernent uniquement Grid. La fréquence et les rayons halftone ne sont utilisés
@@ -152,9 +160,10 @@ pointimg-gui
 - Ajuster les paramètres dans le panneau gauche (recalcul automatique avec debounce)
 - Exporter en PNG ou SVG
 
-Les images de plus de 8 millions de pixels sont refusées par sécurité. Réduisez
-l'image en amont si elle dépasse cette limite, puis utilisez `--preview WxH` pour
-obtenir un traitement encore plus rapide.
+Les images dépassant 8 millions de pixels ou 65 535 pixels par côté sont
+automatiquement réduites en conservant leur ratio, avec un avertissement dans
+la GUI et les logs CLI. L'estimation mémoire est affichée dans la GUI. Utilisez
+`--preview WxH` pour obtenir un traitement encore plus rapide.
 
 **Raccourcis clavier :**
 
@@ -169,7 +178,7 @@ obtenir un traitement encore plus rapide.
 ## Tests
 
 ```bash
-cargo test --all-features    # 63 tests (41 lib + 22 intégration)
+cargo test --all-features    # 84 tests
 cargo clippy --all-features -- -D warnings
 cargo bench                   # benchmarks criterion (benches/filter.rs)
 ```

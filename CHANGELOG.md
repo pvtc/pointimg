@@ -9,6 +9,25 @@ et ce projet adhère au [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ### Ajouté
 
+- **Profils colorimétriques ICC** : détection automatique des profils embarqués,
+  conversion d'entrée vers sRGB avec `moxcms`, support de `--input-profile`
+  (`auto`, `srgb`, `display-p3` ou fichier `.icc`) et de `--output-profile`
+  avec embedding ICC dans les sorties PNG/JPEG/WebP/TIFF.
+- **Downscale préventif** : les images dépassant 8 millions de pixels ou 65 535
+  pixels par côté sont réduites automatiquement en conservant leur ratio, avant
+  les transformations colorimétriques coûteuses. La GUI affiche l'avertissement
+  et une estimation de la mémoire de travail ; le CLI journalise ces informations.
+- **Halftone CMYK haute précision** : le chemin `--gamma` utilise des couvertures
+  `f32` après linéarisation pour le halftone CMJN, sans imposer un pipeline `f32`
+  plus coûteux aux algorithmes pointillistes classiques.
+- **Historique GUI explicite** : Undo/Redo affiche désormais les actions
+  enregistrées (algorithme, nombre de points, palette, fond, gamma, etc.).
+- **Contrôle couplé des rayons** : les curseurs Min/Max de la GUI sont regroupés
+  et se bornent mutuellement afin d'empêcher `min_radius > max_radius`.
+- **Smoke fuzzing CI** : les cibles image et preset sont compilées et exécutées
+  avec 100 runs à chaque vérification CI ; elles ont également été exécutées
+  localement avec nightly.
+- **Audit planifié** : un workflow hebdomadaire `cargo audit` a été ajouté.
 - **Presets versionnés** : les presets générés utilisent `preset_version = 1`
   et une table `[params]`. Les anciens presets TOML plats restent lisibles et
   les versions futures inconnues sont refusées explicitement.
@@ -80,6 +99,22 @@ et ce projet adhère au [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ### Corrigé
 
+- **Résultats GUI obsolètes** : un worker lié à une ancienne image ou à un ancien
+  calcul ne peut plus publier son résultat, ses dots ou son erreur après un
+  changement de source/paramètres.
+- **Textures GPU GUI** : les textures de preview ne sont plus détruites et
+  recréées à chaque frame ; elles sont mises à jour uniquement lorsqu'un buffer
+  change réellement.
+- **Export transparent CLI** : JPEG/BMP sont maintenant composités sur le fond
+  au lieu de recevoir directement un buffer RGBA incompatible.
+- **SVG défensif** : dimensions, paramètres et coordonnées/rayons non finis ou
+  invalides sont rejetés avant génération.
+- **Density map** : la mémoire des tables intégrales a été réduite en utilisant
+  deux tables `f64` de luminance au lieu de six tables RGB, tout en conservant
+  une précision stable sur les grandes images.
+- **Audit sécurité** : la chaîne AccessKit responsable des vulnérabilités
+  `quick-xml` a été retirée des features `eframe`; les dépendances de codecs
+  inutiles par défaut ont également été désactivées.
 - **Angle de trame `--grid-angle`** : rotation de la grille (algorithme Grid)
   autour du centre de l'image. Effet "halftone screen" expérimental.
 - **Validation uniforme** : `apply()` valide désormais aussi les paramètres des
@@ -112,6 +147,10 @@ et ce projet adhère au [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 - **Undo / Redo** (`Ctrl+Z` / `Ctrl+Y` ou `Ctrl+Shift+Z`) : pile d'états
   `FilterParams` avec debounce sur drag. 50 entrées max (FIFO).
+- Affichage de l'estimation mémoire de travail et avertissement lors d'un
+  redimensionnement automatique d'image.
+- Les rayons minimum et maximum sont manipulés dans un contrôle couplé avec
+  bornes dynamiques.
 - `FilterParams: PartialEq` dérivé pour détecter changements réels.
 - Indicateur visuel "Annulé." / "Refait." dans la barre de statut.
 

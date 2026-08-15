@@ -1,6 +1,8 @@
 use anyhow::{Context, Result};
 use clap::{Parser, ValueEnum};
-use image::{GenericImageView, ImageReader};
+use image::{
+    ExtendedColorType, GenericImageView, ImageEncoder, ImageReader, Rgb, RgbImage, RgbaImage,
+};
 use log::LevelFilter;
 use pointimg::filter::{self, Algorithm, DotShape, FilterParams, HalftoneMode, Screening};
 use std::path::PathBuf;
@@ -100,6 +102,14 @@ struct Args {
     /// (préserve l'aspect ratio). Format : `--preview 200x150`.
     #[arg(long, value_name = "WxH")]
     preview: Option<String>,
+
+    /// Profil ICC d'entrée : auto (profil embarqué), srgb, display-p3 ou chemin .icc.
+    #[arg(long, default_value = "auto")]
+    input_profile: String,
+
+    /// Profil ICC de sortie : sRGB par défaut ou chemin vers un fichier .icc.
+    #[arg(long, default_value = "srgb")]
+    output_profile: String,
 
     /// Angle de rotation de la grille (degrés), effet "halftone screen" (Grid uniquement)
     #[arg(long, default_value_t = 0.0)]
@@ -527,9 +537,21 @@ fn process_one(
         .with_context(|| format!("Impossible de lire les dimensions de '{}'", input.display()))?
         .into_dimensions()
         .with_context(|| format!("Dimensions invalides pour '{}'", input.display()))?;
-    filter::validate_image_dimensions(dimensions.0, dimensions.1)?;
-    let src_orig =
-        image::open(input).with_context(|| format!("Impossible d'ouvrir '{}'", input.display()))?;
+    if dimensions.0 == 0 || dimensions.1 == 0 {
+        anyhow::bail!("Image vide ({}x{})", dimensions.0, dimensions.1);
+    }
+    let (src_orig, profile_converted, was_resized) =
+        pointimg::color::decode_to_srgb(input, &args.input_profile)?;
+    if profile_converted {
+        log::info!("profil colorimétrique converti vers sRGB");
+    }
+    if was_resized {
+        log::warn!(
+            "image '{}' réduite automatiquement à {:?} pour respecter les limites mémoire",
+            input.display(),
+            src_orig.dimensions()
+        );
+    }
     // Sous-échantillonnage preview si demandé.
     let src = match preview_size {
         Some((pw, ph)) => downscale_for_preview(&src_orig, pw, ph),
@@ -537,6 +559,14 @@ fn process_one(
     };
 
     let rgb = filter::flatten_to_rgb(&src, params.bg_color);
+    let output_profile = pointimg::color::output_profile_from_spec(&args.output_profile)?;
+    if args.svg && output_profile.is_some() {
+        anyhow::bail!("--output-profile ne s'applique pas à l'export SVG");
+    }
+    log::info!(
+        "mémoire de travail estimée : {} Mo",
+        filter::estimate_memory_bytes(rgb.width(), rgb.height()) / (1024 * 1024)
+    );
     let never_cancel = AtomicBool::new(false);
 
     let show_progress =
@@ -562,8 +592,31 @@ fn process_one(
     } else if params.transparent {
         let (dst, _dots) = filter::apply_rgba(&rgb, params)
             .with_context(|| "Erreur lors du calcul du filtre (RGBA)")?;
-        atomic_image_save(output, |tmp| dst.save(tmp))
+        if let Some((profile, bytes)) = output_profile.as_ref() {
+            let supports_alpha = matches!(
+                output
+                    .extension()
+                    .and_then(|extension| extension.to_str())
+                    .map(str::to_ascii_lowercase)
+                    .as_deref(),
+                Some("png" | "webp" | "tif" | "tiff")
+            );
+            let source = if supports_alpha {
+                image::DynamicImage::ImageRgba8(dst)
+            } else {
+                image::DynamicImage::ImageRgb8(flatten_rgba_image(&dst, params.bg_color))
+            };
+            let dst = pointimg::color::convert_from_srgb(source, profile)?;
+            atomic_image_save(output, |tmp| {
+                save_dynamic_with_profile(&dst, Some(bytes), tmp)
+            })
             .with_context(|| format!("Impossible de sauvegarder '{}'", output.display()))?;
+        } else {
+            atomic_image_save(output, |tmp| {
+                save_rgba_for_output(&dst, params.bg_color, tmp)
+            })
+            .with_context(|| format!("Impossible de sauvegarder '{}'", output.display()))?;
+        }
         println!("Sauvegarde (RGBA) : {}", output.display());
     } else {
         let (dst, _dots) =
@@ -576,14 +629,23 @@ fn process_one(
         if show_progress {
             eprintln!();
         }
-        atomic_image_save(output, |tmp| dst.save(tmp))
-            .with_context(|| format!("Impossible de sauvegarder '{}'", output.display()))?;
+        let dst = if let Some((profile, _)) = output_profile.as_ref() {
+            pointimg::color::convert_from_srgb(image::DynamicImage::ImageRgb8(dst), profile)?
+        } else {
+            image::DynamicImage::ImageRgb8(dst)
+        };
+        atomic_image_save(output, |tmp| {
+            save_dynamic_with_profile(&dst, output_profile.as_ref().map(|(_, bytes)| bytes), tmp)
+        })
+        .with_context(|| format!("Impossible de sauvegarder '{}'", output.display()))?;
         println!("Sauvegarde : {}", output.display());
     }
     Ok(())
 }
 
 fn temporary_output_path(path: &std::path::Path) -> PathBuf {
+    use std::sync::atomic::{AtomicU64, Ordering};
+    static NEXT_TEMP_ID: AtomicU64 = AtomicU64::new(0);
     let name = path
         .file_name()
         .and_then(|name| name.to_str())
@@ -592,7 +654,99 @@ fn temporary_output_path(path: &std::path::Path) -> PathBuf {
         .extension()
         .and_then(|ext| ext.to_str())
         .unwrap_or("png");
-    path.with_file_name(format!(".{name}.pointimg-{}.tmp.{ext}", std::process::id()))
+    let id = NEXT_TEMP_ID.fetch_add(1, Ordering::Relaxed);
+    let timestamp = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_or(0, |duration| duration.as_nanos());
+    path.with_file_name(format!(
+        ".{name}.pointimg-{}-{timestamp}-{id}.tmp.{ext}",
+        std::process::id()
+    ))
+}
+
+fn save_rgba_for_output(
+    image: &RgbaImage,
+    bg: [u8; 3],
+    path: &std::path::Path,
+) -> image::ImageResult<()> {
+    let supports_alpha = matches!(
+        path.extension()
+            .and_then(|e| e.to_str())
+            .map(str::to_ascii_lowercase)
+            .as_deref(),
+        Some("png" | "webp" | "tif" | "tiff")
+    );
+    if supports_alpha {
+        return image.save(path);
+    }
+    flatten_rgba_image(image, bg).save(path)
+}
+
+fn flatten_rgba_image(image: &RgbaImage, bg: [u8; 3]) -> RgbImage {
+    let (w, h) = image.dimensions();
+    RgbImage::from_fn(w, h, |x, y| {
+        let p = image.get_pixel(x, y);
+        let alpha = p[3] as f32 / 255.0;
+        let inv = 1.0 - alpha;
+        Rgb([
+            (p[0] as f32 * alpha + bg[0] as f32 * inv).round() as u8,
+            (p[1] as f32 * alpha + bg[1] as f32 * inv).round() as u8,
+            (p[2] as f32 * alpha + bg[2] as f32 * inv).round() as u8,
+        ])
+    })
+}
+
+fn save_dynamic_with_profile(
+    image: &image::DynamicImage,
+    profile: Option<&Vec<u8>>,
+    path: &std::path::Path,
+) -> image::ImageResult<()> {
+    let Some(profile) = profile else {
+        return image.save(path);
+    };
+    let file = std::fs::File::create(path).map_err(image::ImageError::IoError)?;
+    let (width, height) = image.dimensions();
+    let (bytes, color_type) = if image.color().has_alpha() {
+        (image.to_rgba8().into_raw(), ExtendedColorType::Rgba8)
+    } else {
+        (image.to_rgb8().into_raw(), ExtendedColorType::Rgb8)
+    };
+    match path
+        .extension()
+        .and_then(|extension| extension.to_str())
+        .map(str::to_ascii_lowercase)
+        .as_deref()
+    {
+        Some("png") => {
+            let mut encoder = image::codecs::png::PngEncoder::new(file);
+            encoder
+                .set_icc_profile(profile.clone())
+                .map_err(image::ImageError::Unsupported)?;
+            encoder.write_image(&bytes, width, height, color_type)
+        }
+        Some("jpg") | Some("jpeg") => {
+            let mut encoder = image::codecs::jpeg::JpegEncoder::new(file);
+            encoder
+                .set_icc_profile(profile.clone())
+                .map_err(image::ImageError::Unsupported)?;
+            encoder.write_image(&bytes, width, height, color_type)
+        }
+        Some("webp") => {
+            let mut encoder = image::codecs::webp::WebPEncoder::new_lossless(file);
+            encoder
+                .set_icc_profile(profile.clone())
+                .map_err(image::ImageError::Unsupported)?;
+            encoder.write_image(&bytes, width, height, color_type)
+        }
+        Some("tif") | Some("tiff") => {
+            let mut encoder = image::codecs::tiff::TiffEncoder::new(file);
+            encoder
+                .set_icc_profile(profile.clone())
+                .map_err(image::ImageError::Unsupported)?;
+            encoder.write_image(&bytes, width, height, color_type)
+        }
+        _ => image.save(path),
+    }
 }
 
 fn atomic_image_save<F>(path: &std::path::Path, save: F) -> image::ImageResult<()>
@@ -630,4 +784,27 @@ fn replace_file(from: &std::path::Path, to: &std::path::Path) -> std::io::Result
         std::fs::remove_file(to)?;
     }
     std::fs::rename(from, to)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn transparent_bmp_export_composites_alpha() {
+        let path = std::env::temp_dir().join(format!(
+            "pointimg-test-{}-{}.bmp",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        let image = RgbaImage::from_pixel(2, 2, image::Rgba([255, 0, 0, 128]));
+        save_rgba_for_output(&image, [255, 255, 255], &path).unwrap();
+        let decoded = image::open(&path).unwrap().to_rgb8();
+        let pixel = decoded.get_pixel(0, 0);
+        assert!(pixel[0] > 100 && pixel[1] > 100);
+        let _ = std::fs::remove_file(path);
+    }
 }
