@@ -10,10 +10,7 @@ pub(crate) fn rgb_to_color_image(img: &RgbImage) -> ColorImage {
         .pixels()
         .map(|p| egui::Color32::from_rgb(p[0], p[1], p[2]))
         .collect();
-    ColorImage {
-        size: [w as usize, h as usize],
-        pixels,
-    }
+    ColorImage::new([w as usize, h as usize], pixels)
 }
 
 /// Conversion RGBA → ColorImage avec **damier transparent** pour visualiser l'alpha.
@@ -44,10 +41,7 @@ pub(crate) fn rgba_to_color_image_checker(img: &RgbaImage) -> ColorImage {
             pixels.push(egui::Color32::from_rgb(r, g, b));
         }
     }
-    ColorImage {
-        size: [w as usize, h as usize],
-        pixels,
-    }
+    ColorImage::new([w as usize, h as usize], pixels)
 }
 
 /// Helper: convertir `RgbImage` en `RgbaImage` opaque (alpha=255 partout).
@@ -69,8 +63,5 @@ pub(crate) fn gray_to_color_image(img: &GrayImage) -> ColorImage {
         .pixels()
         .map(|p| egui::Color32::from_rgb(p[0], p[0], p[0]))
         .collect();
-    ColorImage {
-        size: [w as usize, h as usize],
-        pixels,
-    }
+    ColorImage::new([w as usize, h as usize], pixels)
 }

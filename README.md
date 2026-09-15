@@ -3,7 +3,7 @@
 [![Release](https://github.com/pvtc/pointimg/actions/workflows/release.yml/badge.svg)](https://github.com/pvtc/pointimg/releases)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![Rust](https://img.shields.io/badge/rust-2024-orange.svg)](https://www.rust-lang.org)
-[![MSRV 1.88](https://img.shields.io/badge/MSRV-1.88-blue.svg)](https://www.rust-lang.org)
+[![MSRV 1.95](https://img.shields.io/badge/MSRV-1.95-blue.svg)](https://www.rust-lang.org)
 
 A pointillist filter that transforms images into compositions of colored dots of varying sizes. Each dot takes the average color of its zone and its radius is modulated by local luminance and variance.
 

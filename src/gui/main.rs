@@ -50,14 +50,10 @@ fn main() -> eframe::Result {
     #[cfg(not(target_os = "linux"))]
     let backends = wgpu::Backends::PRIMARY;
 
+    let mut wgpu_setup = WgpuSetupCreateNew::without_display_handle();
+    wgpu_setup.instance_descriptor.backends = backends;
     let wgpu_options = WgpuConfiguration {
-        wgpu_setup: WgpuSetup::CreateNew(WgpuSetupCreateNew {
-            instance_descriptor: wgpu::InstanceDescriptor {
-                backends,
-                ..Default::default()
-            },
-            ..Default::default()
-        }),
+        wgpu_setup: WgpuSetup::CreateNew(wgpu_setup),
         ..Default::default()
     };
 

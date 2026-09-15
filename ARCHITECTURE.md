@@ -104,7 +104,7 @@ function returns to the CPU path automatically.
 
 > **Feature-gating:** GUI dependencies are behind the `gui` feature
 > (enabled by default). To compile CLI-only: `cargo build --no-default-features`.
-> **MSRV:** Rust 1.88 (declared via `rust-version` in `Cargo.toml`,
+> **MSRV:** Rust 1.95 (declared via `rust-version` in `Cargo.toml`,
 > enforced by the `msrv` CI job).
 
 ---
@@ -859,7 +859,7 @@ push/PR to `main`:
 - **fmt** — `cargo fmt --check`
 - **clippy** — matrix `ubuntu/macos/windows`, `cargo clippy --all-features -D warnings`
 - **test** — matrix `ubuntu/macos/windows`, `cargo test --lib --all-features`
-- **msrv** — `cargo +1.88 check --all-features --locked` (and `stable`)
+- **msrv** — `cargo +1.95 check --all-features --locked` (and `stable`)
 - **build** — `cargo build --release --all-features`
 - **docs** — `cargo doc --no-deps --all-features` with `--cfg docsrs`
 - **audit** — `cargo audit` (continue-on-error)

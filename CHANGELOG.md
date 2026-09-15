@@ -75,6 +75,12 @@ et ce projet adhère au [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ### Modifié
 
+- **Mise à jour des dépendances** : `egui`/`eframe` 0.31 → 0.36 (trait
+  `App::ui` et `egui::Panel` unifié), `wgpu` 24 → 30 (API instance/adapter/
+  pipeline), `rfd` 0.15 → 0.17, `moxcms` 0.8 → 0.9, `toml` 0.8 → 1,
+  `criterion` 0.5 → 0.8 (`black_box` via `std::hint`), plus les mises à jour
+  transitives. Adaptations dans `src/gui/{ui,main,convert}.rs`,
+  `src/filter/gpu.rs` et `benches/filter.rs`.
 - **Accélération K-means (~15× sur bench, résultat bit-à-bit identique)** :
   recherche du centre le plus proche via `SeedGrid::nearest_by` (borne
   inférieure sur la distance spatiale², départage des égalités par index
@@ -141,8 +147,10 @@ et ce projet adhère au [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
   deux tables `f64` de luminance au lieu de six tables RGB, tout en conservant
   une précision stable sur les grandes images.
 - **Audit sécurité** : la chaîne AccessKit responsable des vulnérabilités
-  `quick-xml` a été retirée des features `eframe`; les dépendances de codecs
-  inutiles par défaut ont également été désactivées.
+  `quick-xml` avait été retirée des features `eframe`; elle est réactivée
+  (`accesskit`, support des lecteurs d'écran) maintenant que `quick-xml` 0.41 a
+  corrigé les advisories. Les dépendances de codecs inutiles par défaut restent
+  désactivées.
 - **Angle de trame `--grid-angle`** : rotation de la grille (algorithme Grid)
   autour du centre de l'image. Effet "halftone screen" expérimental.
 - **Validation uniforme** : `apply()` valide désormais aussi les paramètres des
