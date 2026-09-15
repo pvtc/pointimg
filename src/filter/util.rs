@@ -3,12 +3,13 @@ use image::{DynamicImage, GenericImageView, Rgb, RgbImage};
 use super::params::{MAX_IMAGE_DIMENSION, MAX_IMAGE_PIXELS};
 
 /// Estimates the peak working-set size of the CPU pipeline.
-/// This is deliberately conservative: it includes source, density, two f64
-/// integral tables, result buffers and a fixed decoder/GUI overhead.
+/// This is deliberately conservative: it includes source, density, integral
+/// tables (2 f64 pour la density map + 6 u64 pour le quadtree), result
+/// buffers and a fixed decoder/GUI overhead.
 pub fn estimate_memory_bytes(width: u32, height: u32) -> u64 {
     let pixels = u64::from(width).saturating_mul(u64::from(height));
     pixels
-        .saturating_mul(3 + 4 + 16 + 4 + 4)
+        .saturating_mul(3 + 4 + 16 + 48 + 4 + 4)
         .saturating_add(64 * 1024 * 1024)
 }
 
@@ -54,30 +55,6 @@ pub(crate) fn pixel_sum(src: &RgbImage, x0: u32, y0: u32, w: u32, h: u32) -> (u6
         }
     }
     (sr, sg, sb, n)
-}
-
-pub(crate) fn pixel_variance(
-    src: &RgbImage,
-    x0: u32,
-    y0: u32,
-    w: u32,
-    h: u32,
-    avg: &[u8; 3],
-) -> f32 {
-    let (iw, ih) = src.dimensions();
-    let mut sum = 0f32;
-    let mut n = 0u32;
-    for py in y0..(y0 + h).min(ih) {
-        for px in x0..(x0 + w).min(iw) {
-            let p = src.get_pixel(px, py);
-            let dr = p[0] as f32 - avg[0] as f32;
-            let dg = p[1] as f32 - avg[1] as f32;
-            let db = p[2] as f32 - avg[2] as f32;
-            sum += dr * dr + dg * dg + db * db;
-            n += 1;
-        }
-    }
-    if n > 0 { sum / n as f32 } else { 0.0 }
 }
 
 /// Aplatir n'importe quelle `DynamicImage` vers RGB8 en composant l'alpha sur `bg`.

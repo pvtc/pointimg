@@ -92,4 +92,68 @@ impl SeedGrid {
         }
         best_idx
     }
+
+    /// Seed minimisant `dist(i)`, avec arrêt précoce basé sur une borne
+    /// inférieure de la distance spatiale. `dist` doit être ≥ la distance
+    /// spatiale² (dans des unités quelconques) pour que la borne soit valide.
+    ///
+    /// `norm_x`/`norm_y` : facteurs convertissant les unités de la grille
+    /// (pixels) vers les unités spatiales de `dist` (ex. k-means normalisé :
+    /// `1/largeur`, `1/hauteur`).
+    ///
+    /// Les distances égales sont départagées par le plus petit indice —
+    /// même sémantique « premier minimum » que `Iterator::min_by`.
+    pub(crate) fn nearest_by<F>(&self, fx: f32, fy: f32, norm_x: f32, norm_y: f32, dist: F) -> usize
+    where
+        F: Fn(usize) -> f32,
+    {
+        // Déflation d'un ulp : la borne doit être ≤ la vraie distance
+        // normalisée, malgré l'arrondi de la conversion d'unités.
+        let cell_bw = self.cell_w * norm_x * (1.0 - f32::EPSILON);
+        let cell_bh = self.cell_h * norm_y * (1.0 - f32::EPSILON);
+        let cx = ((fx / self.cell_w) as i64).clamp(0, self.cols as i64 - 1);
+        let cy = ((fy / self.cell_h) as i64).clamp(0, self.rows as i64 - 1);
+
+        let mut best_idx = 0usize;
+        let mut best_dist = f32::MAX;
+
+        let mut radius = 0i64;
+        loop {
+            // Borne inférieure de la distance spatiale² vers l'anneau `radius`,
+            // dans les unités normalisées de `dist`.
+            let min_possible_sq = if radius <= 1 {
+                0.0f32
+            } else {
+                let r = radius as f32 - 1.0;
+                (r * cell_bw).min(r * cell_bh).powi(2)
+            };
+            if min_possible_sq > best_dist && radius > 0 {
+                break;
+            }
+            for dy in -radius..=radius {
+                for dx in -radius..=radius {
+                    if radius > 0 && dx.abs() < radius && dy.abs() < radius {
+                        continue;
+                    }
+                    let nx = cx + dx;
+                    let ny = cy + dy;
+                    if nx < 0 || ny < 0 || nx >= self.cols as i64 || ny >= self.rows as i64 {
+                        continue;
+                    }
+                    for &si in &self.cells[ny as usize * self.cols + nx as usize] {
+                        let d = dist(si);
+                        if d < best_dist || (d == best_dist && si < best_idx) {
+                            best_dist = d;
+                            best_idx = si;
+                        }
+                    }
+                }
+            }
+            radius += 1;
+            if radius > (self.cols.max(self.rows) as i64) {
+                break;
+            }
+        }
+        best_idx
+    }
 }

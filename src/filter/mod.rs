@@ -20,7 +20,7 @@ mod density;
 mod dither;
 mod gamma;
 #[cfg(feature = "gpu")]
-mod gpu;
+pub mod gpu;
 mod halftone;
 mod params;
 mod render;
@@ -29,8 +29,46 @@ mod seedgrid;
 mod svg;
 mod util;
 
-pub use density::{compute_density_image, compute_density_map, density_to_image};
+pub use density::{
+    compute_density_image, compute_density_map, compute_density_map_cpu, density_to_image,
+};
 pub use halftone::{HalftoneMode, Screening};
+
+/// Erreur retournée quand le calcul a été interrompu via le token `cancel`.
+///
+/// À détecter avec [`is_cancelled`] plutôt qu'une comparaison sur le message :
+///
+/// ```
+/// use std::sync::atomic::AtomicBool;
+/// use image::RgbImage;
+/// use pointimg::filter::{self, FilterParams, is_cancelled};
+///
+/// let cancel = AtomicBool::new(true);
+/// let img = RgbImage::from_pixel(8, 8, image::Rgb([0, 0, 0]));
+/// let err = filter::apply_with_progress(&img, &FilterParams::default(), &cancel, |_, _, _| {})
+///     .unwrap_err();
+/// assert!(is_cancelled(&err));
+/// ```
+#[derive(Debug, Clone, Copy)]
+pub struct Cancelled;
+
+impl std::fmt::Display for Cancelled {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str("cancelled")
+    }
+}
+
+impl std::error::Error for Cancelled {}
+
+/// Retourne `true` si l'erreur provient de l'annulation du calcul
+/// (voir [`Cancelled`]).
+pub fn is_cancelled(err: &anyhow::Error) -> bool {
+    err.downcast_ref::<Cancelled>().is_some()
+}
+
+fn cancelled() -> anyhow::Error {
+    anyhow::Error::new(Cancelled)
+}
 pub use params::{
     Algorithm, Dot, DotShape, FilterParams, MAX_IMAGE_DIMENSION, MAX_IMAGE_PIXELS,
     validate_image_dimensions, validate_params,
@@ -105,7 +143,7 @@ where
         }
         _ => {
             if cancel.load(Ordering::Relaxed) {
-                return Err(anyhow!("cancelled"));
+                return Err(cancelled());
             }
             let dots = match params.algorithm {
                 Algorithm::Grid => dots_grid(src, density, params),
@@ -137,10 +175,10 @@ fn apply_inner(src: &RgbImage, params: &FilterParams) -> Result<RgbImage> {
             Ok(render(src, &dots, params))
         }
         Algorithm::Voronoi | Algorithm::Kmeans => {
-            let never_cancel = std::sync::atomic::AtomicBool::new(false);
-            let (img, _) =
-                apply_with_progress_inner(src, params, &never_cancel, None, |_, _, _| {})?;
-            Ok(img)
+            // Chemin direct : les previews intermédiaires seraient calculés
+            // puis jetés à chaque itération — on rend une seule fois.
+            let dots = compute_dots_inner(src, params)?;
+            Ok(render(src, &dots, params))
         }
         Algorithm::Halftone if params.halftone == HalftoneMode::Off => {
             // Halftone sélectionné mais mode Off → image vide (cas dégénéré).
@@ -233,7 +271,7 @@ pub fn apply_dynamic(src: &DynamicImage, params: &FilterParams) -> Result<RgbIma
 /// rendue, ce qui évite le double-calcul qu'on avait avant.
 ///
 /// Le token `cancel` est vérifié entre chaque itération. Si `cancel` est vrai,
-/// la fonction retourne `Err(anyhow!("cancelled"))`.
+/// la fonction retourne une erreur [`Cancelled`], détectable avec [`is_cancelled`].
 ///
 /// Quand `params.gamma_correct` est vrai, les previews intermédiaires publiées au
 /// callback sont déjà ré-encodées en sRGB (donc affichables telles quelles).
@@ -250,7 +288,7 @@ where
     // Halftone : pas d'itérations Lloyd → un seul pass, pas de preview progressive.
     if params.algorithm == Algorithm::Halftone && params.halftone != HalftoneMode::Off {
         if cancel.load(Ordering::Relaxed) {
-            return Err(anyhow!("cancelled"));
+            return Err(cancelled());
         }
         if params.gamma_correct {
             let (rgba, dots) = apply_rgba(src, params)?;
@@ -889,8 +927,8 @@ mod tests {
         let result = apply_with_progress(&img, &params, &cancel, |_, _, _| {});
         assert!(result.is_err(), "doit retourner Err quand cancel=true");
         assert!(
-            result.unwrap_err().to_string().contains("cancelled"),
-            "message d'erreur doit contenir 'cancelled'"
+            is_cancelled(&result.unwrap_err()),
+            "l'erreur doit être de type Cancelled"
         );
     }
 

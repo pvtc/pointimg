@@ -1,5 +1,6 @@
 use crate::filter::params::{Dot, DotShape, FilterParams};
 use image::{Rgb, RgbImage, Rgba, RgbaImage};
+use rayon::prelude::*;
 use std::f32::consts::PI;
 
 // ─── Rendu commun ─────────────────────────────────────────────────────────────
@@ -11,24 +12,6 @@ use std::f32::consts::PI;
 const AA_SS: u32 = 4;
 const AA_TOTAL: u32 = AA_SS * AA_SS;
 const AA_STEP: f32 = 1.0 / AA_SS as f32;
-
-/// Mélange le pixel `(px, py)` vers `color` selon `coverage ∈ (0, AA_TOTAL]`.
-/// `coverage == AA_TOTAL` peint en opaque (chemin rapide).
-#[inline]
-fn blend_coverage(dst: &mut RgbImage, px: u32, py: u32, color: [u8; 3], coverage: u32) {
-    debug_assert!(coverage > 0 && coverage <= AA_TOTAL);
-    if coverage == AA_TOTAL {
-        dst.put_pixel(px, py, Rgb(color));
-        return;
-    }
-    let a = coverage as f32 / AA_TOTAL as f32;
-    let inv = 1.0 - a;
-    let p = dst.get_pixel_mut(px, py);
-    for c in 0..3 {
-        let v = p[c] as f32 * inv + color[c] as f32 * a + 0.5;
-        p[c] = if v > 255.0 { 255 } else { v as u8 };
-    }
-}
 
 /// Couverture (en 16ès de pixel) d'un pixel par une forme convexe,
 /// en coords locales `(lx, ly)` centrées sur le dot.
@@ -103,19 +86,7 @@ pub(crate) fn render(src: &RgbImage, dots: &[Dot], params: &FilterParams) -> Rgb
     let mut sorted: Vec<&Dot> = dots_to_draw.iter().collect();
     sorted.sort_unstable_by(|a, b| b.radius.total_cmp(&a.radius));
 
-    for dot in sorted {
-        if dot.radius <= 0.0 {
-            continue;
-        }
-        draw_dot(
-            &mut dst,
-            dot.x,
-            dot.y,
-            dot.radius,
-            Rgb(dot.color),
-            params.dot_shape,
-        );
-    }
+    draw_sorted_bands_rgb(&mut dst, &sorted, params.dot_shape);
 
     if !dither_palette.is_empty() {
         crate::filter::dither::floyd_steinberg(&mut dst, dither_palette);
@@ -123,13 +94,78 @@ pub(crate) fn render(src: &RgbImage, dots: &[Dot], params: &FilterParams) -> Rgb
     dst
 }
 
-/// Dessine un dot anti-aliasé selon la forme choisie.
+/// Dessine les dots par bandes horizontales parallèles (rayon). Chaque bande
+/// applique les dots dans l'ordre global (rayon décroissant) en bornant les
+/// pixels à ses lignes — résultat identique au dessin séquentiel.
+fn draw_sorted_bands_rgb(dst: &mut RgbImage, sorted: &[&Dot], shape: DotShape) {
+    let (w, h) = dst.dimensions();
+    let stride = w as usize * 3;
+    let n_bands = (rayon::current_num_threads().max(1) * 4)
+        .min(h as usize)
+        .max(1);
+    let band_rows = (h as usize).div_ceil(n_bands.max(1));
+    let raw: &mut [u8] = dst.as_mut();
+    raw.par_chunks_mut(band_rows * stride)
+        .enumerate()
+        .for_each(|(b, band)| {
+            let y0 = b * band_rows;
+            let y1 = y0.saturating_add(band_rows).min(h as usize);
+            for dot in sorted {
+                if dot.radius <= 0.0 {
+                    continue;
+                }
+                let color = dot.color;
+                draw_dot_clipped(
+                    w,
+                    h,
+                    dot.x,
+                    dot.y,
+                    dot.radius,
+                    shape,
+                    (y0 as u32, y1 as u32),
+                    &mut |px: u32, py: u32, cov: u32| {
+                        let off = (py as usize - y0) * stride + px as usize * 3;
+                        blend_rgb_band(band, off, color, cov);
+                    },
+                );
+            }
+        });
+}
+
+/// Blend RGB d'un pixel (formule de l'ancien chemin séquentiel).
+#[inline]
+fn blend_rgb_band(band: &mut [u8], off: usize, color: [u8; 3], coverage: u32) {
+    debug_assert!(coverage > 0 && coverage <= AA_TOTAL);
+    if coverage == AA_TOTAL {
+        band[off..off + 3].copy_from_slice(&color);
+        return;
+    }
+    let a = coverage as f32 / AA_TOTAL as f32;
+    let inv = 1.0 - a;
+    let p = &mut band[off..off + 3];
+    for c in 0..3 {
+        let v = p[c] as f32 * inv + color[c] as f32 * a + 0.5;
+        p[c] = if v > 255.0 { 255 } else { v as u8 };
+    }
+}
+
+/// Dessine un dot anti-aliasé selon la forme choisie, borné aux lignes
+/// `y_clip = (y0, y1)` (lignes hors-clip ignorées → dessin par bandes).
 ///
 /// `(cx_f, cy_f)` : centre en pixels (float, préserve la sous-pixel position).
 /// `r_f` : rayon en pixels (float).
-fn draw_dot(dst: &mut RgbImage, cx_f: f32, cy_f: f32, r_f: f32, color: Rgb<u8>, shape: DotShape) {
-    let (iw, ih) = dst.dimensions();
-
+/// `blend(px, py, coverage)` peint le pixel touché (coverage ∈ (0, AA_TOTAL]).
+#[allow(clippy::too_many_arguments)]
+fn draw_dot_clipped(
+    img_w: u32,
+    img_h: u32,
+    cx_f: f32,
+    cy_f: f32,
+    r_f: f32,
+    shape: DotShape,
+    y_clip: (u32, u32),
+    blend: &mut dyn FnMut(u32, u32, u32),
+) {
     let bbox = match shape {
         DotShape::Ellipse { aspect, .. } => {
             let a = r_f;
@@ -139,44 +175,41 @@ fn draw_dot(dst: &mut RgbImage, cx_f: f32, cy_f: f32, r_f: f32, color: Rgb<u8>, 
         _ => (r_f.ceil() as i32) + 1,
     };
     let b = bbox as f32;
+    let (iw, ih) = (img_w as i32, img_h as i32);
 
     let px_min = (cx_f - b).ceil() as i32;
     let px_max = (cx_f + b).floor() as i32;
     let py_min = (cy_f - b).ceil() as i32;
     let py_max = (cy_f + b).floor() as i32;
+    // Clip à la bande y_clip puis aux bornes de l'image.
+    let px0 = px_min.max(0);
+    let px1 = px_max.min(iw - 1);
+    let py0 = py_min.max(y_clip.0 as i32).max(0);
+    let py1 = py_max.min(y_clip.1 as i32 - 1).min(ih - 1);
+    if px0 > px1 || py0 > py1 {
+        return;
+    }
 
     match shape {
         DotShape::Circle => {
             let r2 = r_f * r_f;
-            for py in py_min..=py_max {
-                if py < 0 || py >= ih as i32 {
-                    continue;
-                }
-                for px in px_min..=px_max {
-                    if px < 0 || px >= iw as i32 {
-                        continue;
-                    }
+            for py in py0..=py1 {
+                for px in px0..=px1 {
                     let cov = coverage_aa(px, py, cx_f, cy_f, |lx, ly| lx * lx + ly * ly <= r2);
                     if cov > 0 {
-                        blend_coverage(dst, px as u32, py as u32, color.0, cov);
+                        blend(px as u32, py as u32, cov);
                     }
                 }
             }
         }
         DotShape::Square => {
-            for py in py_min..=py_max {
-                if py < 0 || py >= ih as i32 {
-                    continue;
-                }
-                for px in px_min..=px_max {
-                    if px < 0 || px >= iw as i32 {
-                        continue;
-                    }
+            for py in py0..=py1 {
+                for px in px0..=px1 {
                     let cov = coverage_aa(px, py, cx_f, cy_f, |lx, ly| {
                         lx.abs() <= r_f && ly.abs() <= r_f
                     });
                     if cov > 0 {
-                        blend_coverage(dst, px as u32, py as u32, color.0, cov);
+                        blend(px as u32, py as u32, cov);
                     }
                 }
             }
@@ -186,14 +219,8 @@ fn draw_dot(dst: &mut RgbImage, cx_f: f32, cy_f: f32, r_f: f32, color: Rgb<u8>, 
             let b_axis = (r_f / aspect.max(0.01)).max(1.0);
             let ang = angle_deg * PI / 180.0;
             let (cos_a, sin_a) = (ang.cos(), ang.sin());
-            for py in py_min..=py_max {
-                if py < 0 || py >= ih as i32 {
-                    continue;
-                }
-                for px in px_min..=px_max {
-                    if px < 0 || px >= iw as i32 {
-                        continue;
-                    }
+            for py in py0..=py1 {
+                for px in px0..=px1 {
                     let cov = coverage_aa(px, py, cx_f, cy_f, |lx, ly| {
                         // Rotation inverse : repère de l'ellipse.
                         let rx = lx * cos_a + ly * sin_a;
@@ -201,26 +228,20 @@ fn draw_dot(dst: &mut RgbImage, cx_f: f32, cy_f: f32, r_f: f32, color: Rgb<u8>, 
                         (rx / a).powi(2) + (ry / b_axis).powi(2) <= 1.0
                     });
                     if cov > 0 {
-                        blend_coverage(dst, px as u32, py as u32, color.0, cov);
+                        blend(px as u32, py as u32, cov);
                     }
                 }
             }
         }
         DotShape::RegularPolygon { sides } => {
             let n = sides.max(3) as usize;
-            for py in py_min..=py_max {
-                if py < 0 || py >= ih as i32 {
-                    continue;
-                }
-                for px in px_min..=px_max {
-                    if px < 0 || px >= iw as i32 {
-                        continue;
-                    }
+            for py in py0..=py1 {
+                for px in px0..=px1 {
                     let cov = coverage_aa(px, py, cx_f, cy_f, |lx, ly| {
                         point_in_regular_polygon(lx, ly, r_f, n)
                     });
                     if cov > 0 {
-                        blend_coverage(dst, px as u32, py as u32, color.0, cov);
+                        blend(px as u32, py as u32, cov);
                     }
                 }
             }
@@ -373,33 +394,6 @@ pub(crate) fn radius_for_dot(
 
 // ─── Rendu RGBA (background transparent) ─────────────────────────────────────
 
-/// Mélange le pixel `(px, py)` vers `color` selon `coverage ∈ (0, AA_TOTAL]`
-/// en appliquant l'opérateur "over" sur le canal alpha existant.
-/// `coverage == AA_TOTAL` peint en opaque (chemin rapide).
-#[inline]
-fn blend_coverage_rgba(dst: &mut RgbaImage, px: u32, py: u32, color: [u8; 3], coverage: u32) {
-    debug_assert!(coverage > 0 && coverage <= AA_TOTAL);
-    if coverage == AA_TOTAL {
-        dst.put_pixel(px, py, Rgba([color[0], color[1], color[2], 255]));
-        return;
-    }
-    let src_a = coverage as f32 / AA_TOTAL as f32;
-    let p = dst.get_pixel_mut(px, py);
-    let dst_a = p[3] as f32 / 255.0;
-    let out_a = src_a + dst_a * (1.0 - src_a);
-    if out_a <= 0.0 {
-        return;
-    }
-    let inv_out = 1.0 / out_a;
-    let blend_w = dst_a * (1.0 - src_a) * inv_out;
-    let src_w = src_a * inv_out;
-    for c in 0..3 {
-        let v = color[c] as f32 * src_w + p[c] as f32 * blend_w + 0.5;
-        p[c] = if v > 255.0 { 255 } else { v as u8 };
-    }
-    p[3] = (out_a * 255.0 + 0.5) as u8;
-}
-
 /// Variant RGBA de `render`. Quand `params.transparent`, le fond initial est
 /// transparent (alpha 0) ; les pixels non couverts par un dot restent transparents.
 /// Sinon, le fond initial est `bg_color` opaque (identique à `render` mais en RGBA).
@@ -439,19 +433,7 @@ pub fn render_rgba(src: &RgbImage, dots: &[Dot], params: &FilterParams) -> RgbaI
     let mut sorted: Vec<&Dot> = dots_to_draw.iter().collect();
     sorted.sort_unstable_by(|a, b| b.radius.total_cmp(&a.radius));
 
-    for dot in sorted {
-        if dot.radius <= 0.0 {
-            continue;
-        }
-        draw_dot_rgba(
-            &mut dst,
-            dot.x,
-            dot.y,
-            dot.radius,
-            dot.color,
-            params.dot_shape,
-        );
-    }
+    draw_sorted_bands_rgba(&mut dst, &sorted, params.dot_shape);
 
     if !dither_palette.is_empty() {
         // Floyd-Steinberg travaille sur RGB ; l'alpha déjà calculé est conservé.
@@ -472,112 +454,69 @@ pub fn render_rgba(src: &RgbImage, dots: &[Dot], params: &FilterParams) -> RgbaI
     dst
 }
 
-/// Dessine un dot anti-aliasé sur un canvas RGBA (opérateur "over" sur l'alpha).
-fn draw_dot_rgba(
-    dst: &mut RgbaImage,
-    cx_f: f32,
-    cy_f: f32,
-    r_f: f32,
-    color: [u8; 3],
-    shape: DotShape,
-) {
-    let (iw, ih) = dst.dimensions();
+/// Dessine les dots RGBA par bandes horizontales parallèles (rayon).
+/// Chaque bande applique les dots dans l'ordre global (rayon décroissant) en
+/// bornant les pixels à ses lignes — résultat identique au dessin séquentiel.
+fn draw_sorted_bands_rgba(dst: &mut RgbaImage, sorted: &[&Dot], shape: DotShape) {
+    let (w, h) = dst.dimensions();
+    let stride = w as usize * 4;
+    let n_bands = (rayon::current_num_threads().max(1) * 4)
+        .min(h as usize)
+        .max(1);
+    let band_rows = (h as usize).div_ceil(n_bands.max(1));
+    let raw: &mut [u8] = dst.as_mut();
+    raw.par_chunks_mut(band_rows * stride)
+        .enumerate()
+        .for_each(|(b, band)| {
+            let y0 = b * band_rows;
+            let y1 = y0.saturating_add(band_rows).min(h as usize);
+            for dot in sorted {
+                if dot.radius <= 0.0 {
+                    continue;
+                }
+                let color = dot.color;
+                draw_dot_clipped(
+                    w,
+                    h,
+                    dot.x,
+                    dot.y,
+                    dot.radius,
+                    shape,
+                    (y0 as u32, y1 as u32),
+                    &mut |px: u32, py: u32, cov: u32| {
+                        let off = (py as usize - y0) * stride + px as usize * 4;
+                        blend_rgba_band(band, off, color, cov);
+                    },
+                );
+            }
+        });
+}
 
-    let bbox = match shape {
-        DotShape::Ellipse { aspect, .. } => {
-            let a = r_f;
-            let b = (r_f / aspect.max(0.01)).max(1.0);
-            (a.max(b).ceil() as i32) + 1
-        }
-        _ => (r_f.ceil() as i32) + 1,
-    };
-    let b = bbox as f32;
-
-    let px_min = (cx_f - b).ceil() as i32;
-    let px_max = (cx_f + b).floor() as i32;
-    let py_min = (cy_f - b).ceil() as i32;
-    let py_max = (cy_f + b).floor() as i32;
-
-    match shape {
-        DotShape::Circle => {
-            let r2 = r_f * r_f;
-            for py in py_min..=py_max {
-                if py < 0 || py >= ih as i32 {
-                    continue;
-                }
-                for px in px_min..=px_max {
-                    if px < 0 || px >= iw as i32 {
-                        continue;
-                    }
-                    let cov = coverage_aa(px, py, cx_f, cy_f, |lx, ly| lx * lx + ly * ly <= r2);
-                    if cov > 0 {
-                        blend_coverage_rgba(dst, px as u32, py as u32, color, cov);
-                    }
-                }
-            }
-        }
-        DotShape::Square => {
-            for py in py_min..=py_max {
-                if py < 0 || py >= ih as i32 {
-                    continue;
-                }
-                for px in px_min..=px_max {
-                    if px < 0 || px >= iw as i32 {
-                        continue;
-                    }
-                    let cov = coverage_aa(px, py, cx_f, cy_f, |lx, ly| {
-                        lx.abs() <= r_f && ly.abs() <= r_f
-                    });
-                    if cov > 0 {
-                        blend_coverage_rgba(dst, px as u32, py as u32, color, cov);
-                    }
-                }
-            }
-        }
-        DotShape::Ellipse { aspect, angle_deg } => {
-            let a = r_f;
-            let b_axis = (r_f / aspect.max(0.01)).max(1.0);
-            let ang = angle_deg * PI / 180.0;
-            let (cos_a, sin_a) = (ang.cos(), ang.sin());
-            for py in py_min..=py_max {
-                if py < 0 || py >= ih as i32 {
-                    continue;
-                }
-                for px in px_min..=px_max {
-                    if px < 0 || px >= iw as i32 {
-                        continue;
-                    }
-                    let cov = coverage_aa(px, py, cx_f, cy_f, |lx, ly| {
-                        let rx = lx * cos_a + ly * sin_a;
-                        let ry = -lx * sin_a + ly * cos_a;
-                        (rx / a).powi(2) + (ry / b_axis).powi(2) <= 1.0
-                    });
-                    if cov > 0 {
-                        blend_coverage_rgba(dst, px as u32, py as u32, color, cov);
-                    }
-                }
-            }
-        }
-        DotShape::RegularPolygon { sides } => {
-            let n = sides.max(3) as usize;
-            for py in py_min..=py_max {
-                if py < 0 || py >= ih as i32 {
-                    continue;
-                }
-                for px in px_min..=px_max {
-                    if px < 0 || px >= iw as i32 {
-                        continue;
-                    }
-                    let cov = coverage_aa(px, py, cx_f, cy_f, |lx, ly| {
-                        point_in_regular_polygon(lx, ly, r_f, n)
-                    });
-                    if cov > 0 {
-                        blend_coverage_rgba(dst, px as u32, py as u32, color, cov);
-                    }
-                }
-            }
-        }
+/// Blend RGBA (opérateur "over" sur l'alpha) d'un pixel
+/// (formule de l'ancien chemin séquentiel).
+#[inline]
+fn blend_rgba_band(band: &mut [u8], off: usize, color: [u8; 3], coverage: u32) {
+    debug_assert!(coverage > 0 && coverage <= AA_TOTAL);
+    if coverage == AA_TOTAL {
+        band[off..off + 3].copy_from_slice(&color);
+        band[off + 3] = 255;
+        return;
     }
+    let src_a = coverage as f32 / AA_TOTAL as f32;
+    let p = &mut band[off..off + 4];
+    let dst_a = p[3] as f32 / 255.0;
+    let out_a = src_a + dst_a * (1.0 - src_a);
+    if out_a <= 0.0 {
+        return;
+    }
+    let inv_out = 1.0 / out_a;
+    let blend_w = dst_a * (1.0 - src_a) * inv_out;
+    let src_w = src_a * inv_out;
+    for c in 0..3 {
+        let v = color[c] as f32 * src_w + p[c] as f32 * blend_w + 0.5;
+        p[c] = if v > 255.0 { 255 } else { v as u8 };
+    }
+    p[3] = (out_a * 255.0 + 0.5) as u8;
 }
 
 // ─── Rendu halftone (composite multiply, ink-over-ink) ────────────────────────

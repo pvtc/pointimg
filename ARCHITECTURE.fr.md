@@ -351,20 +351,31 @@ Rapide, utile comme référence.
 
 ### 7.2 K-means spatial (`Kmeans`)
 
-**Complexité :** O(iterations × W×H×k) — lent pour k > 500
+**Complexité :** O(iterations × W×H×candidats) — la variante spatiale
+`nearest_by` de `SeedGrid` rend le nombre de candidats par pixel ≪ k, et
+l'arrêt anticipé au point fixe saute les itérations redondantes.
 
 1. **Initialisation :** `k` graines par `importance_sample` (biaisé vers les zones détaillées).
    Les graines sont placées avec un **jitter sub-pixel** aléatoire de ±0.5 pixel
    pour éviter le clustering sur les centres des pixels.
 2. Représenter chaque pixel comme un vecteur 5D normalisé `[x/W, y/H, r/255, g/255, b/255]`.
+   Les positions/couleurs normalisées sont précalculées une fois (LUTs) au
+   lieu d'être re-divisées par pixel à chaque itération.
 3. **Itérations :**
-   - Assigner chaque pixel au centre le plus proche (distance euclidienne 5D).
+   - Assigner chaque pixel au centre le plus proche (distance euclidienne 5D)
+     via `SeedGrid::nearest_by` — la distance spatiale² est une borne
+     inférieure de la distance totale², donc les anneaux au-delà de `best²`
+     sont sautés. Les égalités sont départagées par le plus petit index,
+     exactement comme `Iterator::min_by`.
+   - Les sommes partielles s'accumulent par **chunks de lignes fixes**
+     combinés dans l'ordre des indices → réduction f64 déterministe (plus de
+     dépendance au work-stealing, contrairement à l'ancien `fold/reduce`).
    - Recalculer chaque centre comme moyenne de ses pixels assignés.
 4. Émettre un point par centre survivant.
 
-**Arrêt anticipé (convergence) :** si le déplacement maximum de tous les centres
-est inférieur à 0.5 pixel entre deux itérations, la boucle s'arrête prématurément.
-Cela évite les itérations inutiles quand la convergence est déjà atteinte.
+**Arrêt anticipé (convergence) :** la boucle s'arrête dès que tous les
+centres sont bit-à-bit inchangés (point fixe exact) : toute itération
+supplémentaire serait un no-op exact, donc le résultat final est inchangé.
 
 **Élimination du double rendu :** à la dernière itération, les dots sont construits
 et retournés directement sans re-rendre l'image complète.
@@ -402,7 +413,10 @@ et retournés directement sans re-rendre l'image complète.
 
 ### 7.4 Quadtree adaptatif (`Quadtree`)
 
-**Complexité :** O(W×H×log(max_depth)) amortie
+**Complexité :** O(W×H) pour construire les tables intégrales + O(1) par
+requête de nœud — les **summed-area tables** u64 entières (sommes et sommes
+des carrés par canal RGB, même technique que la carte de densité) remplacent
+les anciens re-parcours O(surface) par nœud.
 
 **Paramètres internes :**
 ```
@@ -415,7 +429,8 @@ threshold = 800 × (1 − variance_sensitivity × 0.8)
 ```
 subdivide(cellule [x,y,w,h]):
   si w < 2 ou h < 2 → stop
-  calculer couleur_moyenne et variance de la cellule
+  calculer couleur_moyenne et variance de la cellule via les SATs
+  (expansion exacte en entiers : Σ(p−a)² = Σp² − 2a·Σp + n·a²)
   si variance < threshold  OU  taille ≤ min_cell:
       émettre un point au centre
       local_density = min(min(w,h) / img_min, 1.0)
@@ -472,6 +487,12 @@ seules les cellules du voisinage 3×3 sont examinées (~4–8 seeds au lieu de k
 
 **Complexité effective :** O(pixels × seeds_per_cell) ≈ O(W×H) par itération.
 
+**`nearest_by` (variante K-means) :** recherche par anneaux généralisée qui
+prend une closure de distance sur les indices des seeds, plus deux facteurs
+convertissant les pixels de la grille en unités spatiales de la distance
+(ex. coords K-means normalisées). Les égalités sont départagées par le plus
+petit index, comme `Iterator::min_by` — bit-à-bit identique au balayage naïf.
+
 ---
 
 ## 9. Rendu (ordre de dessin)
@@ -489,7 +510,12 @@ dessin (du plus grand au plus petit) est effectué sur une copie locale du slice
 3. Dessiner du plus grand au plus petit (algorithme du peintre) :
    - Les grands points occupent l'arrière-plan (zones uniformes).
    - Les petits points de détail se superposent au premier plan.
-4. Chaque point est dessiné selon `params.dot_shape` (implémentation custom,
+4. **Bandes parallèles (rayon) :** `render`/`render_rgba` découpent le canvas
+   en bandes horizontales. Chaque bande applique tous les dots dans l'ordre
+   global par rayon en bornant les pixels à ses lignes — résultat identique
+   au dessin séquentiel — via `draw_dot_clipped` et une closure d'écriture
+   par bande (`blend_rgb_band`/`blend_rgba_band`).
+5. Chaque point est dessiné selon `params.dot_shape` (implémentation custom,
    pas de `imageproc`) :
 
 ```rust

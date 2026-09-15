@@ -110,7 +110,9 @@ fn transform_rgb(
         .transform(&input, &mut output)
         .map_err(|e| anyhow!("Transformation colorimétrique échouée : {e:?}"))?;
     let bytes = output
-        .chunks_exact(3)
+        .as_chunks::<3>()
+        .0
+        .iter()
         .flat_map(|pixel| {
             pixel
                 .iter()
@@ -144,7 +146,9 @@ fn transform_rgba(
         .transform(&input, &mut output)
         .map_err(|e| anyhow!("Transformation colorimétrique échouée : {e:?}"))?;
     let bytes = output
-        .chunks_exact(4)
+        .as_chunks::<4>()
+        .0
+        .iter()
         .flat_map(|pixel| {
             pixel
                 .iter()

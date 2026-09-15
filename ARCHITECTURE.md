@@ -478,20 +478,30 @@ Fast, useful as a reference.
 
 ### 7.2 Spatial K-means (`Kmeans`)
 
-**Complexity:** O(iterations × W×H×k) — slow for k > 500
+**Complexity:** O(iterations × W×H×candidates) — the spatial `SeedGrid`
+variant `nearest_by` makes the per-pixel candidate count ≪ k, and the
+fixed-point early stop skips redundant iterations.
 
 1. **Initialization:** `k` seeds via `importance_sample` (biased towards detailed zones).
    Seeds are placed with a random **sub-pixel jitter** of ±0.5 pixel
    to avoid clustering on pixel centers.
 2. Represent each pixel as a normalized 5D vector `[x/W, y/H, r/255, g/255, b/255]`.
+   The normalized positions/colors are precomputed once (LUTs) instead of
+   being re-divided per pixel per iteration.
 3. **Iterations:**
-   - Assign each pixel to the nearest center (5D Euclidean distance).
+   - Assign each pixel to the nearest center (5D Euclidean distance) via
+     `SeedGrid::nearest_by` — the spatial squared distance is a lower bound
+     of the total squared distance, so rings beyond `best²` are skipped.
+     Ties resolve to the smallest index, exactly like `Iterator::min_by`.
+   - Partial sums accumulate in **fixed row chunks** combined in index
+     order, so the f64 reduction is deterministic (no work-stealing
+     dependence, unlike the previous `fold/reduce`).
    - Recalculate each center as the mean of its assigned pixels.
 4. Emit one point per surviving center.
 
-**Early stopping (convergence):** if the maximum movement of all centers
-is less than 0.5 pixel between two iterations, the loop stops early.
-This avoids unnecessary iterations when convergence is already reached.
+**Early stopping (convergence):** the loop stops when all centers are
+bitwise unchanged (exact fixed point): any further iteration would be an
+exact no-op, so the final result is unchanged.
 
 **Double rendering elimination:** on the last iteration, dots are built
 and returned directly without re-rendering the complete image.
@@ -529,7 +539,9 @@ and returned directly without re-rendering the complete image.
 
 ### 7.4 Adaptive Quadtree (`Quadtree`)
 
-**Complexity:** O(W×H×log(max_depth)) amortized
+**Complexity:** O(W×H) to build the integral images + O(1) per node query —
+integer u64 **summed-area tables** (sums and sum-of-squares per RGB channel,
+same technique as the density map) replace the old O(area) per-node rescans.
 
 **Internal parameters:**
 ```
@@ -542,7 +554,8 @@ threshold = 800 × (1 − variance_sensitivity × 0.8)
 ```
 subdivide(cell [x,y,w,h]):
   if w < 2 or h < 2 → stop
-  calculate average_color and variance of cell
+  calculate average_color and variance of cell via the SATs
+  (exact integer expansion: Σ(p−a)² = Σp² − 2a·Σp + n·a²)
   if variance < threshold  OR  size ≤ min_cell:
       emit a point at center
       local_density = min(min(w,h) / img_min, 1.0)
@@ -599,6 +612,12 @@ only cells in the 3×3 neighborhood are examined (~4–8 seeds instead of k).
 
 **Effective complexity:** O(pixels × seeds_per_cell) ≈ O(W×H) per iteration.
 
+**`nearest_by` (K-means variant):** a generalized ring search that takes a
+distance closure over the seed indices, plus two scale factors that convert
+grid pixels into the distance's spatial units (e.g. normalized K-means
+coordinates). Ties resolve to the smallest seed index, matching
+`Iterator::min_by` semantics — bit-identical to the naive full scan.
+
 ---
 
 ## 9. Rendering (draw order)
@@ -616,7 +635,12 @@ order (largest to smallest) is done on a local copy of the slice.
 3. Draw from largest to smallest (painter's algorithm):
    - Large dots occupy the background (uniform zones).
    - Small detail dots overlap in the foreground.
-4. Each dot is drawn anti-aliased according to `params.dot_shape`
+4. **Parallel bands (rayon):** `render`/`render_rgba` split the canvas into
+   horizontal bands. Each band draws all dots in the global sort order but
+   clips pixels to its own rows, so the result is identical to the
+   sequential draw — determined via `draw_dot_clipped` + a per-band write
+   closure (`blend_rgb_band`/`blend_rgba_band`).
+5. Each dot is drawn anti-aliased according to `params.dot_shape`
    (custom implementation, not `imageproc`):
 
 **Anti-aliasing (`coverage_aa` + `blend_coverage`):** each dot is rasterized

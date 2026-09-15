@@ -2,7 +2,9 @@ use crate::filter::params::{Dot, FilterParams};
 use crate::filter::render::render;
 use crate::filter::sampling::{build_dots_from_seeds, importance_sample, make_rng_seed};
 use crate::filter::seedgrid::SeedGrid;
-use anyhow::{Result, anyhow};
+use anyhow::Result;
+
+use crate::filter::cancelled;
 use image::RgbImage;
 use rayon::prelude::*;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -40,7 +42,7 @@ where
     for iter in 0..iters {
         // ── Vérifier le cancel AVANT la lourde par_iter ─────────────────────
         if cancel.load(Ordering::Relaxed) {
-            return Err(anyhow!("cancelled"));
+            return Err(cancelled());
         }
 
         let grid = SeedGrid::new(&seeds, width, height);
@@ -122,7 +124,7 @@ pub(crate) fn compute_dots_voronoi(
 
     for _iter in 0..iters {
         if cancel.load(Ordering::Relaxed) {
-            return Err(anyhow!("cancelled"));
+            return Err(cancelled());
         }
         let grid = SeedGrid::new(&seeds, width, height);
         let (sum_x, sum_y, sum_w) = (0..height)
