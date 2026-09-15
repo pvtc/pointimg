@@ -7,6 +7,13 @@ et ce projet adhère au [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+### Corrigé
+
+- **Conflit d'ID egui** : en vue côte-à-côte (Source/Résultat), les deux
+  `ScrollArea` de la zone image partageaient le même salt par défaut et
+  recevaient le même ID persisté — egui affichait une erreur rouge. Chaque
+  panneau utilise désormais son label comme `id_salt`. (`src/gui/ui.rs`)
+
 ### Ajouté
 
 - **Profils colorimétriques ICC** : détection automatique des profils embarqués,
@@ -65,6 +72,27 @@ et ce projet adhère au [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
   (`src/filter/dither.rs`).
 - **Dossier d'exemples** `assets/examples/` avec `result.png`.
 - **Badges README** : MSRV 1.88 + exemples + docs des nouveaux flags (EN/FR).
+
+### Modifié
+
+- **Accélération K-means (~15× sur bench, résultat bit-à-bit identique)** :
+  recherche du centre le plus proche via `SeedGrid::nearest_by` (borne
+  inférieure sur la distance spatiale², départage des égalités par index
+  comme `min_by`), LUTs de normalisation précalculées, accumulation f64 en
+  chunks fixes déterministes (évite la dépendance au work-stealing), arrêt
+  précoce au point fixe exact. (`src/filter/algorithms/kmeans.rs`,
+  `src/filter/seedgrid.rs`)
+- **Accélération Quadtree** (`src/filter/algorithms/quadtree.rs`) :
+  tables intégrales u64 (sommes + sommes de carrés RGB) → requêtes de
+  somme/variance O(1) au lieu de re-parcourir les pixels du nœud.
+- **Rendu par bandes parallèles (rayon)** : `render`/`render_rgba` dessinent
+  les dots par bandes horizontales en préservant l'ordre global par rayon
+  — résultat pixel-identique, plusieurs fois plus rapide. (`src/filter/render.rs`)
+- **`apply()` sans previews gaspillées** : pour Kmeans/Voronoi, le chemin
+  non-progressif calcule les dots directement puis rend une seule fois au
+  lieu de jeter un rendu complet à chaque itération. (`src/filter/mod.rs`)
+- **Estimation mémoire** à jour pour les tables intégrales du quadtree
+  (6 u64/canal-pixel). (`src/filter/util.rs::estimate_memory_bytes`)
 
 ### Traitement par lot (`--input` glob/dossier, `--output` pattern)
 

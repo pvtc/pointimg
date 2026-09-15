@@ -126,6 +126,15 @@ impl FilterParams {
     }
 
     /// Sérialise les paramètres en une chaîne TOML, prête à écrire dans un fichier.
+    ///
+    /// ```
+    /// use pointimg::filter::{Algorithm, FilterParams};
+    ///
+    /// let params = FilterParams { algorithm: Algorithm::Quadtree, ..Default::default() };
+    /// let toml = params.to_toml_string().unwrap();
+    /// let back = FilterParams::from_toml_str(&toml).unwrap();
+    /// assert_eq!(back.algorithm, Algorithm::Quadtree);
+    /// ```
     pub fn to_toml_string(&self) -> Result<String> {
         // Presets are also created without an input image. Validate all
         // parameter-level constraints using a minimal valid image size.

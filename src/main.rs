@@ -5,6 +5,7 @@ use image::{
 };
 use log::LevelFilter;
 use pointimg::filter::{self, Algorithm, DotShape, FilterParams, HalftoneMode, Screening};
+use rayon::prelude::*;
 use std::path::PathBuf;
 use std::sync::atomic::AtomicBool;
 
@@ -152,6 +153,11 @@ struct Args {
     /// Sauvegarder les FilterParams actuels dans un fichier TOML.
     #[arg(long, value_name = "FILE")]
     save_preset: Option<PathBuf>,
+
+    /// Nombre de fichiers traités en parallèle en mode batch (0 = tous les CPUs).
+    /// 1 = séquentiel (défaut, conserve la progression par itération).
+    #[arg(long, default_value_t = 1, value_name = "N")]
+    jobs: usize,
 }
 
 /// Parse `--halftone` : `off`, `cmyk`, ou `dominant-N` (ex `dominant-6`).
@@ -359,23 +365,74 @@ fn main() -> Result<()> {
 
     let total = inputs.len();
     let default_output = args.output == "output.png";
-    let mut failures = 0usize;
-    for (i, input_path) in inputs.iter().enumerate() {
-        let out = resolve_output_path(&args.output, input_path, i, total, default_output, args.svg);
-        if total > 1 {
-            println!("[{}/{}] {}", i + 1, total, input_path.display());
-        }
-        if let Err(e) = process_one(input_path, &out, &params, &args, preview_size) {
-            log::error!("échec '{}': {}", input_path.display(), e);
-            failures += 1;
-            // Continue le batch : on ne stoppe pas toute la file pour un fichier défectueux.
-        }
+    let parallel = args.jobs != 1 && total > 1;
+    if parallel {
+        log::info!(
+            "batch parallèle : {} worker(s)",
+            if args.jobs == 0 {
+                num_cpus_hint()
+            } else {
+                args.jobs
+            }
+        );
     }
+    let failures = if parallel {
+        // En parallèle, la progression par itération serait entremêlée sur
+        // stderr : on la coupe et on laisse chaque fichier rendre sa ligne de
+        // résultat atomiquement.
+        let pool = rayon::ThreadPoolBuilder::new()
+            .num_threads(args.jobs.max(1))
+            .build()
+            .context("impossible de créer le pool de threads du batch")?;
+        pool.install(|| {
+            inputs
+                .par_iter()
+                .enumerate()
+                .map(|(i, input_path)| {
+                    let out = resolve_output_path(
+                        &args.output,
+                        input_path,
+                        i,
+                        total,
+                        default_output,
+                        args.svg,
+                    );
+                    match process_one(input_path, &out, &params, &args, preview_size, false) {
+                        Ok(()) => 0usize,
+                        Err(e) => {
+                            log::error!("échec '{}': {}", input_path.display(), e);
+                            1
+                        }
+                    }
+                })
+                .sum::<usize>()
+        })
+    } else {
+        let mut failures = 0usize;
+        for (i, input_path) in inputs.iter().enumerate() {
+            let out =
+                resolve_output_path(&args.output, input_path, i, total, default_output, args.svg);
+            if total > 1 {
+                println!("[{}/{}] {}", i + 1, total, input_path.display());
+            }
+            if let Err(e) = process_one(input_path, &out, &params, &args, preview_size, true) {
+                log::error!("échec '{}': {}", input_path.display(), e);
+                failures += 1;
+                // Continue le batch : on ne stoppe pas toute la file pour un fichier défectueux.
+            }
+        }
+        failures
+    };
 
     if failures > 0 {
         anyhow::bail!("{} fichier(s) n'ont pas pu être traité(s)", failures);
     }
     Ok(())
+}
+
+/// Nombre de CPUs disponibles (via le pool global rayon, qui lit `available_parallelism`).
+fn num_cpus_hint() -> usize {
+    rayon::current_num_threads()
 }
 
 /// Parse `"WxH"` (case-insensitive) en `(u32, u32)`. Ex : `"200x150"` → `(200, 150)`.
@@ -421,7 +478,7 @@ fn downscale_for_preview(src: &image::DynamicImage, max_w: u32, max_h: u32) -> i
 
 /// Énumère les fichiers d'entrée depuis :
 /// - un glob (`*`, `?`, `[` présent) via `glob::glob` ;
-/// - un dossier (liste les fichiers图像) ;
+/// - un dossier (liste les fichiers image) ;
 /// - sinon un chemin unique (renvoyé tel quel même s'il n'existe pas — l'erreur viendra à l'open).
 fn expand_inputs(input: &str) -> Result<Vec<PathBuf>> {
     let has_glob_chars = input.contains('*') || input.contains('?') || input.contains('[');
@@ -526,12 +583,15 @@ fn resolve_output_path(
 }
 
 /// Traite un fichier d'entrée unique : ouvre, pipeline (RGB/RGBA/SVG), sauvegarde.
+/// `iter_progress` contrôle l'affichage de la progression par itération (coupé
+/// en mode batch parallèle pour éviter un stdout/stderr entremêlé).
 fn process_one(
     input: &std::path::Path,
     output: &std::path::Path,
     params: &FilterParams,
     args: &Args,
     preview_size: Option<(u32, u32)>,
+    iter_progress: bool,
 ) -> Result<()> {
     let dimensions = ImageReader::open(input)
         .with_context(|| format!("Impossible de lire les dimensions de '{}'", input.display()))?
@@ -569,8 +629,9 @@ fn process_one(
     );
     let never_cancel = AtomicBool::new(false);
 
-    let show_progress =
-        matches!(params.algorithm, Algorithm::Voronoi | Algorithm::Kmeans) && params.iterations > 1;
+    let show_progress = iter_progress
+        && matches!(params.algorithm, Algorithm::Voronoi | Algorithm::Kmeans)
+        && params.iterations > 1;
 
     if args.svg {
         let (_, dots) =

@@ -32,9 +32,9 @@ A pointillist filter that transforms images into compositions of colored dots of
 
 ## Examples
 
-| Source       | Result (Voronoi, 1200 points)                                                                                |
-| ------------ | ------------------------------------------------------------------------------------------------------------ |
-| sample photo | [`assets/examples/pexels-kofishelbyfotos-38152015.jpg`](assets/examples/pexels-kofishelbyfotos-38152015.jpg) |
+| Source                                                                                       | Result (Voronoi, 1200 points)                  |
+| -------------------------------------------------------------------------------------------- | ---------------------------------------------- |
+| [`pexels-kofishelbyfotos-38152015.jpg`](assets/examples/pexels-kofishelbyfotos-38152015.jpg) | ![Voronoi result](assets/examples/result.png)  |
 
 Sample test images: [`kilauea25_0.jpeg`](assets/examples/kilauea25_0.jpeg),
 [`pexels-kofishelbyfotos-38152015.jpg`](assets/examples/pexels-kofishelbyfotos-38152015.jpg),

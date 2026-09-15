@@ -25,6 +25,58 @@ struct Params {
     sensitivity: f32,
 }
 
+/// Retourne `true` si un adaptateur GPU est disponible et utilisable pour le
+/// chemin compute de la density map. Les tests de parité CPU/GPU s'appuient
+/// dessus pour se désactiver proprement sans GPU.
+pub fn gpu_available() -> bool {
+    let instance = wgpu::Instance::new(&wgpu::InstanceDescriptor::default());
+    request_adapter_on(&instance).is_some()
+}
+
+/// `block_on` wgpu : l'instance doit être « pumpée » en arrière-plan, sinon
+/// `request_adapter`/`request_device` ne complètent jamais leur future.
+fn block_on_pumped<F: std::future::Future>(instance: &wgpu::Instance, fut: F) -> F::Output {
+    use std::sync::Arc;
+    use std::sync::atomic::{AtomicBool, Ordering};
+    let instance = Arc::new(instance.clone());
+    let stop = Arc::new(AtomicBool::new(false));
+    let pump = {
+        let instance = Arc::clone(&instance);
+        let stop = Arc::clone(&stop);
+        std::thread::spawn(move || {
+            while !stop.load(Ordering::Relaxed) {
+                instance.poll_all(false);
+                std::thread::sleep(std::time::Duration::from_millis(5));
+            }
+        })
+    };
+    let result = pollster::block_on(fut);
+    stop.store(true, Ordering::Relaxed);
+    let _ = pump.join();
+    instance.poll_all(true);
+    result
+}
+
+fn request_adapter_on(instance: &wgpu::Instance) -> Option<wgpu::Adapter> {
+    block_on_pumped(
+        instance,
+        instance.request_adapter(&wgpu::RequestAdapterOptions {
+            power_preference: wgpu::PowerPreference::HighPerformance,
+            compatible_surface: None,
+            force_fallback_adapter: false,
+        }),
+    )
+}
+
+/// Chemin GPU sans la condition d'opt-in : toujours calcule (retourne `None`
+/// seulement si le device/la lecture échoue). Utilisé par les tests de parité
+/// CPU/GPU ; le pipeline, lui, passe par `compute_density_map` (opt-in).
+pub fn compute_density_map_raw(src: &RgbImage, sensitivity: f32) -> Option<Vec<f32>> {
+    let _gpu_guard = GPU_LOCK.lock().ok()?;
+    let raw = compute_raw_variance(src)?;
+    Some(super::density::normalize_variance(&raw, sensitivity))
+}
+
 /// Computes the raw local variance values on the GPU and normalizes them using
 /// the same curve as the CPU implementation.
 pub(crate) fn compute_density_map(src: &RgbImage, sensitivity: f32) -> Option<Vec<f32>> {
@@ -38,15 +90,7 @@ pub(crate) fn compute_density_map(src: &RgbImage, sensitivity: f32) -> Option<Ve
         let max = raw.iter().copied().fold(f32::NEG_INFINITY, f32::max);
         eprintln!("gpu density raw min={min} max={max} len={}", raw.len());
     }
-    let max_var = raw.iter().copied().fold(0.0_f32, f32::max).max(1e-6);
-    Some(
-        raw.into_iter()
-            .map(|v| {
-                let norm = (v / max_var).sqrt();
-                1.0 - sensitivity * (1.0 - norm)
-            })
-            .collect(),
-    )
+    Some(super::density::normalize_variance(&raw, sensitivity))
 }
 
 fn compute_raw_variance(src: &RgbImage) -> Option<Vec<f32>> {
@@ -56,14 +100,13 @@ fn compute_raw_variance(src: &RgbImage) -> Option<Vec<f32>> {
     }
 
     let instance = wgpu::Instance::new(&wgpu::InstanceDescriptor::default());
-    let adapter = pollster::block_on(instance.request_adapter(&wgpu::RequestAdapterOptions {
-        power_preference: wgpu::PowerPreference::HighPerformance,
-        compatible_surface: None,
-        force_fallback_adapter: false,
-    }))?;
-    let (device, queue) =
-        pollster::block_on(adapter.request_device(&wgpu::DeviceDescriptor::default(), None))
-            .ok()?;
+    let adapter = request_adapter_on(&instance)?;
+    let device_result: Result<(wgpu::Device, wgpu::Queue), wgpu::RequestDeviceError> =
+        block_on_pumped(
+            &instance,
+            adapter.request_device(&wgpu::DeviceDescriptor::default(), None),
+        );
+    let (device, queue) = device_result.ok()?;
 
     let packed: Vec<u32> = src
         .pixels()
@@ -191,8 +234,20 @@ fn compute_raw_variance(src: &RgbImage) -> Option<Vec<f32>> {
         .map_async(wgpu::MapMode::Read, move |result| {
             let _ = sender.send(result);
         });
+    // `poll_all(true)` ne garantit pas que le callback de map_async ait été
+    // émis à ce stade : bouger jusqu'à réception, sinon `recv()` bloque à vie.
+    let map_result = loop {
+        instance.poll_all(false);
+        match receiver.try_recv() {
+            Ok(r) => break Some(r),
+            Err(mpsc::TryRecvError::Disconnected) => break None,
+            Err(mpsc::TryRecvError::Empty) => {
+                std::thread::sleep(std::time::Duration::from_millis(2))
+            }
+        }
+    };
+    map_result.and_then(|r| r.ok())?;
     instance.poll_all(true);
-    receiver.recv().ok()?.ok()?;
     let view = staging.slice(..).get_mapped_range();
     let result = bytemuck::cast_slice::<u8, f32>(&view).to_vec();
     drop(view);

@@ -36,7 +36,25 @@ pub fn compute_density_map(src: &RgbImage, sensitivity: f32) -> Vec<f32> {
     if let Some(density) = crate::filter::gpu::compute_density_map(src, sensitivity) {
         return density;
     }
+    compute_density_map_cpu(src, sensitivity)
+}
 
+/// Normalise une variance locale brute en density map (courbe partagée
+/// entre les chemins CPU et GPU pour garantir leur parité).
+pub(crate) fn normalize_variance(raw: &[f32], sensitivity: f32) -> Vec<f32> {
+    // Keep a small floor to preserve contrast on nearly uniform images.
+    let max_var = raw.iter().cloned().fold(0.0f32, f32::max).max(1e-6);
+    raw.iter()
+        .map(|&v| {
+            let norm = (v / max_var).sqrt();
+            // sensitivity=0 -> 1.0 partout ; sensitivity=1 -> norm pur
+            1.0 - sensitivity * (1.0 - norm)
+        })
+        .collect()
+}
+
+/// Chemin CPU historique (Summed-Area Tables), toujours disponible.
+pub fn compute_density_map_cpu(src: &RgbImage, sensitivity: f32) -> Vec<f32> {
     let (width, height) = src.dimensions();
     let radius: usize = 4;
     let w = width as usize;
@@ -93,16 +111,7 @@ pub fn compute_density_map(src: &RgbImage, sensitivity: f32) -> Vec<f32> {
         })
         .collect();
 
-    // Keep a small floor to preserve contrast on nearly uniform images.
-    let max_var = raw.iter().cloned().fold(0.0f32, f32::max).max(1e-6);
-
-    raw.iter()
-        .map(|&v| {
-            let norm = (v / max_var).sqrt();
-            // sensitivity=0 -> 1.0 partout ; sensitivity=1 -> norm pur
-            1.0 - sensitivity * (1.0 - norm)
-        })
-        .collect()
+    normalize_variance(&raw, sensitivity)
 }
 
 /// Retourne la density map normalisée comme image en niveaux de gris.

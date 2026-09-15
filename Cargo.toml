@@ -71,6 +71,10 @@ criterion = "0.5"
 name = "filter"
 harness = false
 
+[[test]]
+name = "gpu_density"
+required-features = ["gpu"]
+
 # ─── Profils ──────────────────────────────────────────────────────────────────
 
 [profile.dev]

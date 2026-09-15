@@ -34,9 +34,9 @@ Filtre pointilliste qui transforme une image en une composition de points color�
 
 ## Exemples
 
-| Source        | Résultat (Voronoi, 1200 points)                                                                              |
-| ------------- | ------------------------------------------------------------------------------------------------------------ |
-| photo exemple | [`assets/examples/pexels-kofishelbyfotos-38152015.jpg`](assets/examples/pexels-kofishelbyfotos-38152015.jpg) |
+| Source                                                                                       | Résultat (Voronoi, 1200 points)                |
+| -------------------------------------------------------------------------------------------- | ---------------------------------------------- |
+| [`pexels-kofishelbyfotos-38152015.jpg`](assets/examples/pexels-kofishelbyfotos-38152015.jpg) | ![Résultat Voronoi](assets/examples/result.png) |
 
 Images de test : [`kilauea25_0.jpeg`](assets/examples/kilauea25_0.jpeg),
 [`pexels-kofishelbyfotos-38152015.jpg`](assets/examples/pexels-kofishelbyfotos-38152015.jpg),
