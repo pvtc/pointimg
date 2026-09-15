@@ -29,7 +29,7 @@ struct Params {
 /// chemin compute de la density map. Les tests de parité CPU/GPU s'appuient
 /// dessus pour se désactiver proprement sans GPU.
 pub fn gpu_available() -> bool {
-    let instance = wgpu::Instance::new(&wgpu::InstanceDescriptor::default());
+    let instance = wgpu::Instance::new(wgpu::InstanceDescriptor::new_without_display_handle());
     request_adapter_on(&instance).is_some()
 }
 
@@ -64,8 +64,10 @@ fn request_adapter_on(instance: &wgpu::Instance) -> Option<wgpu::Adapter> {
             power_preference: wgpu::PowerPreference::HighPerformance,
             compatible_surface: None,
             force_fallback_adapter: false,
+            apply_limit_buckets: false,
         }),
     )
+    .ok()
 }
 
 /// Chemin GPU sans la condition d'opt-in : toujours calcule (retourne `None`
@@ -99,12 +101,12 @@ fn compute_raw_variance(src: &RgbImage) -> Option<Vec<f32>> {
         return Some(Vec::new());
     }
 
-    let instance = wgpu::Instance::new(&wgpu::InstanceDescriptor::default());
+    let instance = wgpu::Instance::new(wgpu::InstanceDescriptor::new_without_display_handle());
     let adapter = request_adapter_on(&instance)?;
     let device_result: Result<(wgpu::Device, wgpu::Queue), wgpu::RequestDeviceError> =
         block_on_pumped(
             &instance,
-            adapter.request_device(&wgpu::DeviceDescriptor::default(), None),
+            adapter.request_device(&wgpu::DeviceDescriptor::default()),
         );
     let (device, queue) = device_result.ok()?;
 
@@ -202,8 +204,8 @@ fn compute_raw_variance(src: &RgbImage) -> Option<Vec<f32>> {
     });
     let pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
         label: Some("pointimg density pipeline layout"),
-        bind_group_layouts: &[&bind_group_layout],
-        push_constant_ranges: &[],
+        bind_group_layouts: &[Some(&bind_group_layout)],
+        immediate_size: 0,
     });
     let pipeline = device.create_compute_pipeline(&wgpu::ComputePipelineDescriptor {
         label: Some("pointimg density pipeline"),
@@ -248,7 +250,7 @@ fn compute_raw_variance(src: &RgbImage) -> Option<Vec<f32>> {
     };
     map_result.and_then(|r| r.ok())?;
     instance.poll_all(true);
-    let view = staging.slice(..).get_mapped_range();
+    let view = staging.slice(..).get_mapped_range().ok()?;
     let result = bytemuck::cast_slice::<u8, f32>(&view).to_vec();
     drop(view);
     staging.unmap();

@@ -2,9 +2,10 @@
 //!
 //! Lance avec : `cargo bench` (compile puis exécute criterion).
 
-use criterion::{Criterion, black_box, criterion_group, criterion_main};
+use criterion::{Criterion, criterion_group, criterion_main};
 use image::RgbImage;
 use pointimg::filter::{self, Algorithm, FilterParams};
+use std::hint::black_box;
 use std::sync::atomic::AtomicBool;
 
 /// Image de test 400×400 : damier multi-couleurs + dégradé pour avoir

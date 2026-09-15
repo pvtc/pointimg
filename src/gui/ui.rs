@@ -12,11 +12,13 @@ use super::{App, ViewMode};
 use pointimg::filter;
 
 impl eframe::App for App {
-    fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
+    fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
+        let ctx = ui.ctx().clone();
+
         self.poll_worker_results();
-        self.handle_shortcuts(ctx);
-        self.handle_drag_and_drop(ctx);
-        self.handle_cancel_and_debounce(ctx);
+        self.handle_shortcuts(&ctx);
+        self.handle_drag_and_drop(&ctx);
+        self.handle_cancel_and_debounce(&ctx);
 
         let computing = self.computing.load(Ordering::Relaxed);
         if !computing {
@@ -45,8 +47,8 @@ impl eframe::App for App {
             self.status = err;
         }
 
-        self.show_control_panel(ctx, computing);
-        self.show_central_panel(ctx, computing);
+        self.show_control_panel(ui, &ctx, computing);
+        self.show_central_panel(ui, &ctx, computing);
     }
 }
 
@@ -126,7 +128,7 @@ impl App {
     fn handle_drag_and_drop(&mut self, ctx: &egui::Context) {
         let dropped_path = ctx.input(|i| {
             if !i.raw.dropped_files.is_empty() {
-                i.raw.dropped_files[0].path.clone()
+                Some(i.raw.dropped_files[0].path().to_path_buf())
             } else {
                 None
             }
@@ -155,11 +157,11 @@ impl App {
 
     // ─── Panneau de contrôle ──────────────────────────────────────────────────
 
-    fn show_control_panel(&mut self, ctx: &egui::Context, computing: bool) {
-        egui::SidePanel::left("controls")
+    fn show_control_panel(&mut self, ui: &mut egui::Ui, ctx: &egui::Context, computing: bool) {
+        egui::Panel::left("controls")
             .resizable(true)
-            .min_width(290.0)
-            .show(ctx, |ui| {
+            .min_size(290.0)
+            .show(ui, |ui| {
                 egui::ScrollArea::vertical().show(ui, |ui| {
                     ui.heading("pointimg");
                     ui.separator();
@@ -724,8 +726,8 @@ impl App {
 
     // ─── Zone centrale ────────────────────────────────────────────────────────
 
-    fn show_central_panel(&mut self, ctx: &egui::Context, computing: bool) {
-        egui::CentralPanel::default().show(ctx, |ui| {
+    fn show_central_panel(&mut self, ui: &mut egui::Ui, ctx: &egui::Context, computing: bool) {
+        egui::CentralPanel::default().show(ui, |ui| {
             let available = ui.available_size();
 
             // Lazy build textures
