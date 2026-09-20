@@ -27,27 +27,52 @@ et la variance locale.
 
 ```
 pointimg/
-├── Cargo.toml          — dépendances, deux binaires + une lib
+├── Cargo.toml          — dépendances, trois binaires + une lib
 ├── src/
-│   ├── lib.rs          — racine de la crate lib ; expose `filter` et `color`
-│   ├── color.rs        — lecture ICC et conversion vers l'espace de travail sRGB
+│   ├── lib.rs          — racine de la crate lib ; expose `filter`, `color`, `frontend`
+│   ├── color.rs        — lecture ICC (embarqué/`--input-profile`) et encodage
+│   │                     avec profil de sortie (moxcms)
+│   ├── frontend.rs     — helpers partagés par les frontends egui et GTK4
+│   │                     (formatage, chemins de sortie, écritures atomiques, presets)
 │   ├── filter/         — logique séparée : algorithmes, rendu, helpers
+│   │   ├── mod.rs      — API publique, ré-exports, tests unitaires
+│   │   ├── params.rs   — Algorithm, DotShape, FilterParams, validation, presets
+│   │   ├── density.rs  — carte de densité (tables intégrales)
+│   │   ├── render.rs   — rendu RGB/RGBA, anti-aliasing, quantization, halftone
+│   │   ├── dither.rs   — Floyd-Steinberg
+│   │   ├── halftone.rs — HalftoneMode (Cmyk/Dominant), Screening (Am/Fm)
+│   │   ├── gamma.rs    — LUTs sRGB ⇄ linéaire
+│   │   ├── svg.rs      — export SVG
+│   │   ├── seedgrid.rs / sampling.rs / util.rs — accélération et helpers
+│   │   ├── gpu.rs      — passe de densité WGSL optionnelle (feature `gpu`)
+│   │   └── algorithms/ — grid, kmeans, voronoi, quadtree
 │   ├── main.rs         — binaire CLI (`pointimg`)
-│   └── gui/
-│       └── main.rs     — binaire GUI (`pointimg-gui`)
+│   ├── gui/            — interface egui/wgpu (`pointimg-gui`, feature `gui`)
+│   └── gtk/            — interface GTK4/libadwaita (`pointimg-gtk`, feature `gtk`)
+├── tests/              — tests d'intégration (pipeline, svg, palette, halftone,
+│                         reproductibilité, parité GPU)
+├── benches/filter.rs   — benchmarks criterion
+├── fuzz/               — cibles cargo-fuzz (image, preset) + corpus versionné
 └── assets/             — images de test et sorties
 ```
 
-| Crate           | Rôle                                                             |
-| --------------- | ---------------------------------------------------------------- |
-| `image 0.25`    | Chargement / sauvegarde / manipulation de `RgbImage`             |
-| `moxcms 0.8`    | Transformations ICC pur Rust vers l'espace de travail sRGB     |
-| `clap 4`        | Parsing des arguments CLI                                        |
-| `rayon 1`       | Itération parallèle (carte de densité)                           |
-| `eframe 0.31`   | Framework egui (backend wgpu) — *feature-gated* `gui`            |
-| `egui 0.31`     | Widgets GUI en mode immédiat — *feature-gated* `gui`             |
-| `wgpu 24`       | Backend GPU (Vulkan + GL en fallback) — *feature-gated* `gui`    |
-| `rfd 0.15`      | Boîtes de dialogue fichier natives — *feature-gated* `gui`       |
+| Crate             | Rôle                                                             |
+| ----------------- | ---------------------------------------------------------------- |
+| `image 0.25`      | Chargement / sauvegarde / manipulation de `RgbImage`             |
+| `moxcms 0.9`      | Transformations ICC pur Rust vers l'espace de travail sRGB       |
+| `clap 4`          | Parsing des arguments CLI                                        |
+| `rayon 1`         | Itération parallèle (carte de densité)                           |
+| `log` / `env_logger` | Journalisation (`-v`/`-vv`/`-q`, `RUST_LOG`)                  |
+| `eframe 0.36`     | Framework egui (backend wgpu) — *feature-gated* `gui`            |
+| `egui 0.36`       | Widgets GUI en mode immédiat — *feature-gated* `gui`             |
+| `wgpu 30`         | Backend GPU (Vulkan + GL en fallback) — *feature-gated* `gui`/`gpu` |
+| `rfd 0.17`        | Boîtes de dialogue fichier natives — *feature-gated* `gui`       |
+| `gtk4 0.11`       | Bindings GTK4 — *feature-gated* `gtk`                            |
+| `libadwaita 0.9`  | Widgets libadwaita — *feature-gated* `gtk`                       |
+| `async-channel 2` | Messagerie worker → UI (GTK) — *feature-gated* `gtk`             |
+| `serde 1` / `toml 1` | Presets TOML (`--preset` / `--save-preset`)                   |
+| `glob 0.3`        | Expansion glob pour le batch `--input` (`*`, `?`, `[`)           |
+| `criterion 0.8`   | Benchmarks — *dev-dependency*                                    |
 
 > **Feature-gating :** les dépendances GUI sont derrière la feature `gui`
 > (activée par défaut). Compiler en CLI-only : `cargo build --no-default-features`.
@@ -647,40 +672,60 @@ pub fn render_svg_dynamic(src: &DynamicImage, params: &FilterParams) -> Result<S
 ### Disponibles immédiatement
 
 ```bash
-# Vérification de types sans compiler
-cargo check
+# Vérification de types sans compiler (gtk exclu : exige GTK4/libadwaita)
+cargo check --features gui,gpu,avif
+cargo check --no-default-features          # CLI seul
 
 # Formatage automatique du code
 cargo fmt
 
 # Linter Rust officiel
-cargo clippy -- -D warnings
+cargo clippy --features gui,gpu,avif --all-targets -- -D warnings
+cargo clippy --no-default-features --all-targets -- -D warnings
 
-# Tests unitaires (26 tests dans filter.rs)
+# Tests unitaires (src/filter/* + src/main.rs + src/color.rs)
 cargo test --lib
 
+# Tests d'intégration (tests/*.rs)
+cargo test --features gui,gpu,avif
+cargo test --no-default-features            # build CLI seul
+
+# Benchmarks (criterion)
+cargo bench
+
 # Générer la documentation Rust
-cargo doc --open
+cargo doc --no-deps --features gui,gpu,avif
 ```
 
 ### Installés
 
 ```bash
-# Clippy 1.92.0 (depuis rc-buggy)
-sudo apt-get install -t rc-buggy rust-clippy=1.92.0+dfsg1-1~exp1
-
 # cargo-audit — détection de vulnérabilités dans les dépendances
-sudo apt install cargo-audit
+cargo install cargo-audit
 cargo audit
-# Note : cargo audit peut échouer si advisory-db contient des entrées CVSS 4.0
-# (bug upstream RUSTSEC-2026-0026) — non bloquant
+# Note : la cible optionnelle `avif` tire `paste` (RUSTSEC-2024-0436, alerte de
+# maintenance) documentée dans audit.toml — non bloquant.
 ```
 
-### CI suggérée (GitHub Actions)
+### CI (GitHub Actions)
 
-```yaml
-- run: cargo fmt --check
-- run: cargo clippy -- -D warnings
-- run: cargo test --lib
-- run: cargo build --release
-```
+Le pipeline complet vit dans `.github/workflows/ci.yml` et tourne à chaque
+push/PR sur `main` :
+
+- **fmt** — `cargo fmt --check`
+- **clippy** — matrice `ubuntu/macos/windows`,
+  `cargo clippy --features gui,gpu,avif --all-targets -- -D warnings` +
+  `--no-default-features --all-targets` (couverture CLI seule)
+- **test** — matrice `ubuntu/macos/windows`,
+  `cargo test --features gui,gpu,avif --locked` + `--no-default-features --locked`
+- **gpu** — adaptateur logiciel lavapipe, parité CPU/GPU de la densité
+- **msrv** — `cargo +1.95 check --features gui,gpu,avif --locked` (et `stable`)
+- **build** — `cargo build --release --features gui,gpu,avif`
+- **gtk** — Linux uniquement, installe `libgtk-4-dev`/`libadwaita-1-dev`,
+  clippy + build release de `pointimg-gtk`
+- **docs** — `cargo doc --no-deps --features gui,gpu,avif` avec `--cfg docsrs`
+- **audit** — `cargo audit` (+ workflow planifié)
+- **fuzz-build** — smoke tests nightly `cargo fuzz` (100 runs par cible)
+
+`gtk` est volontairement exclu de `--all-features` partout : GTK4 et
+libadwaita ne sont pas disponibles sur tous les runners ni sur docs.rs.

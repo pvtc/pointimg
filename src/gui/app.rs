@@ -10,10 +10,11 @@ use super::App;
 use super::format::describe_parameter_change;
 use super::io;
 use pointimg::filter::{self, FilterParams};
+use pointimg::frontend;
 
 // ─── Types partagés ───────────────────────────────────────────────────────────
 
-#[derive(PartialEq, Clone, Copy)]
+#[derive(PartialEq, Clone, Copy, Debug)]
 pub(crate) enum ViewMode {
     Side,       // source | résultat côte à côte
     ResultOnly, // résultat seul
@@ -213,10 +214,7 @@ impl App {
     }
 
     pub(crate) fn load_preset(&mut self, path: PathBuf, ctx: &egui::Context) {
-        let result = std::fs::read_to_string(&path)
-            .map_err(|e| e.to_string())
-            .and_then(|contents| FilterParams::from_toml_str(&contents).map_err(|e| e.to_string()));
-        match result {
+        match frontend::load_preset(&path) {
             Ok(params) => {
                 self.params = params;
                 self.refresh_src_rgb(ctx);
@@ -228,19 +226,12 @@ impl App {
     }
 
     pub(crate) fn save_preset(&mut self, path: PathBuf) {
-        let path = io::ensure_extension(path, "toml");
+        let path = frontend::ensure_toml_extension(path);
         if !io::confirm_overwrite(&path) {
             self.status = "Sauvegarde annulée.".to_string();
             return;
         }
-        let result = self
-            .params
-            .to_toml_string()
-            .map_err(|e| e.to_string())
-            .and_then(|contents| {
-                io::atomic_text_write(&path, &contents).map_err(|e| e.to_string())
-            });
-        match result {
+        match frontend::save_preset(&path, &self.params) {
             Ok(()) => self.status = format!("Preset sauvegardé : {}", path.display()),
             Err(e) => self.status = format!("Erreur sauvegarde preset : {e}"),
         }

@@ -33,7 +33,7 @@ jobs:
           sudo apt-get install -y gcc-aarch64-linux-gnu
       
       - name: Build CLI
-        run: cargo build --release --no-default-features --bin pointimg --target ${{ matrix.target }}
+        run: cargo build --release --locked --no-default-features --bin pointimg --target ${{ matrix.target }}
         env:
           CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER: aarch64-linux-gnu-gcc
       
@@ -66,7 +66,7 @@ jobs:
           targets: ${{ matrix.target }}
       
       - name: Build CLI
-        run: cargo build --release --no-default-features --bin pointimg --target ${{ matrix.target }}
+        run: cargo build --release --locked --no-default-features --bin pointimg --target ${{ matrix.target }}
       
       - name: Package
         run: |
@@ -90,7 +90,7 @@ jobs:
         uses: dtolnay/rust-toolchain@stable
       
       - name: Build CLI
-        run: cargo build --release --no-default-features --bin pointimg
+        run: cargo build --release --locked --no-default-features --bin pointimg
       
       - name: Package
         run: |
@@ -110,16 +110,19 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       
+      # `pointimg-gui` est la GUI egui/eframe+wgpu : elle ne dépend pas de GTK
+      # (rfd 0.17 utilise le portail XDG sur Linux). Le front GTK4 est un
+      # binaire séparé, construit par le job `build-gtk-linux`.
       - name: Install dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y libgtk-3-dev libxcb-render0-dev libxcb-shape0-dev libxcb-xfixes0-dev libspeechd-dev libxkbcommon-dev libssl-dev
-      
+          sudo apt-get install -y libxcb-render0-dev libxcb-shape0-dev libxcb-xfixes0-dev libxkbcommon-dev libssl-dev
+
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
       
       - name: Build GUI
-        run: cargo build --release --bin pointimg-gui
+        run: cargo build --release --locked --bin pointimg-gui
       
       - name: Package
         run: |
@@ -145,10 +148,10 @@ jobs:
           targets: x86_64-apple-darwin,aarch64-apple-darwin
       
       - name: Build GUI (x86_64)
-        run: cargo build --release --bin pointimg-gui --target x86_64-apple-darwin
+        run: cargo build --release --locked --bin pointimg-gui --target x86_64-apple-darwin
       
       - name: Build GUI (aarch64)
-        run: cargo build --release --bin pointimg-gui --target aarch64-apple-darwin
+        run: cargo build --release --locked --bin pointimg-gui --target aarch64-apple-darwin
       
       - name: Create Universal Binary
         run: |
@@ -180,7 +183,7 @@ jobs:
         uses: dtolnay/rust-toolchain@stable
       
       - name: Build GUI
-        run: cargo build --release --bin pointimg-gui
+        run: cargo build --release --locked --bin pointimg-gui
       
       - name: Package
         run: |
@@ -193,6 +196,35 @@ jobs:
         with:
           name: pointimg-gui-windows-x86_64
           path: pointimg-gui-windows-x86_64.zip
+
+  build-gtk-linux:
+    name: Build GTK4 GUI - Linux x86_64
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install GTK4 and libadwaita
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libgtk-4-dev libadwaita-1-dev
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Build GTK4 GUI
+        run: cargo build --release --locked --no-default-features --features gtk --bin pointimg-gtk
+
+      - name: Package
+        run: |
+          cd target/release
+          tar czf ../../pointimg-gtk-linux-x86_64.tar.gz pointimg-gtk
+          cd ../..
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: pointimg-gtk-linux-x86_64
+          path: pointimg-gtk-linux-x86_64.tar.gz
 
   # ─────────────────────────────────────────────────────────────────────────────
   # Create GitHub Release
@@ -207,6 +239,7 @@ jobs:
       - build-gui-linux
       - build-gui-macos
       - build-gui-windows
+      - build-gtk-linux
     runs-on: ubuntu-latest
     if: startsWith(github.ref, 'refs/tags/v')
     steps:
@@ -223,7 +256,7 @@ jobs:
           sha256sum -c SHA256SUMS
       
       - name: Create Release
-        uses: softprops/action-gh-release@v1
+        uses: softprops/action-gh-release@v2
         with:
           files: |
             artifacts/**/*

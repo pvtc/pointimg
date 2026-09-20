@@ -85,9 +85,11 @@ impl App {
             let (w, h) = src.dimensions();
             let density = filter::compute_density_map(&src, sensitivity);
             if density_generation.load(Ordering::Acquire) == generation {
-                *data.lock().unwrap_or_else(|e| e.into_inner()) = Some(Arc::new(density.clone()));
-                *result.lock().unwrap_or_else(|e| e.into_inner()) =
-                    Some(filter::density_to_image(&density, w, h));
+                // Construire l'image avant de déplacer `density` dans l'`Arc` :
+                // évite un clone complet de la density map (jusqu'à ~33 Mo).
+                let image = filter::density_to_image(&density, w, h);
+                *data.lock().unwrap_or_else(|e| e.into_inner()) = Some(Arc::new(density));
+                *result.lock().unwrap_or_else(|e| e.into_inner()) = Some(image);
                 ctx.request_repaint();
             }
         });

@@ -61,12 +61,19 @@ cargo build --release
 Les binaires sont dans `target/release/` :
 
 - `pointimg` -- outil CLI
-- `pointimg-gui` -- application GUI (nécessite Vulkan ou OpenGL)
+- `pointimg-gui` -- application GUI egui/wgpu (nécessite Vulkan ou OpenGL)
+- `pointimg-gtk` -- application GUI GTK4/libadwaita (feature optionnelle `gtk`)
 
 Pour compiler uniquement le CLI (sans les dépendances GUI) :
 
 ```bash
 cargo build --release --no-default-features
+```
+
+Pour compiler la GUI GTK4 (nécessite GTK 4.10+ et libadwaita 1.4+) :
+
+```bash
+cargo build --release --no-default-features --features gtk --bin pointimg-gtk
 ```
 
 ## Utilisation CLI
@@ -151,6 +158,8 @@ de ne pas appliquer des valeurs par défaut potentiellement différentes.
 
 ## Utilisation GUI
 
+### egui (par défaut)
+
 ```bash
 pointimg-gui
 ```
@@ -175,13 +184,27 @@ la GUI et les logs CLI. L'estimation mémoire est affichée dans la GUI. Utilise
 | `Ctrl+Y` ou `Ctrl+Shift+Z` | Refaire                   |
 | `Espace`                   | Relancer le calcul        |
 
+### GTK4 / libadwaita (optionnelle)
+
+```bash
+cargo run --no-default-features --features gtk --bin pointimg-gtk
+```
+
+La GUI GTK4 expose les mêmes fonctionnalités que la GUI egui (tous les
+algorithmes, presets, undo/redo, density map, zoom, export PNG/SVG) avec un
+aspect natif libadwaita et les mêmes raccourcis clavier.
+
 ## Tests
 
 ```bash
-cargo test --all-features    # 84 tests
-cargo clippy --all-features -- -D warnings
-cargo bench                   # benchmarks criterion (benches/filter.rs)
+cargo test --features gui,gpu,avif   # suite complète (GUI + GPU + AVIF)
+cargo test --no-default-features     # CLI seul (sans dépendances GUI)
+cargo clippy --features gui,gpu,avif --all-targets -- -D warnings
+cargo bench                          # benchmarks criterion (benches/filter.rs)
 ```
+
+> La feature `gtk` est exclue : elle exige GTK4/libadwaita installés. Pour la
+> tester : `cargo test --no-default-features --features gtk`.
 
 ## Débogage
 

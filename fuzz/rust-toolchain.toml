@@ -1,0 +1,6 @@
+# cargo-fuzz exige un compilateur nightly (sanitizer coverage : `-Zsanitizer`,
+# `-Cpasses=sancov-module`, …). Ce fichier surcharge le `rust-toolchain.toml`
+# stable de la racine lorsque les commandes sont lancées depuis `fuzz/`
+# (rustup choisit le fichier de toolchain le plus proche).
+[toolchain]
+channel = "nightly"

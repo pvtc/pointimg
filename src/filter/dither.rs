@@ -37,20 +37,30 @@ pub(crate) fn floyd_steinberg(dst: &mut RgbImage, palette: &[[u8; 3]]) {
     }
     let idx = |x: u32, y: u32| -> usize { (y as usize) * w as usize + x as usize };
 
+    // Palette pré-convertie en f32 (évite un cast par comparaison) et recherche
+    // manuelle : premier minimum, sortie anticipée sur correspondance exacte —
+    // mêmes résultats que l'ancien `min_by(|a, b| ...total_cmp)`.
+    let palette_f: Vec<[f32; 3]> = palette
+        .iter()
+        .map(|p| [p[0] as f32, p[1] as f32, p[2] as f32])
+        .collect();
     let nearest = |c: &[f32; 3]| -> [u8; 3] {
-        palette
-            .iter()
-            .min_by(|a, b| {
-                let da = (a[0] as f32 - c[0]).powi(2)
-                    + (a[1] as f32 - c[1]).powi(2)
-                    + (a[2] as f32 - c[2]).powi(2);
-                let db = (b[0] as f32 - c[0]).powi(2)
-                    + (b[1] as f32 - c[1]).powi(2)
-                    + (b[2] as f32 - c[2]).powi(2);
-                da.total_cmp(&db)
-            })
-            .copied()
-            .unwrap_or([0, 0, 0])
+        let mut best = palette[0];
+        let mut best_dist = f32::INFINITY;
+        for (i, a) in palette_f.iter().enumerate() {
+            let dr = a[0] - c[0];
+            let dg = a[1] - c[1];
+            let db = a[2] - c[2];
+            let d = dr * dr + dg * dg + db * db;
+            if d < best_dist {
+                best_dist = d;
+                best = palette[i];
+                if d == 0.0 {
+                    break;
+                }
+            }
+        }
+        best
     };
 
     for y in 0..h {

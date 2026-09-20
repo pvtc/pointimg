@@ -57,8 +57,17 @@ pub(crate) struct InkChannel {
     pub color: [u8; 3],
     /// Angle de trame AM en degrés (ignoré en FM).
     pub angle_deg: f32,
-    /// Couverture par pixel, `n` valeurs ∈ [0, 1] dans l'ordre `(y * width + x)`.
-    pub coverage: Vec<f32>,
+    /// Couverture par pixel quantifiée sur 8 bits (0..=255), dans l'ordre
+    /// `(y * width + x)`. Le stockage `u8` divise par 4 la mémoire des cartes de
+    /// couverture par rapport à `f32` — critique pour le mode dominant (jusqu'à
+    /// `n` cartes pleine résolution).
+    pub coverage: Vec<u8>,
+}
+
+/// Quantifie une couverture flottante ∈ [0, 1] sur 8 bits.
+#[inline]
+fn cov_u8(v: f32) -> u8 {
+    (v.clamp(0.0, 1.0) * 255.0).round() as u8
 }
 
 // ─── Paramètres halftone centralisés ──────────────────────────────────────────
@@ -142,10 +151,10 @@ fn separate_cmyk(src: &RgbImage, angles: [f32; 4]) -> Vec<InkChannel> {
     let (w, h) = src.dimensions();
     let n = (w as usize) * (h as usize);
 
-    let mut c_cov = vec![0.0f32; n];
-    let mut m_cov = vec![0.0f32; n];
-    let mut y_cov = vec![0.0f32; n];
-    let mut k_cov = vec![0.0f32; n];
+    let mut c_cov = vec![0u8; n];
+    let mut m_cov = vec![0u8; n];
+    let mut y_cov = vec![0u8; n];
+    let mut k_cov = vec![0u8; n];
 
     // Seuil UCR : si la somme C+M+Y dépasse ce seuil, on remplace la partie
     // commune par du Noir. 0.3 = commencement modéré.
@@ -185,10 +194,10 @@ fn separate_cmyk(src: &RgbImage, angles: [f32; 4]) -> Vec<InkChannel> {
             // L'ink coverage totale reste la même à l'écran : c'est l'objectif UCR.
             // (Approximation : on ne calcule pas le gain exact.)
         }
-        c_cov[idx] = c;
-        m_cov[idx] = m;
-        y_cov[idx] = y;
-        k_cov[idx] = k;
+        c_cov[idx] = cov_u8(c);
+        m_cov[idx] = cov_u8(m);
+        y_cov[idx] = cov_u8(y);
+        k_cov[idx] = cov_u8(k);
     }
 
     vec![
@@ -218,10 +227,10 @@ fn separate_cmyk(src: &RgbImage, angles: [f32; 4]) -> Vec<InkChannel> {
 fn separate_cmyk_linear(src: &Rgb32FImage, angles: [f32; 4]) -> Vec<InkChannel> {
     let (w, h) = src.dimensions();
     let n = (w as usize) * (h as usize);
-    let mut c_cov = vec![0.0f32; n];
-    let mut m_cov = vec![0.0f32; n];
-    let mut y_cov = vec![0.0f32; n];
-    let mut k_cov = vec![0.0f32; n];
+    let mut c_cov = vec![0u8; n];
+    let mut m_cov = vec![0u8; n];
+    let mut y_cov = vec![0u8; n];
+    let mut k_cov = vec![0u8; n];
     const UCR_THRESHOLD: f32 = 0.30;
 
     for idx in 0..n {
@@ -244,10 +253,10 @@ fn separate_cmyk_linear(src: &Rgb32FImage, angles: [f32; 4]) -> Vec<InkChannel> 
             m -= grey * 0.5;
             y -= grey * 0.5;
         }
-        c_cov[idx] = c;
-        m_cov[idx] = m;
-        y_cov[idx] = y;
-        k_cov[idx] = k;
+        c_cov[idx] = cov_u8(c);
+        m_cov[idx] = cov_u8(m);
+        y_cov[idx] = cov_u8(y);
+        k_cov[idx] = cov_u8(k);
     }
     vec![
         InkChannel {
@@ -275,40 +284,75 @@ fn separate_cmyk_linear(src: &Rgb32FImage, angles: [f32; 4]) -> Vec<InkChannel> 
 
 // ─── Séparation dominant colors (k-means) ─────────────────────────────────────
 
-/// Extrait les `n` couleurs dominantes via k-means simple sur les pixels RGB.
-/// S'appuie sur rayon pour paralléliser l'assignation.
-fn compute_dominant_centers(src: &RgbImage, n: usize, rng_seed: Option<u64>) -> Vec<[u8; 3]> {
+/// Déduplique les couleurs des pixels. Retourne les couleurs uniques (ordre
+/// d'apparition) et, pour chaque pixel, l'index de sa couleur unique.
+///
+/// Le centre le plus proche ne dépend que de la couleur : dédupliquer évite de
+/// répéter `n` multiplications par pixel (gain important sur les images
+/// graphiques/plates), sans changer le résultat.
+fn unique_pixel_colors(src: &RgbImage) -> (Vec<[u8; 3]>, Vec<u32>) {
+    use std::collections::HashMap;
+    let n_pixels = (src.width() as usize) * (src.height() as usize);
+    // Plafond de capacité : évite de réserver des millions d'entrées d'un coup.
+    let mut index_of: HashMap<[u8; 3], u32> = HashMap::with_capacity(n_pixels.min(1 << 16));
+    let mut unique = Vec::new();
+    let mut mapping = Vec::with_capacity(n_pixels);
+    for p in src.pixels() {
+        let color = [p[0], p[1], p[2]];
+        let idx = *index_of.entry(color).or_insert_with(|| {
+            unique.push(color);
+            (unique.len() - 1) as u32
+        });
+        mapping.push(idx);
+    }
+    (unique, mapping)
+}
+
+/// K-means sur une liste de couleurs uniques, avec accumulation par pixel dans
+/// l'ordre d'origine (sommes f64 stables). `mapping[pixel]` donne l'index de la
+/// couleur unique du pixel.
+fn compute_dominant_centers_dedup(
+    unique: &[[u8; 3]],
+    mapping: &[u32],
+    n: usize,
+    rng_seed: Option<u64>,
+) -> Vec<[u8; 3]> {
     use rayon::prelude::*;
-    let (w, h) = src.dimensions();
-    let n_pixels = (w as usize) * (h as usize);
-    if n_pixels == 0 || n == 0 {
+    let n_unique = unique.len();
+    let n_pixels = mapping.len();
+    if n_pixels == 0 || n == 0 || n_unique == 0 {
         return Vec::new();
     }
 
-    // Initialisation : échantillonnage uniforme des pixels comme centres.
-    let step = (n_pixels / n.max(1)).max(1);
+    // Initialisation : échantillonnage uniforme des couleurs uniques comme centres.
+    let step = (n_unique / n.max(1)).max(1);
     let mut centers: Vec<[f32; 3]> = (0..n)
         .map(|i| {
-            let idx = (i * step).min(n_pixels - 1);
-            let p = src.get_pixel(idx as u32 % w, idx as u32 / w);
-            [p[0] as f32, p[1] as f32, p[2] as f32]
+            let c = unique[(i * step).min(n_unique - 1)];
+            [c[0] as f32, c[1] as f32, c[2] as f32]
         })
         .collect();
 
     // K-means (max 10 itérations, stop anticipé). Réutilisation du pattern de
     // `render::compute_centers` mais appliqué aux pixels source.
     for _ in 0..10 {
+        // Meilleur centre par couleur unique : une seule recherche par couleur.
+        let best_per_unique: Vec<u32> = unique
+            .par_iter()
+            .map(|c| nearest_center(&centers, &[c[0] as f32, c[1] as f32, c[2] as f32]) as u32)
+            .collect();
+
         let (sums, counts) = (0..n_pixels)
             .into_par_iter()
             .fold(
                 || (vec![[0f64; 3]; n], vec![0u64; n]),
                 |(mut sums, mut counts), idx| {
-                    let p = src.get_pixel(idx as u32 % w, idx as u32 / w);
-                    let prgb = [p[0] as f32, p[1] as f32, p[2] as f32];
-                    let best = nearest_center(&centers, &prgb);
-                    sums[best][0] += p[0] as f64;
-                    sums[best][1] += p[1] as f64;
-                    sums[best][2] += p[2] as f64;
+                    let u = mapping[idx] as usize;
+                    let best = best_per_unique[u] as usize;
+                    let c = unique[u];
+                    sums[best][0] += c[0] as f64;
+                    sums[best][1] += c[1] as f64;
+                    sums[best][2] += c[2] as f64;
                     counts[best] += 1;
                     (sums, counts)
                 },
@@ -348,7 +392,7 @@ fn compute_dominant_centers(src: &RgbImage, n: usize, rng_seed: Option<u64>) -> 
             break;
         }
     }
-    let _ = rng_seed; // (réservé pour未来的 k-means++ init si l'on veut la variance)
+    let _ = rng_seed; // (réservé pour une init k-means++ si l'on veut la variance)
     centers
         .iter()
         .map(|c| [c[0] as u8, c[1] as u8, c[2] as u8])
@@ -357,18 +401,22 @@ fn compute_dominant_centers(src: &RgbImage, n: usize, rng_seed: Option<u64>) -> 
 
 #[inline]
 fn nearest_center(centers: &[[f32; 3]], p: &[f32; 3]) -> usize {
-    centers
-        .iter()
-        .enumerate()
-        .map(|(i, c)| {
-            let dr = c[0] - p[0];
-            let dg = c[1] - p[1];
-            let db = c[2] - p[2];
-            (i, dr * dr + dg * dg + db * db)
-        })
-        .min_by(|a, b| a.1.total_cmp(&b.1))
-        .map(|(i, _)| i)
-        .unwrap_or(0)
+    let mut best = 0usize;
+    let mut best_dist = f32::INFINITY;
+    for (i, c) in centers.iter().enumerate() {
+        let dr = c[0] - p[0];
+        let dg = c[1] - p[1];
+        let db = c[2] - p[2];
+        let d = dr * dr + dg * dg + db * db;
+        if d < best_dist {
+            best_dist = d;
+            best = i;
+            if d == 0.0 {
+                break;
+            }
+        }
+    }
+    best
 }
 
 fn separate_dominant(
@@ -381,7 +429,8 @@ fn separate_dominant(
     let n_pixels = (w as usize) * (h as usize);
     let n = n.max(2);
 
-    let colors = compute_dominant_centers(src, n, _rng_seed);
+    let (unique, mapping) = unique_pixel_colors(src);
+    let colors = compute_dominant_centers_dedup(&unique, &mapping, n, _rng_seed);
     if colors.is_empty() {
         return Vec::new();
     }
@@ -390,14 +439,21 @@ fn separate_dominant(
         .map(|c| [c[0] as f32, c[1] as f32, c[2] as f32])
         .collect();
 
+    // Meilleur centre par couleur unique (une recherche par couleur).
+    let best_per_unique: Vec<u32> = unique
+        .iter()
+        .map(|c| nearest_center(&centers_f, &[c[0] as f32, c[1] as f32, c[2] as f32]) as u32)
+        .collect();
+
     // Coverage par canal : "hard assign" sur le centre le plus proche,
-    // pondéré par similarité (1 - normalized_distance).
-    let mut coverages: Vec<Vec<f32>> = (0..n).map(|_| vec![0.0f32; n_pixels]).collect();
-    for (idx, p) in src.pixels().enumerate() {
-        let prgb = [p[0] as f32, p[1] as f32, p[2] as f32];
-        // Hard-assign au centre le plus proche avec un facteur de similarité.
-        let best = nearest_center(&centers_f, &prgb);
+    // pondéré par similarité (1 - normalized_distance). Cartes u8 (÷4 mémoire).
+    let mut coverages: Vec<Vec<u8>> = (0..n).map(|_| vec![0u8; n_pixels]).collect();
+    for (idx, &u) in mapping.iter().enumerate() {
+        let ui = u as usize;
+        let best = best_per_unique[ui] as usize;
         let c = centers_f[best];
+        let p = unique[ui];
+        let prgb = [p[0] as f32, p[1] as f32, p[2] as f32];
         let dist_sq =
             (c[0] - prgb[0]).powi(2) + (c[1] - prgb[1]).powi(2) + (c[2] - prgb[2]).powi(2);
         // Similarité ∈ [0, 1] : 1 quand identique, ~0 quand aux antipodes.
@@ -406,7 +462,7 @@ fn separate_dominant(
         // Renforcer la sim pour qu'une attribution proche du vrai pixel donne une
         // couverture raisonnable (sinon tout est trop faible).
         let cov = (sim * 1.3).clamp(0.0, 1.0);
-        coverages[best][idx] = cov;
+        coverages[best][idx] = cov_u8(cov);
     }
 
     // Angles répartis uniformément par section d'or pour éviter le moiré.
@@ -436,7 +492,7 @@ fn screen_am(src: &RgbImage, channel: InkChannel, cfg: &HalftoneConfig) -> Vec<D
 }
 
 fn screen_am_dimensions(w: u32, h: u32, channel: InkChannel, cfg: &HalftoneConfig) -> Vec<Dot> {
-    let img_min = w.min(height_or_h(h, w)) as f32;
+    let img_min = w.min(h) as f32;
     // Pas de trame en pixels : plus fréquence est élevée → plus cellule petite.
     let step = (img_min / cfg.screen_frequency).max(2.0);
     // Bornes de la grille en espace rotationné (assez large pour couvrir toute l'image).
@@ -448,9 +504,6 @@ fn screen_am_dimensions(w: u32, h: u32, channel: InkChannel, cfg: &HalftoneConfi
     let ang = channel.angle_deg * std::f32::consts::PI / 180.0;
     let (ux, uy) = (ang.cos(), ang.sin());
     let (vx, vy) = (-uy, ux);
-    // Inverse de la rotation pour retrouver les coords image depuis la trame.
-    let (inv_ux, inv_uy) = (ang.cos(), -ang.sin());
-    let (inv_vx, inv_vy) = (-inv_uy, inv_ux);
 
     // Rayon min/max en pixels.
     let r_min = cfg.min_radius_ratio * img_min;
@@ -490,25 +543,20 @@ fn screen_am_dimensions(w: u32, h: u32, channel: InkChannel, cfg: &HalftoneConfi
             });
         }
     }
-    let _ = (inv_ux, inv_uy, inv_vx, inv_vy);
     dots
 }
 
-#[inline]
-fn height_or_h(h: u32, _w: u32) -> u32 {
-    h
-}
-
-/// Moyenne de `coverage` dans un disque centré sur `(px, py)` de rayon `r`.
-fn sample_coverage_disk(coverage: &[f32], w: u32, h: u32, px: f32, py: f32, r: f32) -> f32 {
+/// Moyenne de `coverage` (quantifiée u8) dans un disque centré sur `(px, py)`
+/// de rayon `r`. Retourne une valeur ∈ [0, 1].
+fn sample_coverage_disk(coverage: &[u8], w: u32, h: u32, px: f32, py: f32, r: f32) -> f32 {
     let r_i = r.ceil() as i32;
     if r_i <= 0 {
         let ix = px as u32 % w;
         let iy = py as u32 % h;
-        return coverage[(iy * w + ix) as usize];
+        return coverage[(iy * w + ix) as usize] as f32 / 255.0;
     }
     let r2 = r * r;
-    let mut sum = 0.0f32;
+    let mut sum = 0u32;
     let mut n = 0u32;
     let cx_i = px as i32;
     let cy_i = py as i32;
@@ -525,17 +573,17 @@ fn sample_coverage_disk(coverage: &[f32], w: u32, h: u32, px: f32, py: f32, r: f
             if px_i < 0 || px_i >= w as i32 {
                 continue;
             }
-            sum += coverage[(py_i as u32 * w + px_i as u32) as usize];
+            sum += coverage[(py_i as u32 * w + px_i as u32) as usize] as u32;
             n += 1;
         }
     }
     if n > 0 {
-        sum / n as f32
+        sum as f32 / (n as f32 * 255.0)
     } else {
         // Fallback au centre exact.
         let ix = (px as u32).min(w - 1);
         let iy = (py as u32).min(h - 1);
-        coverage[(iy * w + ix) as usize]
+        coverage[(iy * w + ix) as usize] as f32 / 255.0
     }
 }
 

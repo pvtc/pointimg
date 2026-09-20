@@ -82,6 +82,21 @@ fn bench_halftone(c: &mut Criterion) {
     group.bench_function("cmyk-am", |b| {
         b.iter(|| filter::apply(black_box(&img), black_box(&params)).unwrap());
     });
+
+    let dominant = FilterParams {
+        algorithm: Algorithm::Halftone,
+        halftone: pointimg::filter::HalftoneMode::Dominant {
+            n: 6,
+            base_angle_deg: 15.0,
+        },
+        screening: pointimg::filter::Screening::Am,
+        halftone_frequency: 60.0,
+        rng_seed: Some(99),
+        ..FilterParams::default()
+    };
+    group.bench_function("dominant-6-am", |b| {
+        b.iter(|| filter::apply(black_box(&img), black_box(&dominant)).unwrap());
+    });
     group.finish();
 }
 
@@ -113,8 +128,16 @@ fn bench_density_map(c: &mut Criterion) {
 }
 
 fn bench_memory_estimate(c: &mut Criterion) {
+    let params = FilterParams {
+        algorithm: Algorithm::Halftone,
+        halftone: pointimg::filter::HalftoneMode::Dominant {
+            n: 8,
+            base_angle_deg: 0.0,
+        },
+        ..FilterParams::default()
+    };
     c.bench_function("estimated_working_memory_8mp", |b| {
-        b.iter(|| filter::estimate_memory_bytes(4096, 2048));
+        b.iter(|| filter::estimate_memory_bytes_for(4096, 2048, black_box(&params)));
     });
 }
 

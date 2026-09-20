@@ -285,6 +285,22 @@ pub fn validate_params(w: u32, h: u32, params: &FilterParams) -> Result<()> {
             params.halftone_max_dot_ratio
         ));
     }
+    // Bornes supérieures : un rayon halftone n'est pas plafonné par le
+    // nearest-neighbor comme les algorithmes pointillistes. Des valeurs
+    // arbitrairement grandes (ex. `--halftone-max-dot 1e9`) produiraient des
+    // dots couvrant toute l'image → rendu pathologiquement lent.
+    if params.halftone_min_radius_ratio > 1.0 {
+        return Err(anyhow!(
+            "halftone_min_radius_ratio doit etre <= 1.0, got {}",
+            params.halftone_min_radius_ratio
+        ));
+    }
+    if params.halftone_max_dot_ratio > 10.0 {
+        return Err(anyhow!(
+            "halftone_max_dot_ratio doit etre <= 10.0, got {}",
+            params.halftone_max_dot_ratio
+        ));
+    }
     if let DotShape::RegularPolygon { sides } = params.dot_shape
         && !(3..=12).contains(&sides)
     {

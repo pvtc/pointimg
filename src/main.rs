@@ -1,10 +1,9 @@
 use anyhow::{Context, Result};
 use clap::{Parser, ValueEnum};
-use image::{
-    ExtendedColorType, GenericImageView, ImageEncoder, ImageReader, Rgb, RgbImage, RgbaImage,
-};
+use image::{ExtendedColorType, GenericImageView, ImageEncoder, ImageReader, RgbaImage};
 use log::LevelFilter;
 use pointimg::filter::{self, Algorithm, DotShape, FilterParams, HalftoneMode, Screening};
+use pointimg::frontend;
 use rayon::prelude::*;
 use std::path::PathBuf;
 use std::sync::atomic::AtomicBool;
@@ -233,18 +232,15 @@ impl Args {
         let halftone = parse_halftone(&self.halftone)?;
         let screening = parse_screening(&self.screening)?;
         // Si --halftone est spécifié (≠ Off), on force algorithm = Halftone.
-        // Inversement, si --algorithm halftone est choisi mais --halftone est
-        // off, on active cmyk par défaut pour ne pas avoir un algorithme vide.
+        // Inversement, si --algorithm halftone est choisi sans --halftone
+        // explicite, on active le mode cmyk par défaut (voir plus bas) au lieu
+        // de produire un algorithme vide.
         let algorithm = if halftone != HalftoneMode::Off {
             Algorithm::Halftone
-        } else if self.algorithm == Algorithm::Halftone {
-            // --algorithm halftone sans --halftone explicite → défaut cmyk.
-            return Err(anyhow::anyhow!(
-                "--algorithm halftone nécessite aussi --halftone cmyk ou --halftone dominant-N"
-            ));
         } else {
             self.algorithm
         };
+        // --algorithm halftone sans --halftone explicite → défaut cmyk.
         let halftone = if algorithm == Algorithm::Halftone && halftone == HalftoneMode::Off {
             HalftoneMode::Cmyk {
                 angles: [15.0, 75.0, 0.0, 45.0],
@@ -380,8 +376,9 @@ fn main() -> Result<()> {
         // En parallèle, la progression par itération serait entremêlée sur
         // stderr : on la coupe et on laisse chaque fichier rendre sa ligne de
         // résultat atomiquement.
+        // `--jobs 0` laisse rayon choisir le nombre de threads (tous les CPUs).
         let pool = rayon::ThreadPoolBuilder::new()
-            .num_threads(args.jobs.max(1))
+            .num_threads(args.jobs)
             .build()
             .context("impossible de créer le pool de threads du batch")?;
         pool.install(|| {
@@ -625,7 +622,7 @@ fn process_one(
     }
     log::info!(
         "mémoire de travail estimée : {} Mo",
-        filter::estimate_memory_bytes(rgb.width(), rgb.height()) / (1024 * 1024)
+        filter::estimate_memory_bytes_for(rgb.width(), rgb.height(), params) / (1024 * 1024)
     );
     let never_cancel = AtomicBool::new(false);
 
@@ -647,7 +644,7 @@ fn process_one(
         let (w, h) = rgb.dimensions();
         let svg = filter::render_svg_from_dots(w, h, &dots, params)
             .with_context(|| "Erreur lors du rendu SVG")?;
-        atomic_text_write(output, &svg)
+        frontend::atomic_text_write(output, &svg)
             .with_context(|| format!("Impossible d'ecrire '{}'", output.display()))?;
         println!("SVG sauvegarde : {}", output.display());
     } else if params.transparent {
@@ -665,15 +662,15 @@ fn process_one(
             let source = if supports_alpha {
                 image::DynamicImage::ImageRgba8(dst)
             } else {
-                image::DynamicImage::ImageRgb8(flatten_rgba_image(&dst, params.bg_color))
+                image::DynamicImage::ImageRgb8(frontend::flatten_rgba_on_bg(&dst, params.bg_color))
             };
             let dst = pointimg::color::convert_from_srgb(source, profile)?;
-            atomic_image_save(output, |tmp| {
+            frontend::atomic_image_save(output, |tmp| {
                 save_dynamic_with_profile(&dst, Some(bytes), tmp)
             })
             .with_context(|| format!("Impossible de sauvegarder '{}'", output.display()))?;
         } else {
-            atomic_image_save(output, |tmp| {
+            frontend::atomic_image_save(output, |tmp| {
                 save_rgba_for_output(&dst, params.bg_color, tmp)
             })
             .with_context(|| format!("Impossible de sauvegarder '{}'", output.display()))?;
@@ -695,7 +692,7 @@ fn process_one(
         } else {
             image::DynamicImage::ImageRgb8(dst)
         };
-        atomic_image_save(output, |tmp| {
+        frontend::atomic_image_save(output, |tmp| {
             save_dynamic_with_profile(&dst, output_profile.as_ref().map(|(_, bytes)| bytes), tmp)
         })
         .with_context(|| format!("Impossible de sauvegarder '{}'", output.display()))?;
@@ -704,57 +701,16 @@ fn process_one(
     Ok(())
 }
 
-fn temporary_output_path(path: &std::path::Path) -> PathBuf {
-    use std::sync::atomic::{AtomicU64, Ordering};
-    static NEXT_TEMP_ID: AtomicU64 = AtomicU64::new(0);
-    let name = path
-        .file_name()
-        .and_then(|name| name.to_str())
-        .unwrap_or("output");
-    let ext = path
-        .extension()
-        .and_then(|ext| ext.to_str())
-        .unwrap_or("png");
-    let id = NEXT_TEMP_ID.fetch_add(1, Ordering::Relaxed);
-    let timestamp = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .map_or(0, |duration| duration.as_nanos());
-    path.with_file_name(format!(
-        ".{name}.pointimg-{}-{timestamp}-{id}.tmp.{ext}",
-        std::process::id()
-    ))
-}
-
 fn save_rgba_for_output(
     image: &RgbaImage,
     bg: [u8; 3],
     path: &std::path::Path,
 ) -> image::ImageResult<()> {
-    let supports_alpha = matches!(
-        path.extension()
-            .and_then(|e| e.to_str())
-            .map(str::to_ascii_lowercase)
-            .as_deref(),
-        Some("png" | "webp" | "tif" | "tiff")
-    );
-    if supports_alpha {
+    // PNG/WebP/TIFF préservent l'alpha ; sinon on composite sur le fond.
+    if frontend::extension_preserves_alpha(path) {
         return image.save(path);
     }
-    flatten_rgba_image(image, bg).save(path)
-}
-
-fn flatten_rgba_image(image: &RgbaImage, bg: [u8; 3]) -> RgbImage {
-    let (w, h) = image.dimensions();
-    RgbImage::from_fn(w, h, |x, y| {
-        let p = image.get_pixel(x, y);
-        let alpha = p[3] as f32 / 255.0;
-        let inv = 1.0 - alpha;
-        Rgb([
-            (p[0] as f32 * alpha + bg[0] as f32 * inv).round() as u8,
-            (p[1] as f32 * alpha + bg[1] as f32 * inv).round() as u8,
-            (p[2] as f32 * alpha + bg[2] as f32 * inv).round() as u8,
-        ])
-    })
+    frontend::flatten_rgba_on_bg(image, bg).save(path)
 }
 
 fn save_dynamic_with_profile(
@@ -810,43 +766,6 @@ fn save_dynamic_with_profile(
     }
 }
 
-fn atomic_image_save<F>(path: &std::path::Path, save: F) -> image::ImageResult<()>
-where
-    F: FnOnce(&std::path::Path) -> image::ImageResult<()>,
-{
-    let tmp = temporary_output_path(path);
-    if let Err(error) = save(&tmp) {
-        let _ = std::fs::remove_file(&tmp);
-        return Err(error);
-    }
-    if let Err(error) = replace_file(&tmp, path) {
-        let _ = std::fs::remove_file(&tmp);
-        return Err(image::ImageError::IoError(error));
-    }
-    Ok(())
-}
-
-fn atomic_text_write(path: &std::path::Path, contents: &str) -> std::io::Result<()> {
-    let tmp = temporary_output_path(path);
-    if let Err(error) = std::fs::write(&tmp, contents) {
-        let _ = std::fs::remove_file(&tmp);
-        return Err(error);
-    }
-    if let Err(error) = replace_file(&tmp, path) {
-        let _ = std::fs::remove_file(&tmp);
-        return Err(error);
-    }
-    Ok(())
-}
-
-fn replace_file(from: &std::path::Path, to: &std::path::Path) -> std::io::Result<()> {
-    #[cfg(windows)]
-    if to.exists() {
-        std::fs::remove_file(to)?;
-    }
-    std::fs::rename(from, to)
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -867,5 +786,153 @@ mod tests {
         let pixel = decoded.get_pixel(0, 0);
         assert!(pixel[0] > 100 && pixel[1] > 100);
         let _ = std::fs::remove_file(path);
+    }
+
+    // ── Parsing des couleurs de fond ─────────────────────────────────────────
+
+    #[test]
+    fn parse_bg_color_variants() {
+        assert_eq!(parse_bg_color("white").unwrap(), ([255, 255, 255], false));
+        assert_eq!(parse_bg_color("BLACK").unwrap(), ([0, 0, 0], false));
+        assert_eq!(
+            parse_bg_color("#1a1a2e").unwrap(),
+            ([0x1a, 0x1a, 0x2e], false)
+        );
+        assert_eq!(
+            parse_bg_color("1a1a2e").unwrap(),
+            ([0x1a, 0x1a, 0x2e], false)
+        );
+        assert_eq!(parse_bg_color("transparent").unwrap(), ([0, 0, 0], true));
+        assert_eq!(parse_bg_color("none").unwrap(), ([0, 0, 0], true));
+        assert!(parse_bg_color("bleu").is_err());
+        assert!(parse_bg_color("#12345").is_err());
+        assert!(parse_bg_color("#zzzzzz").is_err());
+    }
+
+    // ── Parsing halftone / screening ─────────────────────────────────────────
+
+    #[test]
+    fn parse_halftone_variants() {
+        assert_eq!(parse_halftone("off").unwrap(), HalftoneMode::Off);
+        assert_eq!(parse_halftone("").unwrap(), HalftoneMode::Off);
+        assert!(matches!(
+            parse_halftone("cmyk").unwrap(),
+            HalftoneMode::Cmyk { .. }
+        ));
+        assert!(matches!(
+            parse_halftone("dominant-6").unwrap(),
+            HalftoneMode::Dominant { n: 6, .. }
+        ));
+        assert!(parse_halftone("dominant-1").is_err());
+        assert!(parse_halftone("dominant-x").is_err());
+        assert!(parse_halftone("bogus").is_err());
+    }
+
+    #[test]
+    fn parse_screening_variants() {
+        assert_eq!(parse_screening("am").unwrap(), Screening::Am);
+        assert_eq!(parse_screening("FM").unwrap(), Screening::Fm);
+        assert!(parse_screening("xx").is_err());
+    }
+
+    // ── Parsing --preview WxH ────────────────────────────────────────────────
+
+    #[test]
+    fn parse_preview_size_valid_and_invalid() {
+        assert_eq!(parse_preview_size("200x150").unwrap(), (200, 150));
+        assert_eq!(parse_preview_size("200X150").unwrap(), (200, 150));
+        assert!(parse_preview_size("200").is_err());
+        assert!(parse_preview_size("0x10").is_err());
+        assert!(parse_preview_size("a x b").is_err());
+    }
+
+    // ── Mapping flags → FilterParams ─────────────────────────────────────────
+
+    #[test]
+    fn algorithm_halftone_without_mode_defaults_to_cmyk() {
+        let args = Args::parse_from(["pointimg", "--algorithm", "halftone", "-i", "in.png"]);
+        let params = args.to_filter_params().unwrap();
+        assert_eq!(params.algorithm, Algorithm::Halftone);
+        assert!(matches!(params.halftone, HalftoneMode::Cmyk { .. }));
+    }
+
+    #[test]
+    fn explicit_halftone_forces_algorithm() {
+        let args = Args::parse_from(["pointimg", "--halftone", "dominant-4", "-i", "in.png"]);
+        let params = args.to_filter_params().unwrap();
+        assert_eq!(params.algorithm, Algorithm::Halftone);
+        assert!(matches!(
+            params.halftone,
+            HalftoneMode::Dominant { n: 4, .. }
+        ));
+    }
+
+    // ── Génération des chemins de sortie ─────────────────────────────────────
+
+    #[test]
+    fn resolve_output_path_substitutions() {
+        let resolve = |pattern: &str, index: usize, total: usize| {
+            resolve_output_path(
+                pattern,
+                std::path::Path::new("/tmp/photo.jpg"),
+                index,
+                total,
+                false,
+                false,
+            )
+        };
+        assert_eq!(
+            resolve("out/{stem}_{n}.png", 2, 10),
+            PathBuf::from("out/photo_02.png")
+        );
+        assert_eq!(
+            resolve("out/{name}.png", 0, 1),
+            PathBuf::from("out/photo.jpg.png")
+        );
+        // Aucun token par-fichier + plusieurs fichiers → suffixe `_n` avant l'extension.
+        assert_eq!(
+            resolve("out/all.png", 3, 10),
+            PathBuf::from("out/all_03.png")
+        );
+        // Sans extension, le suffixe est ajouté à la fin.
+        assert_eq!(resolve("out/all", 3, 10), PathBuf::from("out/all_03"));
+    }
+
+    #[test]
+    fn resolve_output_path_default_and_svg() {
+        assert_eq!(
+            resolve_output_path(
+                "output.png",
+                std::path::Path::new("/tmp/a.jpg"),
+                0,
+                1,
+                true,
+                false
+            ),
+            PathBuf::from("output.png")
+        );
+        assert_eq!(
+            resolve_output_path(
+                "output.png",
+                std::path::Path::new("/tmp/a.jpg"),
+                0,
+                1,
+                true,
+                true
+            ),
+            PathBuf::from("output.svg")
+        );
+        // `--svg` force l'extension même sur un pattern explicite.
+        assert_eq!(
+            resolve_output_path(
+                "out/x.png",
+                std::path::Path::new("/tmp/a.jpg"),
+                0,
+                1,
+                false,
+                true
+            ),
+            PathBuf::from("out/x.svg")
+        );
     }
 }
