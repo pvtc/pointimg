@@ -39,9 +39,30 @@ pub(crate) fn importance_sample(
     let mut rng: u64 = seed;
     let mut result = Vec::with_capacity(k);
 
+    let n_pixels = (width as usize) * (height as usize);
+    if n_pixels == 0 {
+        return result;
+    }
+    // Plus de points demandés que de pixels : répartir sur tous les pixels.
+    // Sinon la recherche CDF (monotone) écrase tous les points excédentaires
+    // sur le dernier pixel, ce qui dégénère le Lloyd/k-means.
+    if k >= n_pixels {
+        return (0..k)
+            .map(|i| {
+                let base = (i * n_pixels / k) % n_pixels;
+                let px = (base % width as usize) as f32;
+                let py = (base / width as usize) as f32;
+                let jx = lcg_next(&mut rng);
+                let jy = lcg_next(&mut rng);
+                let fx = (px + jx).clamp(0.0, width as f32 - 0.01);
+                let fy = (py + jy).clamp(0.0, height as f32 - 0.01);
+                (fx as u32, fy as u32)
+            })
+            .collect();
+    }
+
     let mut cdf = 0.0f64;
     let mut pixel_idx: usize = 0;
-    let n_pixels = (width * height) as usize;
 
     for i in 0..k {
         let jitter = lcg_next(&mut rng) as f64 - 0.5;
@@ -197,4 +218,32 @@ pub(crate) fn lcg_next(state: &mut u64) -> f32 {
         .wrapping_add(1442695040888963407);
     // Use the full upper 32 bits to produce a value in [0.0, 1.0].
     ((*state >> 32) as f32) / (u32::MAX as f32)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::collections::HashMap;
+
+    #[test]
+    fn importance_sample_more_points_than_pixels_spreads() {
+        // 4×4 pixels mais 40 points demandés : aucun pixel ne doit concentrer
+        // les graines (l'ancien chemin les écrasait toutes sur le dernier).
+        let weights = vec![1.0f32; 16];
+        let seeds = importance_sample(&weights, 4, 4, 40, 7);
+        assert_eq!(seeds.len(), 40);
+        let mut counts: HashMap<(u32, u32), usize> = HashMap::new();
+        for seed in &seeds {
+            *counts.entry(*seed).or_insert(0) += 1;
+        }
+        let max = counts.values().copied().max().unwrap_or(0);
+        assert!(max <= 5, "un pixel concentre {max} graines");
+    }
+
+    #[test]
+    fn importance_sample_normal_case_count() {
+        let weights = vec![1.0f32; 64];
+        let seeds = importance_sample(&weights, 8, 8, 8, 1);
+        assert_eq!(seeds.len(), 8);
+    }
 }

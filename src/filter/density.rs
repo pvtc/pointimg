@@ -125,6 +125,7 @@ pub fn compute_density_image(src: &RgbImage, sensitivity: f32) -> GrayImage {
 pub fn density_to_image(density: &[f32], w: u32, h: u32) -> GrayImage {
     GrayImage::from_fn(w, h, |x, y| {
         let v = density[(y * w + x) as usize];
-        Luma([(v * 255.0) as u8])
+        // Arrondi cohérent avec les autres conversions u8 du projet.
+        Luma([(v.clamp(0.0, 1.0) * 255.0).round() as u8])
     })
 }

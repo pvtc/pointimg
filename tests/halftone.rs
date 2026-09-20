@@ -147,6 +147,77 @@ fn halftone_off_path_unchanged() {
 }
 
 #[test]
+fn apply_dynamic_gamma_cmyk_halftone_does_not_panic() {
+    // Régression : le chemin gamma+halftone d'`apply_dynamic` empruntait une
+    // route interne qui atteignait `unreachable!()`.
+    use pointimg::filter::Algorithm;
+    let img = RgbImage::from_fn(32, 32, |x, y| {
+        if (x + y) % 2 == 0 {
+            image::Rgb([0, 255, 255])
+        } else {
+            image::Rgb([255, 0, 0])
+        }
+    });
+    let dynamic = image::DynamicImage::ImageRgb8(img);
+    let params = FilterParams {
+        algorithm: Algorithm::Halftone,
+        halftone: HalftoneMode::Cmyk {
+            angles: [15.0, 75.0, 0.0, 45.0],
+        },
+        gamma_correct: true,
+        rng_seed: Some(1),
+        ..FilterParams::default()
+    };
+    let out = filter::apply_dynamic(&dynamic, &params).unwrap();
+    assert_eq!(out.dimensions(), (32, 32));
+}
+
+#[test]
+fn apply_gamma_dominant_halftone_does_not_panic() {
+    // Régression : `apply` en gamma ne routait que le CMJN vers `apply_rgba` ;
+    // le mode dominant atteignait `unreachable!()`.
+    use pointimg::filter::Algorithm;
+    let img = RgbImage::from_fn(32, 32, |x, y| match (x / 16 + y / 16) % 3 {
+        0 => image::Rgb([255, 0, 0]),
+        1 => image::Rgb([0, 255, 0]),
+        _ => image::Rgb([0, 0, 255]),
+    });
+    let params = FilterParams {
+        algorithm: Algorithm::Halftone,
+        halftone: HalftoneMode::Dominant {
+            n: 3,
+            base_angle_deg: 0.0,
+        },
+        gamma_correct: true,
+        rng_seed: Some(1),
+        ..FilterParams::default()
+    };
+    let out = filter::apply(&img, &params).unwrap();
+    assert_eq!(out.dimensions(), (32, 32));
+}
+
+#[test]
+fn apply_with_progress_cached_halftone_does_not_panic() {
+    // Régression : le chemin « cached » envoyait le halftone à
+    // `apply_with_progress_inner`, qui ne le gère pas (`unreachable!()`).
+    use pointimg::filter::Algorithm;
+    let img = RgbImage::from_fn(16, 16, |_, _| image::Rgb([0, 255, 255]));
+    let density = vec![1.0f32; 16 * 16];
+    let cancel = AtomicBool::new(false);
+    let params = FilterParams {
+        algorithm: Algorithm::Halftone,
+        halftone: HalftoneMode::Cmyk {
+            angles: [15.0, 75.0, 0.0, 45.0],
+        },
+        ..FilterParams::default()
+    };
+    let (out, dots) =
+        filter::apply_with_progress_cached(&img, &params, &cancel, &density, |_, _, _| {}).unwrap();
+    assert_eq!(out.dimensions(), (16, 16));
+    assert!(!dots.is_empty());
+}
+
+#[test]
 fn halftone_params_toml_round_trip() {
     let params = FilterParams {
         halftone: HalftoneMode::Cmyk {

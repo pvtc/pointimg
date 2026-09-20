@@ -75,7 +75,9 @@ pub use params::{
 };
 pub use render::{render_halftone, render_rgba};
 pub use svg::{render_svg, render_svg_dynamic, render_svg_from_dots};
-pub use util::{estimate_memory_bytes, flatten_to_rgb, resize_to_limits};
+pub use util::{
+    estimate_memory_bytes, estimate_memory_bytes_for, flatten_to_rgb, resize_to_limits,
+};
 
 use algorithms::{
     compute_dots_kmeans, compute_dots_voronoi, dots_grid, dots_kmeans_progressive, dots_quadtree,
@@ -106,11 +108,6 @@ fn dots_to_srgb(dots: &[Dot]) -> Vec<Dot> {
 }
 
 // ── Versions « inner » : le pipeline historique, sans correction gamma.
-
-fn apply_dynamic_inner(src: &DynamicImage, params: &FilterParams) -> Result<RgbImage> {
-    let rgb = flatten_to_rgb(src, params.bg_color);
-    apply_inner(&rgb, params)
-}
 
 fn apply_with_progress_inner<F>(
     src: &RgbImage,
@@ -244,22 +241,14 @@ fn is_cmyk_halftone(params: &FilterParams) -> bool {
 /// Applique le filtre sur une `DynamicImage` (supporte RGBA, niveaux de gris, etc.)
 /// Le fond transparent est composé sur `params.bg_color`. Quand `gamma_correct`
 /// est vrai, le pipeline s'opère en espace linéaire puis ré-encode le résultat.
+///
+/// Délègue à [`apply`] après aplatissement : gère ainsi uniformément le gamma,
+/// le halftone CMJN (chemin `f32`) et tous les algorithmes. Auparavant, le
+/// chemin gamma+halftone empruntait une route interne qui paniquait
+/// (`unreachable!`).
 pub fn apply_dynamic(src: &DynamicImage, params: &FilterParams) -> Result<RgbImage> {
-    if params.gamma_correct {
-        let rgb = flatten_to_rgb(src, params.bg_color);
-        let lin = gamma::srgb_to_linear_image(&rgb);
-        let params_lin = linearized_clone(params);
-        let (dst_lin, _) = apply_with_progress_inner(
-            &lin,
-            &params_lin,
-            &std::sync::atomic::AtomicBool::new(false),
-            None,
-            |_, _, _| {},
-        )?;
-        Ok(gamma::linear_to_srgb_image(&dst_lin))
-    } else {
-        apply_dynamic_inner(src, params)
-    }
+    let rgb = flatten_to_rgb(src, params.bg_color);
+    apply(&rgb, params)
 }
 
 /// Applique le filtre itération par itération (Voronoï/K-means).
@@ -341,7 +330,12 @@ where
             expected
         ));
     }
-    if params.gamma_correct {
+    if params.gamma_correct
+        || (params.algorithm == Algorithm::Halftone && params.halftone != HalftoneMode::Off)
+    {
+        // Le chemin cached ne gère ni le gamma ni le halftone (pipeline dédié) :
+        // on délègue à `apply_with_progress` plutôt que d'atteindre
+        // `unreachable!()` dans `apply_with_progress_inner`.
         return apply_with_progress(src, params, cancel, on_progress);
     }
     apply_with_progress_inner(src, params, cancel, Some(density), on_progress)
@@ -349,7 +343,10 @@ where
 
 pub fn apply(src: &RgbImage, params: &FilterParams) -> Result<RgbImage> {
     if params.gamma_correct {
-        if is_cmyk_halftone(params) {
+        // Tout halftone actif (CMJN ou dominant) passe par `apply_rgba`, qui
+        // gère le chemin gamma. Sans ce garde général, un halftone dominant en
+        // gamma atteignait `unreachable!()` dans `apply_with_progress_inner`.
+        if params.algorithm == Algorithm::Halftone && params.halftone != HalftoneMode::Off {
             let (rgba, _) = apply_rgba(src, params)?;
             return Ok(image::DynamicImage::ImageRgba8(rgba).to_rgb8());
         }
@@ -845,6 +842,34 @@ mod tests {
         assert!(
             validate_params(64, 64, &p).is_ok(),
             "iterations=0 doit passer"
+        );
+    }
+
+    #[test]
+    fn validate_halftone_dot_ratio_upper_bounds() {
+        let base = FilterParams {
+            algorithm: Algorithm::Halftone,
+            halftone: HalftoneMode::Cmyk { angles: [0.0; 4] },
+            ..FilterParams::default()
+        };
+        assert!(validate_params(64, 64, &base).is_ok());
+
+        let huge_min = FilterParams {
+            halftone_min_radius_ratio: 5.0,
+            ..base.clone()
+        };
+        assert!(
+            validate_params(64, 64, &huge_min).is_err(),
+            "halftone_min_radius_ratio énorme doit échouer"
+        );
+
+        let huge_max = FilterParams {
+            halftone_max_dot_ratio: 1.0e9,
+            ..base.clone()
+        };
+        assert!(
+            validate_params(64, 64, &huge_max).is_err(),
+            "halftone_max_dot_ratio énorme doit échouer"
         );
     }
 

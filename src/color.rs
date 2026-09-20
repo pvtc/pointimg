@@ -29,7 +29,12 @@ pub fn decode_to_srgb(path: &Path, profile_spec: &str) -> Result<(DynamicImage, 
     // several full-size working buffers at once.
     let (image, was_resized) = crate::filter::resize_to_limits(image);
     let profile = profile_from_spec(profile_spec, embedded.as_deref())?;
-    let was_converted = profile_spec != "srgb" || embedded.is_some();
+    // Une conversion réelle n'a lieu que si un profil embarqué existe ou si un
+    // profil source non-sRGB est demandé. Avec le défaut `auto` sans profil
+    // embarqué, l'image est déjà sRGB : ne pas annoncer une conversion.
+    let spec = profile_spec.to_ascii_lowercase();
+    let uses_non_srgb = !matches!(spec.as_str(), "auto" | "srgb");
+    let was_converted = embedded.is_some() || uses_non_srgb;
     convert_to_srgb(image, &profile).map(|image| (image, was_converted, was_resized))
 }
 
@@ -88,10 +93,24 @@ fn convert_image(
     }
 }
 
+/// Pixels traités par appel de transformation ICC. Borne le pic mémoire des
+/// buffers `f32` intermédiaires au lieu de réserver deux buffers pleine image
+/// (24 octets/pixel pour RGB, 32 pour RGBA).
+const COLOR_CHUNK_PIXELS: usize = 64 * 1024;
+
 fn transform_rgb(
     source: &RgbImage,
     profile: &ColorProfile,
     destination: &ColorProfile,
+) -> Result<RgbImage> {
+    transform_rgb_chunked(source, profile, destination, COLOR_CHUNK_PIXELS)
+}
+
+fn transform_rgb_chunked(
+    source: &RgbImage,
+    profile: &ColorProfile,
+    destination: &ColorProfile,
+    chunk_pixels: usize,
 ) -> Result<RgbImage> {
     let transform = profile
         .create_transform_f32(
@@ -101,25 +120,31 @@ fn transform_rgb(
             TransformOptions::default(),
         )
         .map_err(|e| anyhow!("Impossible de créer la transformation colorimétrique : {e:?}"))?;
-    let mut input = Vec::with_capacity(source.len() * 3);
-    for pixel in source.pixels() {
-        input.extend(pixel.0.map(|value| value as f32 / 255.0));
-    }
-    let mut output = vec![0.0; input.len()];
-    transform
-        .transform(&input, &mut output)
-        .map_err(|e| anyhow!("Transformation colorimétrique échouée : {e:?}"))?;
-    let bytes = output
-        .as_chunks::<3>()
-        .0
-        .iter()
-        .flat_map(|pixel| {
-            pixel
+    // `saturating_mul` : permet d'utiliser `usize::MAX` comme « tout d'un coup »
+    // dans les tests sans déborder ; le plafond par `source.len()` évite une
+    // capacité de vecteur absurde.
+    let chunk_len = chunk_pixels
+        .max(1)
+        .saturating_mul(3)
+        .max(3)
+        .min(source.len().max(3));
+    let mut input: Vec<f32> = Vec::with_capacity(chunk_len);
+    let mut output: Vec<f32> = vec![0.0; chunk_len];
+    let mut bytes = Vec::with_capacity(source.len());
+    for chunk in source.as_raw().chunks(chunk_len) {
+        let len = (chunk.len() / 3) * 3;
+        input.clear();
+        input.extend(chunk.iter().map(|&value| value as f32 / 255.0));
+        output.resize(len, 0.0);
+        transform
+            .transform(&input, &mut output)
+            .map_err(|e| anyhow!("Transformation colorimétrique échouée : {e:?}"))?;
+        bytes.extend(
+            output[..len]
                 .iter()
-                .copied()
-                .map(|value| (value.clamp(0.0, 1.0) * 255.0).round() as u8)
-        })
-        .collect();
+                .map(|value| (value.clamp(0.0, 1.0) * 255.0).round() as u8),
+        );
+    }
     RgbImage::from_raw(source.width(), source.height(), bytes)
         .ok_or_else(|| anyhow!("Taille d'image invalide après conversion colorimétrique"))
 }
@@ -129,6 +154,15 @@ fn transform_rgba(
     profile: &ColorProfile,
     destination: &ColorProfile,
 ) -> Result<RgbaImage> {
+    transform_rgba_chunked(source, profile, destination, COLOR_CHUNK_PIXELS)
+}
+
+fn transform_rgba_chunked(
+    source: &RgbaImage,
+    profile: &ColorProfile,
+    destination: &ColorProfile,
+    chunk_pixels: usize,
+) -> Result<RgbaImage> {
     let transform = profile
         .create_transform_f32(
             Layout::Rgba,
@@ -137,25 +171,28 @@ fn transform_rgba(
             TransformOptions::default(),
         )
         .map_err(|e| anyhow!("Impossible de créer la transformation colorimétrique : {e:?}"))?;
-    let mut input = Vec::with_capacity(source.len() * 4);
-    for pixel in source.pixels() {
-        input.extend(pixel.0.map(|value| value as f32 / 255.0));
-    }
-    let mut output = vec![0.0; input.len()];
-    transform
-        .transform(&input, &mut output)
-        .map_err(|e| anyhow!("Transformation colorimétrique échouée : {e:?}"))?;
-    let bytes = output
-        .as_chunks::<4>()
-        .0
-        .iter()
-        .flat_map(|pixel| {
-            pixel
+    let chunk_len = chunk_pixels
+        .max(1)
+        .saturating_mul(4)
+        .max(4)
+        .min(source.len().max(4));
+    let mut input: Vec<f32> = Vec::with_capacity(chunk_len);
+    let mut output: Vec<f32> = vec![0.0; chunk_len];
+    let mut bytes = Vec::with_capacity(source.len());
+    for chunk in source.as_raw().chunks(chunk_len) {
+        let len = (chunk.len() / 4) * 4;
+        input.clear();
+        input.extend(chunk.iter().map(|&value| value as f32 / 255.0));
+        output.resize(len, 0.0);
+        transform
+            .transform(&input, &mut output)
+            .map_err(|e| anyhow!("Transformation colorimétrique échouée : {e:?}"))?;
+        bytes.extend(
+            output[..len]
                 .iter()
-                .copied()
-                .map(|value| (value.clamp(0.0, 1.0) * 255.0).round() as u8)
-        })
-        .collect();
+                .map(|value| (value.clamp(0.0, 1.0) * 255.0).round() as u8),
+        );
+    }
     RgbaImage::from_raw(source.width(), source.height(), bytes)
         .ok_or_else(|| anyhow!("Taille d'image invalide après conversion colorimétrique"))
 }
@@ -178,5 +215,36 @@ mod tests {
         let converted = convert_to_srgb(image, &ColorProfile::new_srgb()).unwrap();
         assert_eq!(converted.dimensions(), (2, 3));
         assert!(converted.color().has_alpha());
+    }
+
+    #[test]
+    fn chunked_rgb_transform_matches_single_shot() {
+        let source = RgbImage::from_fn(200, 130, |x, y| {
+            image::Rgb([(x % 256) as u8, (y % 256) as u8, ((x + y) % 256) as u8])
+        });
+        let srgb = ColorProfile::new_srgb();
+        let p3 = ColorProfile::new_display_p3();
+        // Un chunk minuscule force de nombreux appels ; `usize::MAX` fait tout
+        // d'un coup. Les deux doivent produire exactement les mêmes octets.
+        let chunked = transform_rgb_chunked(&source, &srgb, &p3, 1).unwrap();
+        let single = transform_rgb_chunked(&source, &srgb, &p3, usize::MAX).unwrap();
+        assert_eq!(chunked.as_raw(), single.as_raw());
+    }
+
+    #[test]
+    fn chunked_rgba_transform_matches_single_shot() {
+        let source = RgbaImage::from_fn(90, 70, |x, y| {
+            image::Rgba([
+                (x % 256) as u8,
+                (y % 256) as u8,
+                ((x * y) % 256) as u8,
+                ((x + y) % 256) as u8,
+            ])
+        });
+        let srgb = ColorProfile::new_srgb();
+        let p3 = ColorProfile::new_display_p3();
+        let chunked = transform_rgba_chunked(&source, &srgb, &p3, 3).unwrap();
+        let single = transform_rgba_chunked(&source, &srgb, &p3, usize::MAX).unwrap();
+        assert_eq!(chunked.as_raw(), single.as_raw());
     }
 }

@@ -57,12 +57,19 @@ cargo build --release
 
 Binaries will be in `target/release/`:
 - `pointimg` -- CLI tool
-- `pointimg-gui` -- GUI application (requires Vulkan or OpenGL)
+- `pointimg-gui` -- GUI application (egui/wgpu, requires Vulkan or OpenGL)
+- `pointimg-gtk` -- GUI application (GTK4/libadwaita, optional feature `gtk`)
 
 To build CLI only (without GUI dependencies):
 
 ```bash
 cargo build --release --no-default-features
+```
+
+To build the GTK4 GUI (requires GTK 4.10+ and libadwaita 1.4+ development packages):
+
+```bash
+cargo build --release --no-default-features --features gtk --bin pointimg-gtk
 ```
 
 ## CLI Usage
@@ -149,6 +156,8 @@ than being interpreted with potentially different defaults.
 
 ## GUI Usage
 
+### egui (default)
+
 ```bash
 pointimg-gui
 ```
@@ -167,13 +176,27 @@ pointimg-gui
 | `Ctrl+Y` or `Ctrl+Shift+Z` | Redo                      |
 | `Space`                    | Recalculate               |
 
+### GTK4 / libadwaita (optional)
+
+```bash
+cargo run --no-default-features --features gtk --bin pointimg-gtk
+```
+
+The GTK front-end exposes the same features as the egui one (all algorithms,
+presets, undo/redo, density map, zoom, PNG/SVG export) with a native
+libadwaita look and the same keyboard shortcuts.
+
 ## Tests
 
 ```bash
-cargo test --all-features    # 84 tests
-cargo clippy --all-features -- -D warnings
-cargo bench                   # criterion benchmarks (benches/filter.rs)
+cargo test --features gui,gpu,avif   # suite complète (GUI + GPU + AVIF)
+cargo test --no-default-features     # CLI seul (sans dépendances GUI)
+cargo clippy --features gui,gpu,avif --all-targets -- -D warnings
+cargo bench                          # criterion benchmarks (benches/filter.rs)
 ```
+
+> La feature `gtk` est exclue : elle exige GTK4/libadwaita installés. Pour la
+> tester : `cargo test --no-default-features --features gtk`.
 
 ## Debugging
 

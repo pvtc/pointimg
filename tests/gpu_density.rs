@@ -12,7 +12,7 @@ fn gradient_image(w: u32, h: u32) -> RgbImage {
     RgbImage::from_fn(w, h, |x, y| {
         let block = ((x / 7 + y / 5) % 4) as u8;
         let v = block * 60 + ((x * 3 + y * 5) % 64) as u8;
-        image::Rgb([v, 255u8.saturating_sub(v), (v / 2).min(255)])
+        image::Rgb([v, 255u8.saturating_sub(v), v / 2])
     })
 }
 

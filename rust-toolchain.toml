@@ -1,0 +1,5 @@
+[toolchain]
+# Canal par défaut pour le développement local et la CI. Les jobs MSRV
+# épinglent explicitement `+1.95`, ce qui reste prioritaire sur ce fichier.
+channel = "stable"
+components = ["rustfmt", "clippy"]

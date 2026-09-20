@@ -283,24 +283,49 @@ fn compute_centers(dots: &[Dot], n: usize) -> Vec<[f32; 3]> {
         })
         .collect();
 
+    // Les couleurs des dots ne changent pas entre les itérations : on les
+    // déduplique une seule fois et on ne cherche le centre le plus proche
+    // qu'une fois par couleur unique. La distance ne dépend que de la couleur,
+    // donc le résultat reste bit-à-bit identique à une recherche par dot, mais
+    // on évite de répéter `n` multiplications pour des couleurs identiques.
+    let (unique_colors, dot_to_unique) = unique_dot_colors(dots);
+
     // Stop early when the color centers have converged.
     for _ in 0..10 {
+        // Meilleur centre par couleur unique. Mêmes opérations que l'ancien
+        // `min_by(|a, b| a.1.total_cmp(&b.1))` : balayage croissant, le premier
+        // minimum l'emporte, avec sortie anticipée sur une correspondance exacte.
+        let best_per_unique: Vec<usize> = unique_colors
+            .iter()
+            .map(|&color| {
+                let cr = color[0] as f32;
+                let cg = color[1] as f32;
+                let cb = color[2] as f32;
+                let mut best = 0usize;
+                let mut best_dist = f32::INFINITY;
+                for (i, c) in centers.iter().enumerate() {
+                    let dr = c[0] - cr;
+                    let dg = c[1] - cg;
+                    let db = c[2] - cb;
+                    let d = dr * dr + dg * dg + db * db;
+                    if d < best_dist {
+                        best_dist = d;
+                        best = i;
+                        if d == 0.0 {
+                            break;
+                        }
+                    }
+                }
+                best
+            })
+            .collect();
+
         let mut sums = vec![[0f64; 3]; n];
         let mut counts = vec![0u64; n];
-
-        for dot in dots {
-            let best = centers
-                .iter()
-                .enumerate()
-                .map(|(i, c)| {
-                    let dr = c[0] - dot.color[0] as f32;
-                    let dg = c[1] - dot.color[1] as f32;
-                    let db = c[2] - dot.color[2] as f32;
-                    (i, dr * dr + dg * dg + db * db)
-                })
-                .min_by(|a, b| a.1.total_cmp(&b.1))
-                .map(|(i, _)| i)
-                .unwrap_or(0);
+        // Accumulation dans l'ordre d'origine des dots pour préserver
+        // exactement la somme f64 (donc le résultat bit-à-bit).
+        for (dot, &unique_idx) in dots.iter().zip(&dot_to_unique) {
+            let best = best_per_unique[unique_idx];
             sums[best][0] += dot.color[0] as f64;
             sums[best][1] += dot.color[1] as f64;
             sums[best][2] += dot.color[2] as f64;
@@ -330,6 +355,24 @@ fn compute_centers(dots: &[Dot], n: usize) -> Vec<[f32; 3]> {
         }
     }
     centers
+}
+
+/// Déduplique les couleurs des dots. Retourne la liste des couleurs uniques
+/// (ordre d'apparition) et, pour chaque dot, l'index de sa couleur unique.
+fn unique_dot_colors(dots: &[Dot]) -> (Vec<[u8; 3]>, Vec<usize>) {
+    use std::collections::HashMap;
+    let mut index_of: HashMap<[u8; 3], usize> = HashMap::with_capacity(dots.len());
+    let mut unique = Vec::new();
+    let mut mapping = Vec::with_capacity(dots.len());
+    for dot in dots {
+        let color = dot.color;
+        let idx = *index_of.entry(color).or_insert_with(|| {
+            unique.push(color);
+            unique.len() - 1
+        });
+        mapping.push(idx);
+    }
+    (unique, mapping)
 }
 
 /// Centres de palette en u8 (utile pour le dithering Floyd-Steinberg).
@@ -698,4 +741,126 @@ pub fn render_halftone(src: &RgbImage, dots: &[Dot], params: &FilterParams) -> R
         );
     }
     dst
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Ancienne implémentation (itérateur + `min_by`) conservée comme référence
+    /// pour vérifier que l'optimisation dédupliquée reste bit-à-bit identique.
+    fn compute_centers_reference(dots: &[Dot], n: usize) -> Vec<[f32; 3]> {
+        if dots.is_empty() || n >= dots.len() {
+            return Vec::new();
+        }
+        let step = dots.len() / n;
+        let mut centers: Vec<[f32; 3]> = (0..n)
+            .map(|i| {
+                let c = dots[i * step].color;
+                [c[0] as f32, c[1] as f32, c[2] as f32]
+            })
+            .collect();
+
+        for _ in 0..10 {
+            let mut sums = vec![[0f64; 3]; n];
+            let mut counts = vec![0u64; n];
+            for dot in dots {
+                let best = centers
+                    .iter()
+                    .enumerate()
+                    .map(|(i, c)| {
+                        let dr = c[0] - dot.color[0] as f32;
+                        let dg = c[1] - dot.color[1] as f32;
+                        let db = c[2] - dot.color[2] as f32;
+                        (i, dr * dr + dg * dg + db * db)
+                    })
+                    .min_by(|a, b| a.1.total_cmp(&b.1))
+                    .map(|(i, _)| i)
+                    .unwrap_or(0);
+                sums[best][0] += dot.color[0] as f64;
+                sums[best][1] += dot.color[1] as f64;
+                sums[best][2] += dot.color[2] as f64;
+                counts[best] += 1;
+            }
+
+            let mut converged = true;
+            for i in 0..n {
+                let cnt = counts[i] as f64;
+                if cnt > 0.0 {
+                    let new_center = [
+                        (sums[i][0] / cnt) as f32,
+                        (sums[i][1] / cnt) as f32,
+                        (sums[i][2] / cnt) as f32,
+                    ];
+                    let shift = (new_center[0] - centers[i][0]).powi(2)
+                        + (new_center[1] - centers[i][1]).powi(2)
+                        + (new_center[2] - centers[i][2]).powi(2);
+                    if shift > 0.5 {
+                        converged = false;
+                    }
+                    centers[i] = new_center;
+                }
+            }
+            if converged {
+                break;
+            }
+        }
+        centers
+    }
+
+    fn dot(x: f32, y: f32, color: [u8; 3]) -> Dot {
+        Dot {
+            x,
+            y,
+            color,
+            radius: 1.0,
+        }
+    }
+
+    #[test]
+    fn deduplicated_centers_match_reference_bit_for_bit() {
+        // Couleurs issues d'une petite palette → beaucoup de doublons, ce qui
+        // exerce la déduplication.
+        let palette: [[u8; 3]; 8] = [
+            [0, 0, 0],
+            [255, 255, 255],
+            [255, 0, 0],
+            [0, 255, 0],
+            [0, 0, 255],
+            [128, 128, 128],
+            [200, 30, 90],
+            [10, 220, 30],
+        ];
+        let mut state = 0x1234_5678u64;
+        let dots: Vec<Dot> = (0..500)
+            .map(|i| {
+                state = state
+                    .wrapping_mul(6_364_136_223_846_793_005)
+                    .wrapping_add(1);
+                let color = palette[(state >> 33) as usize % palette.len()];
+                dot(i as f32, i as f32, color)
+            })
+            .collect();
+
+        for n in [2usize, 3, 7, 16] {
+            let optimized = compute_centers(&dots, n);
+            let reference = compute_centers_reference(&dots, n);
+            assert_eq!(optimized.len(), reference.len(), "taille pour n={n}");
+            for (a, b) in optimized.iter().zip(&reference) {
+                assert_eq!(a, b, "centres divergents pour n={n}");
+            }
+        }
+    }
+
+    #[test]
+    fn unique_dot_colors_groups_identical_colors() {
+        let dots = vec![
+            dot(0.0, 0.0, [1, 2, 3]),
+            dot(1.0, 1.0, [4, 5, 6]),
+            dot(2.0, 2.0, [1, 2, 3]),
+        ];
+        let (unique, mapping) = unique_dot_colors(&dots);
+        assert_eq!(unique, vec![[1, 2, 3], [4, 5, 6]]);
+        assert_eq!(mapping, vec![0, 1, 0]);
+    }
 }

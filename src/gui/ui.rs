@@ -98,6 +98,9 @@ impl App {
                 && let Some(path) = rfd::FileDialog::new()
                     .add_filter("PNG", &["png"])
                     .add_filter("JPEG", &["jpg", "jpeg"])
+                    .add_filter("WebP", &["webp"])
+                    .add_filter("BMP", &["bmp"])
+                    .add_filter("TIFF", &["tif", "tiff"])
                     .save_file()
             {
                 self.save_result(path);
@@ -703,7 +706,11 @@ impl App {
         if let Some(src) = &self.src_rgb {
             ui.small(format!(
                 "Mémoire estimée : {}",
-                format_memory(filter::estimate_memory_bytes(src.width(), src.height()))
+                format_memory(filter::estimate_memory_bytes_for(
+                    src.width(),
+                    src.height(),
+                    &self.params
+                ))
             ));
         }
         if let Some(ms) = self.last_compute_ms {

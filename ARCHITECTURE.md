@@ -27,9 +27,13 @@ and variance.
 
 ```
 pointimg/
-├── Cargo.toml          — dependencies, two binaries + a lib
+├── Cargo.toml          — dependencies, three binaries + a lib
 ├── src/
-│   ├── lib.rs          — crate root; exposes `pub mod filter`
+│   ├── lib.rs          — crate root; exposes `pub mod filter`, `color`, `frontend`
+│   ├── color.rs        — ICC-aware decoding (embedded/`--input-profile`) and
+│   │                     output-profile encoding (moxcms)
+│   ├── frontend.rs     — helpers shared by the egui and GTK4 front-ends
+│   │                     (formatting, output paths, atomic writes, presets)
 │   ├── filter/         — all logic, split by concern
 │   │   ├── mod.rs      — module root: public API (apply, apply_with_progress,
 │   │   │               compute_dots), re-exports, unit tests
@@ -47,7 +51,9 @@ pointimg/
 │   │   ├── seedgrid.rs — SeedGrid spatial acceleration
 │   │   ├── sampling.rs — importance_sample, make_rng_seed, lcg_next,
 │   │   │               nearest_neighbor_radii, build_dots_from_seeds
-│   │   ├── util.rs     — luminance, pixel_sum, pixel_variance, flatten_to_rgb
+│   │   ├── util.rs     — luminance, pixel_sum, pixel_variance, flatten_to_rgb,
+│   │   │               estimate_memory_bytes(_for), resize_to_limits
+│   │   ├── gpu.rs      — optional WGSL compute density pass (`gpu` feature)
 │   │   └── algorithms/ — placement algorithms, one file each
 │   │       ├── grid.rs     — dots_grid
 │   │       ├── kmeans.rs   — dots_kmeans_progressive, compute_dots_kmeans,
@@ -55,32 +61,56 @@ pointimg/
 │   │       ├── quadtree.rs — dots_quadtree, subdivide
 │   │       └── voronoi.rs  — dots_voronoi_progressive, compute_dots_voronoi
 │   ├── main.rs         — CLI binary (`pointimg`)
-│   └── gui/
-│       └── main.rs     — GUI binary (`pointimg-gui`)
+│   ├── gui/            — egui/wgpu front-end (`pointimg-gui`, feature `gui`)
+│   │   ├── main.rs     — eframe entry point
+│   │   ├── app.rs      — application state and worker generations
+│   │   ├── compute.rs  — background compute/preview orchestration
+│   │   ├── ui.rs       — panels, controls, history
+│   │   ├── io.rs       — open/load helpers
+│   │   ├── save.rs     — multi-format export
+│   │   ├── convert.rs  — texture conversion
+│   │   └── format.rs   — display formatting
+│   └── gtk/            — GTK4/libadwaita front-end (`pointimg-gtk`, feature `gtk`)
+│       ├── main.rs     — application bootstrap
+│       ├── actions.rs  — GActions and keyboard shortcuts
+│       ├── controls.rs — parameter widgets
+│       ├── sections.rs — panel sections
+│       ├── preview.rs  — GDK texture preview + zoom
+│       ├── files.rs    — file dialogs and drag & drop
+│       ├── wire.rs     — async-channel wiring between worker and UI
+│       └── ui.rs       — window/UI composition
 ├── tests/              — integration tests (public API end-to-end)
 │   ├── pipeline.rs     — algorithm dimensions, progress, dots, flatten, density
 │   ├── svg.rs          — SVG header, shapes, bg color, empty-image error
 │   ├── reproducibility.rs — same seed → identical, different seed → diverge
 │   ├── palette.rs      — palette quantization reduces SVG fill colors
-│   └── halftone.rs     — CMYK rosette, dominant colors, FM screening, TOML presets
-└── benches/
-    └── filter.rs       — criterion benches (apply per algo, density, svg)
+│   ├── halftone.rs     — CMYK rosette, dominant colors, FM screening, TOML presets
+│   └── gpu_density.rs  — CPU/GPU density parity (`gpu` feature)
+├── benches/
+│   └── filter.rs       — criterion benches (apply per algo, density, svg)
+└── fuzz/               — cargo-fuzz targets (image, preset) + versioned corpus
 ```
 
-| Crate           | Role                                                             |
-| --------------- | ---------------------------------------------------------------- |
-| `image 0.25`    | Loading / saving / manipulating `RgbImage`                       |
-| `clap 4`        | CLI argument parsing                                             |
-| `rayon 1`       | Parallel iteration (density map, Lloyd, k-means)                 |
-| `anyhow 1`      | Error handling (`Result`, `anyhow!`)                             |
-| `eframe 0.31`   | egui framework (wgpu backend) — *feature-gated* `gui`            |
-| `egui 0.31`     | Immediate-mode GUI widgets — *feature-gated* `gui`               |
-| `wgpu 24`       | GPU backend (Vulkan + GL fallback) — *feature-gated* `gui`       |
-| `rfd 0.15`      | Native file dialogs — *feature-gated* `gui`                      |
-| `serde 1`       | Serialization framework (`FilterParams` derive)                  |
-| `toml 0.8`      | TOML preset files (`--preset` / `--save-preset`)                 |
-| `glob 0.3`      | Glob expansion for batch `--input` (`*`, `?`, `[`)               |
-| `criterion 0.5` | Benchmarks — *dev-dependency*                                    |
+| Crate             | Role                                                             |
+| ----------------- | ---------------------------------------------------------------- |
+| `image 0.25`      | Loading / saving / manipulating `RgbImage`                       |
+| `moxcms 0.9`      | Pure-Rust ICC transforms (sRGB working space)                    |
+| `clap 4`          | CLI argument parsing                                             |
+| `rayon 1`         | Parallel iteration (density map, Lloyd, k-means)                 |
+| `anyhow 1`        | Error handling (`Result`, `anyhow!`)                             |
+| `log` / `env_logger` | Logging (`-v`/`-vv`/`-q`, `RUST_LOG`)                         |
+| `eframe 0.36`     | egui framework (wgpu backend) — *feature-gated* `gui`            |
+| `egui 0.36`       | Immediate-mode GUI widgets — *feature-gated* `gui`               |
+| `wgpu 30`         | GPU backend (Vulkan + GL fallback) — *feature-gated* `gui`/`gpu` |
+| `rfd 0.17`        | Native file dialogs — *feature-gated* `gui`                      |
+| `gtk4 0.11`       | GTK4 bindings — *feature-gated* `gtk`                            |
+| `libadwaita 0.9`  | libadwaita widgets — *feature-gated* `gtk`                       |
+| `async-channel 2` | Worker → UI messaging (GTK) — *feature-gated* `gtk`              |
+| `serde 1`         | Serialization framework (`FilterParams` derive)                  |
+| `toml 1`          | TOML preset files (`--preset` / `--save-preset`)                 |
+| `glob 0.3`        | Glob expansion for batch `--input` (`*`, `?`, `[`)               |
+| `criterion 0.8`   | Benchmarks — *dev-dependency*                                    |
+
 
 > **Optional features:** `avif` (pulls `image/avif`; AVIF encoder via `ravif`).
 > `gpu` (pulls `wgpu`, `pollster`, `bytemuck`; opt-in at runtime with
@@ -819,27 +849,29 @@ pub fn render_svg_dynamic(src: &DynamicImage, params: &FilterParams) -> Result<S
 ### Available immediately
 
 ```bash
-# Type checking without compiling
-cargo check --all-features
+# Type checking without compiling (gtk excluded: needs GTK4/libadwaita)
+cargo check --features gui,gpu,avif
+cargo check --no-default-features          # CLI-only
 
 # Automatic code formatting
 cargo fmt
 
 # Official Rust linter
-cargo clippy --all-features -- -D warnings
+cargo clippy --features gui,gpu,avif --all-targets -- -D warnings
+cargo clippy --no-default-features --all-targets -- -D warnings
 
-# Unit tests (41 tests in src/filter/mod.rs + dither + gamma)
+# Unit tests (src/filter/* + src/main.rs + src/color.rs)
 cargo test --lib
 
-# Integration tests (22 tests across tests/*.rs — pipeline, svg, repro,
-# palette, halftone)
-cargo test --all-features
+# Integration tests (tests/*.rs — pipeline, svg, repro, palette, halftone)
+cargo test --features gui,gpu,avif
+cargo test --no-default-features            # CLI-only build
 
 # Benchmarks (criterion)
 cargo bench
 
 # Generate Rust documentation
-cargo doc --no-deps --all-features
+cargo doc --no-deps --features gui,gpu,avif
 ```
 
 ### Installed
@@ -857,12 +889,22 @@ The full pipeline lives in `.github/workflows/ci.yml` and runs on every
 push/PR to `main`:
 
 - **fmt** — `cargo fmt --check`
-- **clippy** — matrix `ubuntu/macos/windows`, `cargo clippy --all-features -D warnings`
-- **test** — matrix `ubuntu/macos/windows`, `cargo test --lib --all-features`
-- **msrv** — `cargo +1.95 check --all-features --locked` (and `stable`)
-- **build** — `cargo build --release --all-features`
-- **docs** — `cargo doc --no-deps --all-features` with `--cfg docsrs`
-- **audit** — `cargo audit` (continue-on-error)
+- **clippy** — matrix `ubuntu/macos/windows`,
+  `cargo clippy --features gui,gpu,avif --all-targets -- -D warnings` plus
+  `--no-default-features --all-targets` (CLI-only coverage)
+- **test** — matrix `ubuntu/macos/windows`, `cargo test --features gui,gpu,avif --locked`
+  plus `cargo test --no-default-features --locked`
+- **gpu** — lavapipe software adapter, CPU/GPU density parity
+- **msrv** — `cargo +1.95 check --features gui,gpu,avif --locked` (and `stable`)
+- **build** — `cargo build --release --features gui,gpu,avif`
+- **gtk** — Linux-only, installs `libgtk-4-dev`/`libadwaita-1-dev`, clippy +
+  release build of `pointimg-gtk`
+- **docs** — `cargo doc --no-deps --features gui,gpu,avif` with `--cfg docsrs`
+- **audit** — `cargo audit` (scheduled workflow too)
+- **fuzz-build** — nightly `cargo fuzz` smoke runs (100 runs per target)
+
+`gtk` is deliberately excluded from `--all-features` everywhere: GTK4 and
+libadwaita are not available on all runners nor on docs.rs.
 
 All Rust jobs use `Swatinem/rust-cache@v2` for dependency caching.
 Release builds (cross-platform binaries) are in `.github/workflows/release.yml`.

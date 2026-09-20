@@ -2,7 +2,7 @@
 
 use eframe::egui;
 use egui::ColorImage;
-use image::{GrayImage, RgbImage, Rgba, RgbaImage};
+use image::{GrayImage, RgbImage, RgbaImage};
 
 pub(crate) fn rgb_to_color_image(img: &RgbImage) -> ColorImage {
     let (w, h) = img.dimensions();
@@ -45,17 +45,7 @@ pub(crate) fn rgba_to_color_image_checker(img: &RgbaImage) -> ColorImage {
 }
 
 /// Helper: convertir `RgbImage` en `RgbaImage` opaque (alpha=255 partout).
-pub(crate) fn rgb_to_rgba_opaque(img: &RgbImage) -> RgbaImage {
-    let (w, h) = img.dimensions();
-    let mut out = RgbaImage::new(w, h);
-    for y in 0..h {
-        for x in 0..w {
-            let p = img.get_pixel(x, y);
-            out.put_pixel(x, y, Rgba([p[0], p[1], p[2], 255]));
-        }
-    }
-    out
-}
+pub(crate) use pointimg::frontend::rgb_to_rgba_opaque;
 
 pub(crate) fn gray_to_color_image(img: &GrayImage) -> ColorImage {
     let (w, h) = img.dimensions();

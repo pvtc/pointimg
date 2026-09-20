@@ -32,7 +32,13 @@ jobs:
         with:
           components: clippy
       - uses: Swatinem/rust-cache@v2
-      - run: cargo clippy --all-features -- -D warnings
+      # `gtk` est exclu de --all-features : il exige GTK4/libadwaita installés
+      # (job dédié ci-dessous, Linux uniquement).
+      # `--all-targets` lint aussi les tests, benches et exemples.
+      - run: cargo clippy --features gui,gpu,avif --all-targets -- -D warnings
+      # Couverture du build CLI-only (aucune dépendance GUI).
+      - name: Clippy (CLI-only)
+        run: cargo clippy --no-default-features --all-targets -- -D warnings
 
   test:
     name: Test
@@ -44,7 +50,10 @@ jobs:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
-      - run: cargo test --all-features --locked
+      - run: cargo test --features gui,gpu,avif --locked
+      # Le build CLI-only doit rester testé (pas de dépendances GUI).
+      - name: Test (CLI-only)
+        run: cargo test --no-default-features --locked
 
   gpu:
     name: GPU parity (lavapipe)
@@ -77,7 +86,7 @@ jobs:
         with:
           toolchain: ${{ matrix.toolchain }}
       - uses: Swatinem/rust-cache@v2
-      - run: cargo +${{ matrix.toolchain }} check --all-features --locked
+      - run: cargo +${{ matrix.toolchain }} check --features gui,gpu,avif --locked
 
   build:
     name: Build (release)
@@ -86,7 +95,27 @@ jobs:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
-      - run: cargo build --release --all-features
+      - run: cargo build --release --features gui,gpu,avif
+
+  gtk:
+    name: GTK4 GUI (Linux)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy
+      - name: Install GTK4 and libadwaita
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libgtk-4-dev libadwaita-1-dev
+      - uses: Swatinem/rust-cache@v2
+      - name: Clippy
+        run: cargo clippy --no-default-features --features gtk --bin pointimg-gtk -- -D warnings
+      - name: Test (lib + CLI)
+        run: cargo test --no-default-features --features gtk --locked
+      - name: Build (release)
+        run: cargo build --release --no-default-features --features gtk --bin pointimg-gtk
 
   docs:
     name: Docs
@@ -99,7 +128,7 @@ jobs:
         with:
           components: rust-docs
       - uses: Swatinem/rust-cache@v2
-      - run: cargo doc --no-deps --all-features
+      - run: cargo doc --no-deps --features gui,gpu,avif
 
   audit:
     name: Security audit
@@ -112,6 +141,11 @@ jobs:
   fuzz-build:
     name: Fuzz smoke tests
     runs-on: ubuntu-latest
+    # cargo-fuzz a besoin de nightly (sanitizer coverage). Le
+    # `rust-toolchain.toml` stable de la racine l'emporterait sur le toolchain
+    # installé par l'action : on force explicitement nightly pour ce job.
+    env:
+      RUSTUP_TOOLCHAIN: nightly
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@nightly

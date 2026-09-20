@@ -1,1 +1,7 @@
 # Configuration cargo-audit.
+
+[advisories]
+# `paste` n'est plus maintenu (RUSTSEC-2024-0436). Il n'est tiré que par
+# `ravif`/`rav1e`, l'encodeur AVIF de la feature optionnelle `avif`, et reste
+# une simple alerte de maintenance (aucune vulnérabilité exploitable connue).
+ignore = ["RUSTSEC-2024-0436"]

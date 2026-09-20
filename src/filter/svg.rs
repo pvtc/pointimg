@@ -4,6 +4,13 @@ use crate::filter::util::flatten_to_rgb;
 use anyhow::{Result, anyhow};
 use image::{DynamicImage, RgbImage};
 use std::f32::consts::PI;
+use std::fmt::{Arguments, Write};
+
+/// Écrit dans une `String` en ignorant l'erreur (l'écriture y est infaillible).
+#[inline]
+fn write_str(out: &mut String, args: Arguments<'_>) {
+    let _ = out.write_fmt(args);
+}
 
 /// Rend les dots en SVG (chaîne de caractères).
 /// Chaque dot devient un élément SVG selon `params.dot_shape`.
@@ -29,20 +36,25 @@ pub fn render_svg_from_dots(w: u32, h: u32, dots: &[Dot], params: &FilterParams)
         dots
     };
 
-    // Use the configured background as the single source of truth.
-    let mut svg = format!(
-        r#"<svg xmlns="http://www.w3.org/2000/svg" width="{w}" height="{h}" viewBox="0 0 {w} {h}">"#
+    // Pre-size the buffer: roughly one short element per dot avoids repeated
+    // reallocations on large point clouds.
+    let mut svg = String::with_capacity(128 + dots_final.len() * 96);
+    write_str(
+        &mut svg,
+        format_args!(
+            "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"{w}\" height=\"{h}\" viewBox=\"0 0 {w} {h}\">\n"
+        ),
     );
-    svg.push('\n');
     // En mode transparent, on n'émet pas de <rect> de fond : les zones non
     // couvertes par un dot restent transparentes (utile pour compositing SVG).
     if !params.transparent {
         let [br, bg_c, bb] = params.bg_color;
-        let bg_hex = format!("#{:02x}{:02x}{:02x}", br, bg_c, bb);
-        svg.push_str(&format!(
-            r#"  <rect width="{w}" height="{h}" fill="{bg_hex}"/>"#
-        ));
-        svg.push('\n');
+        write_str(
+            &mut svg,
+            format_args!(
+                "  <rect width=\"{w}\" height=\"{h}\" fill=\"#{br:02x}{bg_c:02x}{bb:02x}\"/>\n"
+            ),
+        );
     }
 
     let mut sorted: Vec<&Dot> = dots_final.iter().collect();
@@ -54,46 +66,59 @@ pub fn render_svg_from_dots(w: u32, h: u32, dots: &[Dot], params: &FilterParams)
             continue;
         }
         let [cr, cg, cb] = dot.color;
-        let fill = format!("#{:02x}{:02x}{:02x}", cr, cg, cb);
-        let elem = match params.dot_shape {
+        match params.dot_shape {
             DotShape::Circle => {
-                format!(
-                    "  <circle cx=\"{:.1}\" cy=\"{:.1}\" r=\"{:.1}\" fill=\"{fill}\"/>",
-                    dot.x, dot.y, r
-                )
+                write_str(
+                    &mut svg,
+                    format_args!(
+                        "  <circle cx=\"{:.1}\" cy=\"{:.1}\" r=\"{:.1}\" fill=\"#{cr:02x}{cg:02x}{cb:02x}\"/>\n",
+                        dot.x, dot.y, r
+                    ),
+                );
             }
             DotShape::Square => {
                 let s = r * 2.0;
-                format!(
-                    "  <rect x=\"{:.1}\" y=\"{:.1}\" width=\"{:.1}\" height=\"{:.1}\" fill=\"{fill}\"/>",
-                    dot.x - r,
-                    dot.y - r,
-                    s,
-                    s
-                )
+                write_str(
+                    &mut svg,
+                    format_args!(
+                        "  <rect x=\"{:.1}\" y=\"{:.1}\" width=\"{:.1}\" height=\"{:.1}\" fill=\"#{cr:02x}{cg:02x}{cb:02x}\"/>\n",
+                        dot.x - r,
+                        dot.y - r,
+                        s,
+                        s
+                    ),
+                );
             }
             DotShape::Ellipse { aspect, angle_deg } => {
                 let rx = r;
                 let ry = (r / aspect.max(0.01)).max(0.5);
-                format!(
-                    "  <ellipse cx=\"{:.1}\" cy=\"{:.1}\" rx=\"{:.1}\" ry=\"{:.1}\" transform=\"rotate({:.1},{:.1},{:.1})\" fill=\"{fill}\"/>",
-                    dot.x, dot.y, rx, ry, angle_deg, dot.x, dot.y
-                )
+                write_str(
+                    &mut svg,
+                    format_args!(
+                        "  <ellipse cx=\"{:.1}\" cy=\"{:.1}\" rx=\"{:.1}\" ry=\"{:.1}\" transform=\"rotate({:.1},{:.1},{:.1})\" fill=\"#{cr:02x}{cg:02x}{cb:02x}\"/>\n",
+                        dot.x, dot.y, rx, ry, angle_deg, dot.x, dot.y
+                    ),
+                );
             }
             DotShape::RegularPolygon { sides } => {
                 let n = sides.max(3) as usize;
-                let pts: String = (0..n)
-                    .map(|i| {
-                        let a = 2.0 * PI * i as f32 / n as f32 - PI / 2.0;
-                        format!("{:.1},{:.1}", dot.x + r * a.cos(), dot.y + r * a.sin())
-                    })
-                    .collect::<Vec<_>>()
-                    .join(" ");
-                format!("  <polygon points=\"{pts}\" fill=\"{fill}\"/>")
+                svg.push_str("  <polygon points=\"");
+                for i in 0..n {
+                    if i > 0 {
+                        svg.push(' ');
+                    }
+                    let a = 2.0 * PI * i as f32 / n as f32 - PI / 2.0;
+                    write_str(
+                        &mut svg,
+                        format_args!("{:.1},{:.1}", dot.x + r * a.cos(), dot.y + r * a.sin()),
+                    );
+                }
+                write_str(
+                    &mut svg,
+                    format_args!("\" fill=\"#{cr:02x}{cg:02x}{cb:02x}\"/>\n"),
+                );
             }
-        };
-        svg.push_str(&elem);
-        svg.push('\n');
+        }
     }
     svg.push_str("</svg>\n");
     Ok(svg)
