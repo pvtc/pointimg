@@ -174,8 +174,9 @@ Both front-ends (egui and GTK4) offer the same capabilities:
 - **Folder navigation**: open a folder, then use `←`/`→` to move between images.
 - **Window title and status bar** naming the file, its dimensions and the
   compute state; errors surface as notifications.
-- **Interface comfort** (egui): 85–160 % scale and light or dark theme from the
-  settings panel; below 640 px the side-by-side view stacks automatically.
+- **Interface comfort** (egui): 85–160 % scale and automatic, light or dark
+  theme from the settings panel — both settings are remembered across launches;
+  below 640 px the side-by-side view stacks automatically.
 
 ### egui (default)
 

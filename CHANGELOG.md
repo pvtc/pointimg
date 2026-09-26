@@ -308,7 +308,13 @@ appliquées après une inspection des deux interfaces en conditions réelles
   largeur des curseurs et les arrondis. Le nouveau style de base est
   confortable (corps 14 pt, interlignes plus généreux, angles arrondis) au
   lieu du rendu par défaut très serré.
-- **Thème clair / sombre** commutable depuis le même emplacement.
+- **Thème clair / sombre** commutable depuis le même emplacement (« Auto »
+  suit la préférence du système).
+- **Préférences d'interface mémorisées** : l'échelle et le thème sont
+  enregistrés dès qu'on les change (fichier `ui-prefs.ron` dans le répertoire
+  de données de l'application, écrit via l'écriture atomique du projet) et
+  relus au lancement. L'`app.ron` d'eframe complète l'ensemble en restaurant
+  la taille de la fenêtre et la largeur des panneaux. (`src/gui/prefs.rs`)
 - **Barres qui se replient** : l'en-tête d'actions et la rangée
   « Affichage » passent en `horizontal_wrapped`, donc à 160 % ou dans une
   fenêtre étroite les boutons passent à la ligne au lieu d'être coupés.

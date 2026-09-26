@@ -99,6 +99,11 @@ impl eframe::App for App {
     fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
         let ctx = ui.ctx().clone();
 
+        // Thème mémorisé : appliqué dès le premier rendu (le contexte n'existe
+        // qu'à partir de là, et « Auto » doit aussi corriger un éventuel thème
+        // laissé par eframe dans ses propres préférences).
+        self.apply_theme(&ctx);
+
         // `eframe::App::style` n'existe plus en 0.36 : on applique notre style
         // nous-mêmes, et on le réapplique quand l'utilisateur change l'échelle
         // d'interface.
@@ -524,15 +529,22 @@ impl App {
             );
             if response.changed() {
                 self.ui_scale = percent / 100.0;
+                self.persist_display_preferences();
             }
             response.on_hover_text(
                 "Agrandit les textes, les espacements et la hauteur des widgets. \
                  100 % = confortable.",
             );
-            for (label, theme) in [("Sombre", egui::Theme::Dark), ("Clair", egui::Theme::Light)] {
-                let selected = ui.ctx().theme() == theme;
+            for (label, theme) in [
+                ("Auto", None),
+                ("Sombre", Some(egui::Theme::Dark)),
+                ("Clair", Some(egui::Theme::Light)),
+            ] {
+                let selected = self.ui_theme == theme;
                 if ui.selectable_label(selected, label).clicked() {
-                    ui.ctx().set_theme(theme);
+                    self.ui_theme = theme;
+                    self.apply_theme(ui.ctx());
+                    self.persist_display_preferences();
                 }
             }
         });

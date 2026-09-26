@@ -791,6 +791,12 @@ Panel order matters: `Panel::top` (actions), `Panel::bottom` (status),
 bottom panel must be allocated *before* the left one, otherwise the settings
 panel overflows on top of it.
 
+Interface preferences (scale, theme) live in `src/gui/prefs.rs`: a small
+`key = value` file next to eframe's own state, written as soon as a preference
+changes. eframe's `App::save` is not used because it only runs on its 30-second
+autosave — a preference changed just before quitting would be lost. "Auto" maps
+to egui's `ThemePreference::System`, which is reapplied on the first frame.
+
 ### 10.3 GTK4 / libadwaita (`src/gtk/`)
 
 ```

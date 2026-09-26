@@ -25,6 +25,7 @@ mod compute;
 mod convert;
 mod format;
 mod io;
+mod prefs;
 mod save;
 mod ui;
 
@@ -70,7 +71,7 @@ fn main() -> eframe::Result {
     eframe::run_native(
         "pointimg",
         options,
-        Box::new(|_cc| Ok(Box::new(App::default()))),
+        Box::new(|_cc| Ok(Box::new(App::new()))),
     )
 }
 
@@ -177,6 +178,10 @@ pub(crate) struct App {
     pub window_title: String,
     /// Échelle d'interface appliquée au style egui (1.0 = confortable).
     pub ui_scale: f32,
+    /// Thème imposé par l'utilisateur ; `None` suit la préférence du système.
+    pub ui_theme: Option<egui::Theme>,
+    /// Préférences d'interface persistées (échelle, thème).
+    pub prefs: Option<prefs::InterfacePrefs>,
     /// Échelle pour laquelle le style a été appliqué (evite de le refaire à
     /// chaque frame).
     pub applied_style: Option<f32>,
@@ -228,12 +233,52 @@ impl Default for App {
             status: "Ouvrez une image pour commencer (ou faites glisser un fichier).".to_string(),
             window_title: String::new(),
             ui_scale: 1.0,
+            ui_theme: None,
+            prefs: None,
             applied_style: None,
         }
     }
 }
 
 impl App {
+    /// Construit l'application en relisant les préférences d'interface
+    /// enregistrées au lancement précédent.
+    pub fn new() -> Self {
+        let mut app = Self::default();
+        if let Some(prefs) = prefs::InterfacePrefs::load() {
+            if let Some(scale) = prefs.scale() {
+                app.ui_scale = scale.clamp(0.85, 1.6);
+            }
+            // Une absence de clé signifie « suivre le système ».
+            app.ui_theme = prefs.theme();
+            app.prefs = Some(prefs);
+        }
+        app
+    }
+
+    /// Enregistre une préférence d'interface (immédiatement : quitter aussitôt
+    /// après le changement ne perd rien).
+    pub fn persist_display_preferences(&mut self) {
+        if let Some(prefs) = &mut self.prefs {
+            prefs.save(self.ui_scale, self.ui_theme);
+        }
+    }
+
+    /// Applique le thème choisi au contexte. « Auto » rend la main à egui,
+    /// qui suit alors la préférence du système.
+    pub(crate) fn apply_theme(&self, ctx: &egui::Context) {
+        let preference = match self.ui_theme {
+            Some(egui::Theme::Dark) => egui::ThemePreference::Dark,
+            Some(egui::Theme::Light) => egui::ThemePreference::Light,
+            None => egui::ThemePreference::System,
+        };
+        // Écrire les options à chaque rendu redemanderait un rendu : on ne
+        // touche au contexte que si la préférence a vraiment changé.
+        if ctx.options(|options| options.theme_preference) != preference {
+            ctx.set_theme(preference);
+        }
+    }
+
     /// Un changement de réglage : armement du debounce + historique.
     pub(crate) fn on_params_changed(&mut self, ctx: &egui::Context) {
         if self.src_rgb.is_none() {

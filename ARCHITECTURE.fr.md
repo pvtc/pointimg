@@ -632,6 +632,13 @@ Panneaux : `egui::Panel::top` (actions), `egui::Panel::bottom` (état),
 (apercus). **L'ordre d'appel compte** : le panneau du bas doit être réservé
 avant celui de gauche, sinon le panneau de gauche déborde dessus.
 
+Les préférences d'interface (échelle, thème) vivent dans `src/gui/prefs.rs` :
+un petit fichier `clé = valeur` à côté de l'état propre à eframe, écrit dès
+qu'une préférence change. `App::save` d'eframe n'est pas utilisé — il ne
+s'exécute qu'à son autosave de 30 s, et une préférence modifiée juste avant de
+quitter serait perdue. « Auto » correspond à `ThemePreference::System` d'egui,
+réappliqué dès la première frame.
+
 ### 10.3 GTK4 / libadwaita (`src/gtk/`)
 
 ```
