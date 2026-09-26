@@ -78,7 +78,7 @@ pub(crate) fn choose_open_image(
         .modal(true)
         .build();
     apply_initial_folder(&dialog, state);
-    let images = make_filter("Images", actions::supported_image_extensions());
+    let images = make_filter("Images", &actions::SUPPORTED_IMAGE_EXTENSIONS);
     dialog.set_filters(Some(&filter_store(&[images])));
     let state = Rc::clone(state);
     let widgets = Rc::clone(widgets);

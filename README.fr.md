@@ -209,6 +209,7 @@ réglage, sections toujours visibles, actions dans l'en-tête, notifications
 | `Ctrl+E`                             | Exporter à côté de la source (sans dialogue) |
 | `Ctrl+C`                             | Copier l'image dans le presse-papiers       |
 | `Ctrl+P`                             | Preset suivant                              |
+| `Alt+↑` / `Alt+↓`                    | Preset précédent / suivant                  |
 | `Ctrl+Z` / `Ctrl+Y`                  | Annuler / Rétablir                          |
 | `Ctrl+R`                             | Rétablir tous les réglages                  |
 | `Espace`                             | Recalculer (en pleine résolution)           |

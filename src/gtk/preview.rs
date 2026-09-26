@@ -443,12 +443,10 @@ pub(crate) fn update_overlays(state: &Rc<RefCell<State>>, widgets: &Rc<Widgets>)
 }
 
 fn window_subtitle(state: &State) -> String {
-    let Some(src) = state.src_rgb.as_ref() else {
-        return "Aucune image".to_string();
-    };
-    let (w, h) = src.dimensions();
-    let megapixels = f64::from(w) * f64::from(h) / 1_000_000.0;
-    format!("{w}×{h} · {megapixels:.1} Mpx")
+    match state.src_rgb.as_ref() {
+        Some(src) => pointimg::frontend::describe_image_size(src.width(), src.height()),
+        None => "Aucune image".to_string(),
+    }
 }
 
 // ─── Actions et barre d'état ────────────────────────────────────────────────

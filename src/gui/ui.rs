@@ -13,9 +13,10 @@ use std::time::{Duration, Instant};
 use pointimg::filter;
 use pointimg::filter::{Algorithm, DotShape, HalftoneMode, Screening};
 
+use super::App;
 use super::convert::{gray_to_color_image, rgb_to_color_image, rgba_to_color_image_checker};
 use super::format::format_duration;
-use super::{App, Quality, ViewMode};
+use pointimg::frontend::{Quality, ViewMode, sample_image, view_from_index, view_index};
 
 /// Description courte d'un algorithme, affichée sous le sélecteur.
 fn algorithm_help(algorithm: Algorithm) -> &'static str {
@@ -914,12 +915,9 @@ impl App {
 
     /// Passe au mode d'affichage suivant (Tab).
     fn cycle_view(&mut self, delta: i32) {
-        let index = VIEWS
-            .iter()
-            .position(|(_, mode)| *mode == self.view_mode)
-            .unwrap_or(0) as i32;
-        let next = (index + delta).rem_euclid(VIEWS.len() as i32) as usize;
-        self.view_mode = VIEWS[next].1;
+        let index = view_index(self.view_mode) as i32;
+        let next = (index + delta).rem_euclid(pointimg::frontend::VIEW_COUNT as i32) as u32;
+        self.view_mode = view_from_index(next);
     }
 
     // ─── Zone centrale ───────────────────────────────────────────────────────
@@ -1143,7 +1141,7 @@ impl App {
                 if ui.button("Ouvrir un dossier…").clicked() {
                     self.choose_folder(ctx);
                 }
-                if let Some(sample) = super::sample_image()
+                if let Some(sample) = sample_image()
                     && ui.button("Utiliser un exemple").clicked()
                 {
                     self.load_image(sample, ctx);

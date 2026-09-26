@@ -39,19 +39,9 @@ use gtk::prelude::*;
 
 use image::{DynamicImage, GrayImage, RgbImage, RgbaImage};
 use pointimg::filter::{Dot, FilterParams};
+use pointimg::frontend::{Quality, ViewMode};
 
 const APP_ID: &str = "org.pointimg.Pointimg";
-
-/// Mode d'affichage de la zone d'aperçu.
-#[derive(Clone, Copy, PartialEq, Eq, Debug)]
-pub(crate) enum ViewMode {
-    /// Source et résultat superposés, séparés par un curseur.
-    Compare,
-    Side,
-    ResultOnly,
-    SourceOnly,
-    DensityMap,
-}
 
 /// Messages envoyés par les workers vers le thread GTK.
 pub(crate) enum Msg {
@@ -154,32 +144,6 @@ pub(crate) struct State {
     pub density_texture: Option<gtk::gdk::Texture>,
 }
 
-/// Résolution de calcul choisie par l'utilisateur.
-#[derive(Clone, Copy, PartialEq, Eq, Debug)]
-pub(crate) enum Quality {
-    /// Aperçu à 1/2 puis finale automatique au repos.
-    Half,
-    /// Aperçu à 1/4 puis finale automatique au repos.
-    Quarter,
-    /// Toujours en pleine résolution.
-    Full,
-}
-
-impl Quality {
-    /// Facteur de sous-échantillonnage appliqué à l'image source.
-    pub fn scale(self) -> f32 {
-        match self {
-            Quality::Half => 0.5,
-            Quality::Quarter => 0.25,
-            Quality::Full => 1.0,
-        }
-    }
-
-    pub fn is_full(self) -> bool {
-        self == Quality::Full
-    }
-}
-
 impl State {
     fn new(tx: async_channel::Sender<Msg>) -> Self {
         Self {
@@ -267,41 +231,6 @@ impl State {
 
 /// Formate une durée en millisecondes de façon lisible.
 pub(crate) use pointimg::frontend::{format_duration, format_memory};
-
-/// Image d'exemple proposée dans l'état d'accueil, si le programme a été
-/// lancé depuis les sources (ou si des exemples ont été installés à côté).
-pub(crate) fn sample_image() -> Option<PathBuf> {
-    const NAMES: [&str; 3] = [
-        "pexels-ruyan-ayten-153760-4190725.jpg",
-        "pexels-kofishelbyfotos-38152015.jpg",
-        "kilauea25_0.jpeg",
-    ];
-    let exe = std::env::current_exe().ok()?;
-    let mut roots: Vec<PathBuf> = Vec::new();
-    if let Some(dir) = exe.parent() {
-        roots.push(dir.to_path_buf());
-        if let Some(parent) = dir.parent() {
-            roots.push(parent.to_path_buf());
-            if let Some(grand) = parent.parent() {
-                roots.push(grand.to_path_buf());
-            }
-        }
-    }
-    roots.push(std::env::current_dir().unwrap_or_default());
-    for root in roots {
-        for name in NAMES {
-            for candidate in [
-                root.join("assets/examples").join(name),
-                root.join("examples").join(name),
-            ] {
-                if candidate.is_file() {
-                    return Some(candidate);
-                }
-            }
-        }
-    }
-    None
-}
 
 fn main() -> glib::ExitCode {
     env_logger::init();

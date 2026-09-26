@@ -1,7 +1,7 @@
 //! Logique applicative : workers de calcul, chargement, undo/redo, presets.
 
 use std::cell::RefCell;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use std::rc::Rc;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -13,6 +13,9 @@ use gtk::prelude::*;
 use image::{RgbImage, RgbaImage};
 use pointimg::filter::{self, Algorithm, Dot, FilterParams};
 use pointimg::frontend;
+pub(crate) use pointimg::frontend::{
+    IMAGE_EXTENSIONS as SUPPORTED_IMAGE_EXTENSIONS, is_supported_image as supported_image,
+};
 
 use crate::controls::{ResetTarget, Widgets};
 use crate::preview;
@@ -27,21 +30,6 @@ pub(crate) use crate::files::{
 /// Délai avant de repasser en pleine résolution quand l'utilisateur arrête de
 /// manipuler les réglages.
 const FINALIZE_DELAY: Duration = Duration::from_millis(900);
-
-/// Extensions considérées comme des images lors du parcours d'un dossier.
-const IMAGE_EXTENSIONS: [&str; 7] = ["png", "jpg", "jpeg", "webp", "bmp", "tif", "tiff"];
-
-/// Extensions acceptées par les dialogues d'ouverture.
-pub(crate) fn supported_image_extensions() -> &'static [&'static str] {
-    &IMAGE_EXTENSIONS
-}
-
-pub(crate) fn supported_image(path: &Path) -> bool {
-    path.extension()
-        .and_then(|e| e.to_str())
-        .map(|e| IMAGE_EXTENSIONS.contains(&e.to_ascii_lowercase().as_str()))
-        .unwrap_or(false)
-}
 
 /// Appelé à chaque modification de paramètre : planifie un recalcul après un
 /// court délai (debounce). Si l'image n'est pas encore chargée, ne fait rien.
@@ -818,7 +806,6 @@ fn _assert_types(_: &[Dot], _: &RgbaImage, _: &FilterParams) {}
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::Quality;
 
     /// Les réinitialisations partielles ne doivent toucher qu'à leur section.
     #[test]
@@ -873,14 +860,6 @@ mod tests {
                 ));
             }
         }
-    }
-
-    #[test]
-    fn quality_scales_and_flags_full_resolution() {
-        assert_eq!(Quality::Full.scale(), 1.0);
-        assert!(Quality::Full.is_full());
-        assert!(!Quality::Half.is_full());
-        assert_eq!(Quality::Quarter.scale(), 0.25);
     }
 
     #[test]

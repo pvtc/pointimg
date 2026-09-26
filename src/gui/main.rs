@@ -31,6 +31,7 @@ mod ui;
 use eframe::egui;
 use image::{DynamicImage, GrayImage as ImgGrayImage, RgbImage, RgbaImage};
 use pointimg::filter::Dot;
+pub(crate) use pointimg::frontend::{Quality, ViewMode};
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
@@ -71,44 +72,6 @@ fn main() -> eframe::Result {
         options,
         Box::new(|_cc| Ok(Box::new(App::default()))),
     )
-}
-
-/// Mode d'affichage de la zone d'aperçu.
-#[derive(PartialEq, Eq, Clone, Copy, Debug)]
-pub(crate) enum ViewMode {
-    /// Source et résultat superposés, séparés par un curseur.
-    Compare,
-    /// source | résultat côte à côte
-    Side,
-    ResultOnly,
-    SourceOnly,
-    DensityMap,
-}
-
-/// Résolution de calcul choisie par l'utilisateur.
-#[derive(Clone, Copy, PartialEq, Eq, Debug)]
-pub(crate) enum Quality {
-    /// Aperçu à 1/2 puis finale automatique au repos.
-    Half,
-    /// Aperçu à 1/4 puis finale automatique au repos.
-    Quarter,
-    /// Toujours en pleine résolution.
-    Full,
-}
-
-impl Quality {
-    /// Facteur de sous-échantillonnage appliqué à l'image source.
-    pub(crate) fn scale(self) -> f32 {
-        match self {
-            Quality::Half => 0.5,
-            Quality::Quarter => 0.25,
-            Quality::Full => 1.0,
-        }
-    }
-
-    pub(crate) fn is_full(self) -> bool {
-        self == Quality::Full
-    }
 }
 
 /// Entrée d'historique : les paramètres d'un état passé + son libellé.
@@ -332,38 +295,4 @@ impl App {
             image::imageops::FilterType::Triangle,
         ))
     }
-}
-
-/// Image d'exemple proposée dans l'état d'accueil, si elle est sur le disque.
-pub(crate) fn sample_image() -> Option<PathBuf> {
-    const NAMES: [&str; 3] = [
-        "pexels-ruyan-ayten-153760-4190725.jpg",
-        "pexels-kofishelbyfotos-38152015.jpg",
-        "kilauea25_0.jpeg",
-    ];
-    let exe = std::env::current_exe().ok()?;
-    let mut roots: Vec<PathBuf> = Vec::new();
-    if let Some(dir) = exe.parent() {
-        roots.push(dir.to_path_buf());
-        if let Some(parent) = dir.parent() {
-            roots.push(parent.to_path_buf());
-            if let Some(grand) = parent.parent() {
-                roots.push(grand.to_path_buf());
-            }
-        }
-    }
-    roots.push(std::env::current_dir().unwrap_or_default());
-    for root in roots {
-        for name in NAMES {
-            for candidate in [
-                root.join("assets/examples").join(name),
-                root.join("examples").join(name),
-            ] {
-                if candidate.is_file() {
-                    return Some(candidate);
-                }
-            }
-        }
-    }
-    None
 }

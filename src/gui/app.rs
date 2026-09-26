@@ -12,9 +12,7 @@ use super::format::describe_parameter_change;
 use super::io;
 use pointimg::filter::{self, FilterParams};
 use pointimg::frontend;
-
-/// Extensions acceptées par les dialogues d'ouverture.
-const IMAGE_EXTENSIONS: [&str; 7] = ["png", "jpg", "jpeg", "webp", "bmp", "tif", "tiff"];
+use pointimg::frontend::{IMAGE_EXTENSIONS, describe_image_size, is_supported_image};
 
 impl App {
     // ─── Images ──────────────────────────────────────────────────────────────
@@ -57,7 +55,7 @@ impl App {
         let mut images: Vec<PathBuf> = entries
             .flatten()
             .map(|entry| entry.path())
-            .filter(|candidate| Self::is_supported_image(candidate))
+            .filter(|candidate| is_supported_image(candidate))
             .collect();
         images.sort();
         if images.is_empty() {
@@ -91,19 +89,10 @@ impl App {
             .map(|index| (index + 1, self.folder_images.len()))
     }
 
-    pub(crate) fn is_supported_image(path: &Path) -> bool {
-        path.extension()
-            .and_then(|e| e.to_str())
-            .map(|e| IMAGE_EXTENSIONS.contains(&e.to_ascii_lowercase().as_str()))
-            .unwrap_or(false)
-    }
-
     /// Description courte de l'image courante (« 1400×1050 · 1,5 Mpx »).
     pub(crate) fn image_info(&self) -> Option<String> {
         let src = self.src_rgb.as_ref()?;
-        let (w, h) = (src.width(), src.height());
-        let megapixels = f64::from(w) * f64::from(h) / 1_000_000.0;
-        Some(format!("{w}×{h} · {megapixels:.1} Mpx"))
+        Some(describe_image_size(src.width(), src.height()))
     }
 
     pub(crate) fn load_image(&mut self, path: PathBuf, ctx: &egui::Context) {

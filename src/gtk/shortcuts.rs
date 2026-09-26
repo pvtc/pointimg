@@ -27,8 +27,8 @@ const SECTIONS: &[(&str, &[Shortcut])] = &[
         "Réglages",
         &[
             ("Recalculer", &["Espace"]),
-            ("Preset suivant / précédent", &["Alt", "↑ / ↓"]),
-            ("Choisir un preset", &["Ctrl", "P"]),
+            ("Preset précédent / suivant", &["Alt", "↑ / ↓"]),
+            ("Preset suivant", &["Ctrl", "P"]),
             ("Annuler / Rétablir", &["Ctrl", "Z", "Ctrl", "Y"]),
             ("Réinitialiser les réglages", &["Ctrl", "R"]),
         ],
@@ -48,7 +48,7 @@ const SECTIONS: &[(&str, &[Shortcut])] = &[
         "Calcul",
         &[
             ("Annuler le calcul", &["Échap"]),
-            ("Agrandir la fenêtre", &["Ctrl", "↑ / ↓"]),
+            ("Recalculer en pleine résolution", &["Espace"]),
         ],
     ),
 ];

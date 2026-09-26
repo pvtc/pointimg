@@ -6,6 +6,7 @@ use std::rc::Rc;
 use adw::prelude::*;
 
 use pointimg::filter::{Algorithm, DotShape, FilterParams, HalftoneMode, Screening};
+use pointimg::frontend::{Quality, view_index};
 
 use crate::State;
 use crate::controls::Widgets;
@@ -39,28 +40,23 @@ pub(crate) fn shape_index(s: &DotShape) -> u32 {
     }
 }
 
-pub(crate) fn view_from_index(i: u32) -> crate::ViewMode {
-    match i {
-        1 => crate::ViewMode::Side,
-        2 => crate::ViewMode::ResultOnly,
-        3 => crate::ViewMode::SourceOnly,
-        4 => crate::ViewMode::DensityMap,
-        _ => crate::ViewMode::Compare,
+/// Position du mode de qualité dans la liste déroulante.
+pub(crate) fn quality_index(quality: Quality) -> u32 {
+    match quality {
+        Quality::Half => 0,
+        Quality::Quarter => 1,
+        Quality::Full => 2,
     }
 }
 
-pub(crate) fn view_index(v: crate::ViewMode) -> u32 {
-    match v {
-        crate::ViewMode::Compare => 0,
-        crate::ViewMode::Side => 1,
-        crate::ViewMode::ResultOnly => 2,
-        crate::ViewMode::SourceOnly => 3,
-        crate::ViewMode::DensityMap => 4,
+/// Mode de qualité correspondant à une position de liste déroulante.
+pub(crate) fn quality_from_index(index: u32) -> Quality {
+    match index {
+        0 => Quality::Half,
+        1 => Quality::Quarter,
+        _ => Quality::Full,
     }
 }
-
-/// Nombre de modes d'affichage (cyclés par Tab et par le menu).
-pub(crate) const VIEW_COUNT: u32 = 5;
 
 /// Aide courte affichée en sous-titre du sélecteur d'algorithme.
 fn algorithm_help(algorithm: Algorithm) -> &'static str {
@@ -70,23 +66,6 @@ fn algorithm_help(algorithm: Algorithm) -> &'static str {
         Algorithm::Voronoi => "Lloyd pondéré : le rendu le plus « naturel ».",
         Algorithm::Quadtree => "Plus de points là où l'image est détaillée.",
         Algorithm::Halftone => "Rosette CMJN ou couleurs dominantes (offset print).",
-    }
-}
-
-/// Index de la qualité d'aperçu choisie.
-pub(crate) fn quality_index(quality: crate::Quality) -> u32 {
-    match quality {
-        crate::Quality::Half => 0,
-        crate::Quality::Quarter => 1,
-        crate::Quality::Full => 2,
-    }
-}
-
-pub(crate) fn quality_from_index(index: u32) -> crate::Quality {
-    match index {
-        0 => crate::Quality::Half,
-        1 => crate::Quality::Quarter,
-        _ => crate::Quality::Full,
     }
 }
 
@@ -260,30 +239,6 @@ mod tests {
             Algorithm::Halftone,
         ] {
             assert_eq!(algorithm_from_index(algorithm_index(algorithm)), algorithm);
-        }
-    }
-
-    #[test]
-    fn view_index_round_trips() {
-        for view in [
-            crate::ViewMode::Compare,
-            crate::ViewMode::Side,
-            crate::ViewMode::ResultOnly,
-            crate::ViewMode::SourceOnly,
-            crate::ViewMode::DensityMap,
-        ] {
-            assert_eq!(view_from_index(view_index(view)), view);
-        }
-    }
-
-    #[test]
-    fn quality_index_round_trips() {
-        for quality in [
-            crate::Quality::Half,
-            crate::Quality::Quarter,
-            crate::Quality::Full,
-        ] {
-            assert_eq!(quality_from_index(quality_index(quality)), quality);
         }
     }
 

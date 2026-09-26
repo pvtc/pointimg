@@ -7,6 +7,8 @@ use adw::prelude::*;
 use gtk::glib;
 
 use pointimg::filter::{Algorithm, DotShape, HalftoneMode, Screening};
+use pointimg::frontend::sample_image;
+use pointimg::frontend::{VIEW_COUNT, view_from_index, view_index};
 
 use crate::State;
 use crate::actions;
@@ -230,12 +232,12 @@ fn toggle_fullscreen(window: &adw::ApplicationWindow) {
 /// Passe au mode d'affichage suivant (ou précédent avec `delta < 0`).
 fn step_view(state: &St, widgets: &Wi, delta: i32) {
     let next = {
-        let current = sections::view_index(state.borrow().view_mode) as i32;
-        (current + delta).rem_euclid(sections::VIEW_COUNT as i32) as u32
+        let current = view_index(state.borrow().view_mode) as i32;
+        (current + delta).rem_euclid(VIEW_COUNT as i32) as u32
     };
     {
         let mut st = state.borrow_mut();
-        st.view_mode = sections::view_from_index(next);
+        st.view_mode = view_from_index(next);
         st.updating = true;
     }
     widgets.view_mode.set_selected(next);
@@ -355,7 +357,7 @@ pub(crate) fn wire(state: &St, widgets: &Wi, window: &adw::ApplicationWindow) {
     }
 
     // Exemple fourni avec le programme, s'il est présent sur le disque.
-    if let Some(sample) = crate::sample_image() {
+    if let Some(sample) = sample_image() {
         on_click(state, widgets, &widgets.sample_button, move |s, w| {
             actions::load_image(sample.clone(), s, w);
         });
@@ -716,7 +718,7 @@ pub(crate) fn wire(state: &St, widgets: &Wi, window: &adw::ApplicationWindow) {
             if s.borrow().updating {
                 return;
             }
-            s.borrow_mut().view_mode = sections::view_from_index(drop.selected());
+            s.borrow_mut().view_mode = view_from_index(drop.selected());
             preview::apply_zoom(&s, &w);
         });
     }

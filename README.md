@@ -203,6 +203,7 @@ and a shortcuts window (`Ctrl+?`).
 | `Ctrl+E`                            | Export next to the source (no dialog)     |
 | `Ctrl+C`                            | Copy the image to the clipboard           |
 | `Ctrl+P`                            | Next preset                               |
+| `Alt+Up` / `Alt+Down`               | Previous / next preset                    |
 | `Ctrl+Z` / `Ctrl+Y`                 | Undo / Redo                               |
 | `Ctrl+R`                            | Reset all settings                        |
 | `Space`                             | Recalculate (at full resolution)          |

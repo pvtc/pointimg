@@ -13,6 +13,131 @@ use image::{RgbImage, RgbaImage};
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
 
+// ─── Éléments partagés par les deux interfaces ───────────────────────────────
+
+/// Extensions d'images acceptées par les deux interfaces (ouverture, dossier,
+/// glisser-déposer).
+pub const IMAGE_EXTENSIONS: [&str; 7] = ["png", "jpg", "jpeg", "webp", "bmp", "tif", "tiff"];
+
+/// Vrai si le chemin pointe vers un fichier image connu des interfaces.
+pub fn is_supported_image(path: &Path) -> bool {
+    path.extension()
+        .and_then(|extension| extension.to_str())
+        .map(|extension| IMAGE_EXTENSIONS.contains(&extension.to_ascii_lowercase().as_str()))
+        .unwrap_or(false)
+}
+
+/// Décrit une image pour l'interface (« 1400×1050 · 1,5 Mpx »).
+pub fn describe_image_size(width: u32, height: u32) -> String {
+    let megapixels = f64::from(width) * f64::from(height) / 1_000_000.0;
+    format!("{width}×{height} · {megapixels:.1} Mpx")
+}
+
+/// Mode d'affichage de la zone d'aperçu, commun aux deux interfaces.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum ViewMode {
+    /// Source et résultat superposés, séparés par un curseur.
+    Compare,
+    /// Source et résultat côte à côte.
+    Side,
+    /// Résultat seul.
+    ResultOnly,
+    /// Source seule.
+    SourceOnly,
+    /// Carte de détail local.
+    DensityMap,
+}
+
+/// Nombre de modes d'affichage (cyclés par `Tab` et par le menu).
+pub const VIEW_COUNT: u32 = 5;
+
+/// Position du mode dans les listes déroulantes.
+pub fn view_index(mode: ViewMode) -> u32 {
+    match mode {
+        ViewMode::Compare => 0,
+        ViewMode::Side => 1,
+        ViewMode::ResultOnly => 2,
+        ViewMode::SourceOnly => 3,
+        ViewMode::DensityMap => 4,
+    }
+}
+
+/// Mode correspondant à une position de liste déroulante.
+pub fn view_from_index(index: u32) -> ViewMode {
+    match index {
+        1 => ViewMode::Side,
+        2 => ViewMode::ResultOnly,
+        3 => ViewMode::SourceOnly,
+        4 => ViewMode::DensityMap,
+        _ => ViewMode::Compare,
+    }
+}
+
+/// Résolution de calcul choisie par l'utilisateur.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum Quality {
+    /// Aperçu à 1/2 puis finale automatique au repos.
+    Half,
+    /// Aperçu à 1/4 puis finale automatique au repos.
+    Quarter,
+    /// Toujours en pleine résolution.
+    Full,
+}
+
+impl Quality {
+    /// Facteur de sous-échantillonnage appliqué à l'image source.
+    pub fn scale(self) -> f32 {
+        match self {
+            Quality::Half => 0.5,
+            Quality::Quarter => 0.25,
+            Quality::Full => 1.0,
+        }
+    }
+
+    /// Le mode correspond-il à un calcul en pleine résolution ?
+    pub fn is_full(self) -> bool {
+        self == Quality::Full
+    }
+}
+
+/// Image d'exemple proposée dans l'état d'accueil.
+///
+/// Cherche les quelques images livrées avec le projet à côté du binaire (usage
+/// depuis les sources) ; renvoie `None` pour une installation qui ne les
+/// contient pas, auquel cas l'interface masque le bouton.
+pub fn sample_image() -> Option<PathBuf> {
+    const NAMES: [&str; 3] = [
+        "pexels-ruyan-ayten-153760-4190725.jpg",
+        "pexels-kofishelbyfotos-38152015.jpg",
+        "kilauea25_0.jpeg",
+    ];
+    let exe = std::env::current_exe().ok()?;
+    let mut roots: Vec<PathBuf> = Vec::new();
+    if let Some(dir) = exe.parent() {
+        roots.push(dir.to_path_buf());
+        if let Some(parent) = dir.parent() {
+            roots.push(parent.to_path_buf());
+            if let Some(grand) = parent.parent() {
+                roots.push(grand.to_path_buf());
+            }
+        }
+    }
+    roots.push(std::env::current_dir().unwrap_or_default());
+    for root in roots {
+        for name in NAMES {
+            for candidate in [
+                root.join("assets/examples").join(name),
+                root.join("examples").join(name),
+            ] {
+                if candidate.is_file() {
+                    return Some(candidate);
+                }
+            }
+        }
+    }
+    None
+}
+
 // ─── Formatage ───────────────────────────────────────────────────────────────
 
 /// Formate une durée en millisecondes de façon lisible.
@@ -286,6 +411,41 @@ mod tests {
         assert!(generation_is_current(&generation, 7));
         generation.store(8, Ordering::Release);
         assert!(!generation_is_current(&generation, 7));
+    }
+
+    #[test]
+    fn view_index_round_trips() {
+        for view in [
+            ViewMode::Compare,
+            ViewMode::Side,
+            ViewMode::ResultOnly,
+            ViewMode::SourceOnly,
+            ViewMode::DensityMap,
+        ] {
+            assert_eq!(view_from_index(view_index(view)), view);
+        }
+    }
+
+    #[test]
+    fn quality_scales_and_flags_full_resolution() {
+        assert_eq!(Quality::Half.scale(), 0.5);
+        assert_eq!(Quality::Quarter.scale(), 0.25);
+        assert_eq!(Quality::Full.scale(), 1.0);
+        assert!(Quality::Full.is_full());
+        assert!(!Quality::Half.is_full());
+    }
+
+    #[test]
+    fn supported_images_are_recognized_by_extension() {
+        assert!(is_supported_image(Path::new("photo.JPG")));
+        assert!(is_supported_image(Path::new("scan.tiff")));
+        assert!(!is_supported_image(Path::new("notes.txt")));
+        assert!(!is_supported_image(Path::new("sans_extension")));
+    }
+
+    #[test]
+    fn image_size_is_described_with_megapixels() {
+        assert_eq!(describe_image_size(1400, 1050), "1400×1050 · 1.5 Mpx");
     }
 
     #[test]
