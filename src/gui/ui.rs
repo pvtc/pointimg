@@ -46,22 +46,53 @@ const VIEWS: [(&str, ViewMode); 5] = [
     ("Density map", ViewMode::DensityMap),
 ];
 
-/// Style global : plus d'air, texte un peu plus grand, panneaux distincts.
-fn tuned_style(style: &mut egui::Style) {
-    style.spacing.item_spacing = egui::vec2(8.0, 6.0);
-    style.spacing.button_padding = egui::vec2(8.0, 4.0);
-    style.spacing.indent = 18.0;
-    style.spacing.interact_size.y = 22.0;
+/// Style global de l'interface.
+///
+/// `scale` agrandit *tout* ce qui donne la densité perçue — corps de texte,
+/// espacements, hauteur des widgets, largeur des curseurs, arrondis — de sorte
+/// qu'un seul réglage rende l'interface confortable sans toucher à chaque
+/// sous-widget. 1.0 = confortable (valeur par défaut), 1.3 = grande.
+fn tuned_style(style: &mut egui::Style, scale: f32) {
+    let scale = scale.clamp(0.85, 1.6);
+
+    // ── Textes ──────────────────────────────────────────────────────────────
     for (text, size) in [
-        (egui::TextStyle::Body, 13.0),
-        (egui::TextStyle::Button, 13.0),
-        (egui::TextStyle::Small, 11.5),
-        (egui::TextStyle::Heading, 17.0),
+        (egui::TextStyle::Body, 14.0),
+        (egui::TextStyle::Button, 14.0),
+        (egui::TextStyle::Small, 12.0),
+        (egui::TextStyle::Heading, 18.0),
+        (egui::TextStyle::Monospace, 13.0),
     ] {
         style
             .text_styles
-            .insert(text, egui::FontId::proportional(size));
+            .insert(text, egui::FontId::proportional(size * scale));
     }
+
+    // ── Rythme vertical et horizontal ───────────────────────────────────────
+    style.spacing.item_spacing = egui::vec2(10.0, 8.0) * scale;
+    style.spacing.button_padding = egui::vec2(10.0, 5.0) * scale;
+    style.spacing.indent = 20.0 * scale;
+    style.spacing.interact_size.y = 24.0 * scale;
+    style.spacing.slider_width = 120.0 * scale;
+    style.spacing.window_margin = egui::Margin::same((8.0 * scale) as i8);
+    style.spacing.menu_margin = egui::Margin::same((6.0 * scale) as i8);
+
+    // ── Widgets plus généreux et moins anguleux ─────────────────────────────
+    let radius = ((7.0 * scale).round() as u8).min(14);
+    let stroke = 1.0;
+    for widget in [
+        &mut style.visuals.widgets.noninteractive,
+        &mut style.visuals.widgets.inactive,
+        &mut style.visuals.widgets.hovered,
+        &mut style.visuals.widgets.active,
+        &mut style.visuals.widgets.open,
+    ] {
+        widget.corner_radius = radius.into();
+        widget.fg_stroke.width = stroke;
+    }
+    // Un peu plus de contraste entre les panneaux et le fond de fenêtre.
+    style.visuals.window_fill = style.visuals.window_fill.gamma_multiply(1.0);
+    style.visuals.panel_fill = style.visuals.panel_fill.gamma_multiply(1.0);
 }
 
 impl eframe::App for App {
@@ -69,10 +100,12 @@ impl eframe::App for App {
         let ctx = ui.ctx().clone();
 
         // `eframe::App::style` n'existe plus en 0.36 : on applique notre style
-        // au premier rendu seulement.
-        if !self.styled {
-            ctx.all_styles_mut(tuned_style);
-            self.styled = true;
+        // nous-mêmes, et on le réapplique quand l'utilisateur change l'échelle
+        // d'interface.
+        if self.applied_style != Some(self.ui_scale) {
+            let scale = self.ui_scale;
+            ctx.all_styles_mut(|style| tuned_style(style, scale));
+            self.applied_style = Some(scale);
         }
 
         self.poll_worker_results();
@@ -364,7 +397,7 @@ impl App {
 
         egui::Panel::top("view_bar").show(ui, |ui| {
             ui.add_space(4.0);
-            ui.horizontal(|ui| {
+            ui.horizontal_wrapped(|ui| {
                 if ui.button("Ouvrir…").clicked() {
                     self.choose_image(ctx);
                 }
@@ -463,6 +496,7 @@ impl App {
                     });
                     ui.separator();
 
+                    self.show_display_preferences(ui);
                     self.show_presets(ui, ctx);
                     self.show_algorithm_section(ui, ctx);
                     self.show_shape_and_palette_section(ui);
@@ -474,6 +508,35 @@ impl App {
                     }
                 });
             });
+    }
+
+    /// Confort d'affichage : taille de l'interface et thème.
+    fn show_display_preferences(&mut self, ui: &mut egui::Ui) {
+        // `horizontal_wrapped` : la ligne se replie au lieu d'élargir le panneau.
+        ui.horizontal_wrapped(|ui| {
+            ui.label(egui::RichText::new("Interface").size(13.0));
+            let mut percent = (self.ui_scale * 100.0).round();
+            let response = ui.add(
+                egui::DragValue::new(&mut percent)
+                    .speed(5.0)
+                    .range(85.0..=160.0)
+                    .suffix(" %"),
+            );
+            if response.changed() {
+                self.ui_scale = percent / 100.0;
+            }
+            response.on_hover_text(
+                "Agrandit les textes, les espacements et la hauteur des widgets. \
+                 100 % = confortable.",
+            );
+            for (label, theme) in [("Sombre", egui::Theme::Dark), ("Clair", egui::Theme::Light)] {
+                let selected = ui.ctx().theme() == theme;
+                if ui.selectable_label(selected, label).clicked() {
+                    ui.ctx().set_theme(theme);
+                }
+            }
+        });
+        ui.separator();
     }
 
     /// Presets intégrés : le point de départ le plus rapide.
@@ -926,7 +989,7 @@ impl App {
         egui::CentralPanel::default().show(ui, |ui| {
             self.ensure_textures(ctx);
 
-            ui.horizontal(|ui| {
+            ui.horizontal_wrapped(|ui| {
                 ui.label("Affichage");
                 for (label, mode) in VIEWS {
                     ui.selectable_value(&mut self.view_mode, mode, label);
@@ -974,36 +1037,99 @@ impl App {
             let zoom = self.zoom;
             let zoom_fit = self.zoom_fit;
             let stale = self.result_is_stale();
+            // Hauteur restante pour les aperçus (barre d'outils déjà posée).
+            let height = (ui.available_height() - 8.0).max(120.0);
             match self.view_mode {
                 ViewMode::Compare => self.show_compare(ui, stale),
                 ViewMode::Side => {
-                    ui.horizontal(|ui| {
-                        show_pane(ui, "Source", source.as_ref(), zoom, zoom_fit, false);
-                        ui.separator();
+                    // Deux moitiés *plus* le séparateur doivent tenir dans la
+                    // largeur disponible, sinon le second panneau est rogné.
+                    // En dessous de 640 px (soit ~300 px par image), on
+                    // empile : deux images côte à côte deviennent illisibles.
+                    let available = ui.available_size();
+                    let separator = ui.spacing().item_spacing.x * 3.0;
+                    if available.x < 640.0 {
+                        let half = (available.y / 2.0 - 6.0).max(64.0);
                         show_pane(
                             ui,
-                            "Résultat",
-                            result.as_ref(),
+                            Pane {
+                                caption: "Source",
+                                texture: source.as_ref(),
+                                size: egui::vec2(available.x, half),
+                                zoom,
+                                zoom_fit,
+                                spinning: false,
+                            },
+                        );
+                        show_pane(
+                            ui,
+                            Pane {
+                                caption: "Résultat",
+                                texture: result.as_ref(),
+                                size: egui::vec2(available.x, half),
+                                zoom,
+                                zoom_fit,
+                                spinning: computing || stale,
+                            },
+                        );
+                    } else {
+                        let panel_w = ((available.x - separator) / 2.0).max(64.0);
+                        let source_pane = Pane {
+                            caption: "Source",
+                            texture: source.as_ref(),
+                            size: egui::vec2(panel_w, height),
                             zoom,
                             zoom_fit,
-                            computing || stale,
-                        );
-                    });
+                            spinning: false,
+                        };
+                        let result_pane = Pane {
+                            caption: "Résultat",
+                            texture: result.as_ref(),
+                            size: egui::vec2(panel_w, height),
+                            zoom,
+                            zoom_fit,
+                            spinning: computing || stale,
+                        };
+                        ui.horizontal(|ui| {
+                            show_pane(ui, source_pane);
+                            ui.separator();
+                            show_pane(ui, result_pane);
+                        });
+                    }
                 }
                 ViewMode::ResultOnly => show_pane(
                     ui,
-                    "Résultat",
-                    result.as_ref(),
-                    zoom,
-                    zoom_fit,
-                    computing || stale,
+                    Pane {
+                        caption: "Résultat",
+                        texture: result.as_ref(),
+                        size: egui::vec2(ui.available_width(), height),
+                        zoom,
+                        zoom_fit,
+                        spinning: computing || stale,
+                    },
                 ),
-                ViewMode::SourceOnly => {
-                    show_pane(ui, "Source", source.as_ref(), zoom, zoom_fit, false)
-                }
-                ViewMode::DensityMap => {
-                    show_pane(ui, "Density map", density.as_ref(), zoom, zoom_fit, false)
-                }
+                ViewMode::SourceOnly => show_pane(
+                    ui,
+                    Pane {
+                        caption: "Source",
+                        texture: source.as_ref(),
+                        size: egui::vec2(ui.available_width(), height),
+                        zoom,
+                        zoom_fit,
+                        spinning: false,
+                    },
+                ),
+                ViewMode::DensityMap => show_pane(
+                    ui,
+                    Pane {
+                        caption: "Density map",
+                        texture: density.as_ref(),
+                        size: egui::vec2(ui.available_width(), height),
+                        zoom,
+                        zoom_fit,
+                        spinning: false,
+                    },
+                ),
             }
         });
     }
@@ -1195,50 +1321,69 @@ impl App {
 // ─── Aides ───────────────────────────────────────────────────────────────────
 
 /// Panneau d'aperçu : cadre, légende, image avec zoom et défilement.
-fn show_pane(
-    ui: &mut egui::Ui,
-    caption: &str,
-    texture: Option<&egui::TextureHandle>,
+/// Un panneau d'aperçu : ce qu'il faut pour le dessiner dans une place donnée.
+///
+/// Regroupé dans une structure plutôt qu'en huit paramètres : la place
+/// allouée, la texture et l'état du zoom voyagent toujours ensemble.
+struct Pane<'a> {
+    caption: &'a str,
+    texture: Option<&'a egui::TextureHandle>,
+    size: egui::Vec2,
     zoom: f32,
     zoom_fit: bool,
     spinning: bool,
-) {
-    egui::Frame::central_panel(ui.style())
-        .inner_margin(6.0)
-        .show(ui, |ui| {
-            ui.label(egui::RichText::new(caption).size(12.0).weak());
-            let (w, h) = (
-                ui.available_width().max(1.0),
-                ui.available_height().max(1.0),
-            );
-            let (tw, th) = texture
-                .map(|tex| (tex.size_vec2().x.max(1.0), tex.size_vec2().y.max(1.0)))
-                .unwrap_or((w, h));
-            let scale = if zoom_fit {
-                (w / tw).min(h / th).max(0.01)
-            } else {
-                zoom
-            };
-            let (img_w, img_h) = (tw * scale, th * scale);
-            egui::ScrollArea::both()
-                .id_salt(caption)
-                .max_width(w)
-                .max_height(h)
-                .show(ui, |ui| match texture {
-                    Some(tex) => {
-                        ui.image((tex.id(), egui::vec2(img_w, img_h)));
-                    }
-                    None => {
-                        if spinning {
-                            ui.spinner();
-                        } else {
-                            ui.centered_and_justified(|ui| {
-                                ui.label("Aucune image");
-                            });
+}
+
+fn show_pane(ui: &mut egui::Ui, pane: Pane<'_>) {
+    let Pane {
+        caption,
+        texture,
+        size,
+        zoom,
+        zoom_fit,
+        spinning,
+    } = pane;
+    // La place est imposée par l'appelant : dans une mise en page horizontale,
+    // `available_width()` est la largeur restante *pour chaque enfant*, donc
+    // le premier panneau consumesait tout l'espace et le second était expulsé.
+    ui.allocate_ui(egui::vec2(size.x.max(64.0), size.y.max(64.0)), |ui| {
+        egui::Frame::central_panel(ui.style())
+            .inner_margin(8.0)
+            .show(ui, |ui| {
+                ui.label(egui::RichText::new(caption).size(12.0).weak());
+                let (w, h) = (
+                    ui.available_width().max(1.0),
+                    ui.available_height().max(1.0),
+                );
+                let (tw, th) = texture
+                    .map(|tex| (tex.size_vec2().x.max(1.0), tex.size_vec2().y.max(1.0)))
+                    .unwrap_or((w, h));
+                let scale = if zoom_fit {
+                    (w / tw).min(h / th).max(0.01)
+                } else {
+                    zoom
+                };
+                let (img_w, img_h) = (tw * scale, th * scale);
+                egui::ScrollArea::both()
+                    .id_salt(caption)
+                    .max_width(w)
+                    .max_height(h)
+                    .show(ui, |ui| match texture {
+                        Some(tex) => {
+                            ui.image((tex.id(), egui::vec2(img_w, img_h)));
                         }
-                    }
-                });
-        });
+                        None => {
+                            if spinning {
+                                ui.spinner();
+                            } else {
+                                ui.centered_and_justified(|ui| {
+                                    ui.label("Aucune image");
+                                });
+                            }
+                        }
+                    });
+            });
+    });
 }
 
 /// Titre de section, façon `adw::PreferencesGroup`.

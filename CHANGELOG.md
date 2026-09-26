@@ -292,6 +292,29 @@ appliquées après une inspection des deux interfaces en conditions réelles
   via `Context::all_styles_mut` au premier rendu ; l'API `Panel::left/top/bottom`
   remplace `SidePanel`/`TopBottomPanel`.
 
+### Interface graphique (egui) — confort et répartition de l'espace
+
+- **Côte-à-côte rogné** : dans une mise en page horizontale, `available_width()`
+  vaut la largeur restante *pour chaque enfant* ; le premier panneau prenait
+  toute la place et le second était expulsé hors de la fenêtre (les deux
+  images s'affichaient minuscules dans un coin). La place est maintenant
+  imposée par l'appelant, et le séparateur est déduit de la largeur disponible
+  au lieu d'être compté en double.
+- **Empilement automatique** : sous 640 px de largeur centrale, le
+  côte-à-côte devient un empilement vertical (deux images de ~300 px de large
+  côte à côte sont illisibles).
+- **Échelle d'interface** : un réglage « Interface » (85 – 160 %) qui agrandit
+  ou réduit d'un coup les textes, les espacements, la hauteur des widgets, la
+  largeur des curseurs et les arrondis. Le nouveau style de base est
+  confortable (corps 14 pt, interlignes plus généreux, angles arrondis) au
+  lieu du rendu par défaut très serré.
+- **Thème clair / sombre** commutable depuis le même emplacement.
+- **Barres qui se replient** : l'en-tête d'actions et la rangée
+  « Affichage » passent en `horizontal_wrapped`, donc à 160 % ou dans une
+  fenêtre étroite les boutons passent à la ligne au lieu d'être coupés.
+- La ligne « Interface » est compacte et repliable : elle élargissait le
+  panneau de réglages de 415 px et volait de la place à l'aperçu.
+
 ### Outillage / CI
 
 - **Clippy couvre tous les targets** : la CI lint désormais tests, benches et

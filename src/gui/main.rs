@@ -175,8 +175,11 @@ pub(crate) struct App {
     pub status: String,
     // Titre de la fenêtre (nom du fichier), pour éviter de le renvoyer à chaque frame.
     pub window_title: String,
-    // Le style a déjà été appliqué (eframe 0.36 n'expose plus `App::style`).
-    pub styled: bool,
+    /// Échelle d'interface appliquée au style egui (1.0 = confortable).
+    pub ui_scale: f32,
+    /// Échelle pour laquelle le style a été appliqué (evite de le refaire à
+    /// chaque frame).
+    pub applied_style: Option<f32>,
 }
 
 impl Default for App {
@@ -224,7 +227,8 @@ impl Default for App {
             compare_split: 0.5,
             status: "Ouvrez une image pour commencer (ou faites glisser un fichier).".to_string(),
             window_title: String::new(),
-            styled: false,
+            ui_scale: 1.0,
+            applied_style: None,
         }
     }
 }

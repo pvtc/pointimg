@@ -180,6 +180,9 @@ Les deux interfaces (egui et GTK4) offrent les mêmes capacités :
   d'une image à l'autre.
 - **Titre de fenêtre et barre d'état** nommant le fichier, ses dimensions et
   l'état du calcul ; les erreurs passent par des notifications.
+- **Confort d'interface** (egui) : taille de 85 à 160 % et thème clair ou sombre
+  depuis le panneau de réglages ; sous 640 px, le côte-à-côte s'empile
+  automatiquement.
 
 ### egui (par défaut)
 
