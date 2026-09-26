@@ -2,159 +2,118 @@
 
 use eframe::egui;
 use image::ImageReader;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::atomic::Ordering;
 use std::time::Instant;
 
 use super::App;
+use super::HistoryEntry;
 use super::format::describe_parameter_change;
 use super::io;
 use pointimg::filter::{self, FilterParams};
 use pointimg::frontend;
 
-// ─── Types partagés ───────────────────────────────────────────────────────────
-
-#[derive(PartialEq, Clone, Copy, Debug)]
-pub(crate) enum ViewMode {
-    Side,       // source | résultat côte à côte
-    ResultOnly, // résultat seul
-    SourceOnly, // source seule
-    DensityMap, // aperçu de la density map
-}
-
-pub(crate) struct HistoryEntry {
-    pub params: FilterParams,
-    pub label: String,
-}
-
-impl Default for App {
-    fn default() -> Self {
-        Self {
-            params: FilterParams::default(),
-            src_dynamic: None,
-            src_rgb: None,
-            src_path: None,
-            src_texture: None,
-            result: Default::default(),
-            result_texture: None,
-            result_revision: Default::default(),
-            result_texture_revision: 0,
-            last_dots: Default::default(),
-            density_image: None,
-            density_texture: None,
-            density_result: Default::default(),
-            density_data: Default::default(),
-            progress: Default::default(),
-            computing: Default::default(),
-            cancel: Default::default(),
-            compute_generation: Default::default(),
-            density_generation: Default::default(),
-            compute_error: Default::default(),
-            last_compute_ms: None,
-            compute_start: None,
-            last_param_change: None,
-            history: Vec::new(),
-            future: Vec::new(),
-            last_committed: None,
-            pending_commit: false,
-            view_mode: ViewMode::Side,
-            zoom: 1.0,
-            zoom_fit: true,
-            status: "Ouvrez une image pour commencer (ou faites glisser un fichier).".to_string(),
-        }
-    }
-}
+/// Extensions acceptées par les dialogues d'ouverture.
+const IMAGE_EXTENSIONS: [&str; 7] = ["png", "jpg", "jpeg", "webp", "bmp", "tif", "tiff"];
 
 impl App {
-    pub(crate) fn trigger_compute(&mut self, ctx: &egui::Context) {
-        if self.computing.load(Ordering::Relaxed) {
-            // Annuler le calcul en cours, puis relancer
-            self.cancel.store(true, Ordering::Relaxed);
-            // The cached dots belong to the previous parameter set and must not
-            // be offered for SVG export while the replacement is pending.
-            *self.last_dots.lock().unwrap_or_else(|e| e.into_inner()) = None;
-            return;
+    // ─── Images ──────────────────────────────────────────────────────────────
+
+    pub(crate) fn choose_image(&mut self, ctx: &egui::Context) {
+        let mut dialog = rfd::FileDialog::new().add_filter("Images", &IMAGE_EXTENSIONS);
+        if let Some(folder) = self.initial_folder() {
+            dialog = dialog.set_directory(folder);
         }
-        self.start_compute(ctx);
+        if let Some(path) = dialog.pick_file() {
+            self.load_image(path, ctx);
+        }
     }
 
-    /// Commit d'un nouvel état dans l'historique (undo stack). Le redo stack est
-    /// remis à zéro. On évite de pousser des entrées consécutives identiques
-    /// (ex: drag sans fin du même slider).
-    pub(crate) fn commit_history(&mut self) {
-        let cur = self.params.clone();
-        if let Some(last) = &self.last_committed
-            && last == &cur
-        {
-            return; // pas de changement réel, on ignore
+    pub(crate) fn choose_folder(&mut self, ctx: &egui::Context) {
+        let mut dialog = rfd::FileDialog::new();
+        if let Some(folder) = self.initial_folder() {
+            dialog = dialog.set_directory(folder);
         }
-        // Plafond à 50 entrées (FIFO).
-        if self.history.len() >= 50 {
-            self.history.remove(0);
+        if let Some(path) = dialog.pick_folder() {
+            self.open_folder(path, ctx);
         }
-        if let Some(p) = self.last_committed.take() {
-            let label = describe_parameter_change(&p, &cur);
-            self.history.push(HistoryEntry { params: p, label });
-        }
-        self.last_committed = Some(cur);
-        self.future.clear();
     }
 
-    /// `Ctrl+Z` : restore le FilterParams précédent.
-    pub(crate) fn undo(&mut self, ctx: &egui::Context) {
-        // Commit d'abord tout état pending pour qu'il figure dans l'historique
-        // avant qu'on ne rembobine (sinon le dernier réglage n'est pas undo-able).
-        if self.pending_commit {
-            self.commit_history();
-            self.pending_commit = false;
-        }
-        let Some(prev) = self.history.pop() else {
-            self.status = "Rien à annuler.".to_string();
+    /// Dossier proposé par défaut : celui de la dernière image ou export.
+    fn initial_folder(&self) -> Option<PathBuf> {
+        self.last_dir.clone().or_else(|| {
+            self.src_path
+                .as_ref()
+                .and_then(|p| p.parent().map(Path::to_path_buf))
+        })
+    }
+
+    /// Charge la première image d'un dossier et active la navigation `←`/`→`.
+    pub(crate) fn open_folder(&mut self, path: PathBuf, ctx: &egui::Context) {
+        let Ok(entries) = std::fs::read_dir(&path) else {
+            self.status = format!("Dossier illisible : {}", path.display());
             return;
         };
-        // L'état live actuel devient la tête du redo.
-        if let Some(prev_committed) = self.last_committed.take() {
-            self.future.push(HistoryEntry {
-                params: prev_committed,
-                label: "État annulé".to_string(),
-            });
+        let mut images: Vec<PathBuf> = entries
+            .flatten()
+            .map(|entry| entry.path())
+            .filter(|candidate| Self::is_supported_image(candidate))
+            .collect();
+        images.sort();
+        if images.is_empty() {
+            self.status = format!("Aucune image dans {}", path.display());
+            return;
         }
-        self.last_committed = Some(prev.params.clone());
-        self.params = prev.params;
-        // Annuler le compute en cours (peut venir d'un drag) et relancer.
-        if self.computing.load(Ordering::Relaxed) {
-            self.cancel.store(true, Ordering::Relaxed);
-            // La relance sera déclenchée par la logique de cancel-await, via le
-            // même mécanisme qui détecte params_changed. Sinon, on debounce.
-        }
-        self.last_param_change = Some(Instant::now()); // trigger compute via debounce
-        self.status = "Annulé.".to_string();
-        ctx.request_repaint();
+        self.last_dir = Some(path);
+        self.folder_images = images;
+        self.folder_index = Some(0);
+        let first = self.folder_images[0].clone();
+        self.load_image(first, ctx);
     }
 
-    /// `Ctrl+Y` (ou `Ctrl+Shift+Z`) : restore l'état suivant.
-    pub(crate) fn redo(&mut self, ctx: &egui::Context) {
-        let Some(next) = self.future.pop() else {
-            self.status = "Rien à refaire.".to_string();
-            return;
+    /// Image suivante (`delta > 0`) ou précédente dans le dossier courant.
+    pub(crate) fn step_folder(&mut self, delta: i32, ctx: &egui::Context) {
+        let target = {
+            let (Some(index), len) = (self.folder_index, self.folder_images.len()) else {
+                return;
+            };
+            if len < 2 {
+                return;
+            }
+            let next = (index as i32 + delta).rem_euclid(len as i32) as usize;
+            self.folder_images[next].clone()
         };
-        if let Some(prev_committed) = self.last_committed.take() {
-            self.history.push(HistoryEntry {
-                params: prev_committed,
-                label: "État rétabli".to_string(),
-            });
-        }
-        self.last_committed = Some(next.params.clone());
-        self.params = next.params;
-        if self.computing.load(Ordering::Relaxed) {
-            self.cancel.store(true, Ordering::Relaxed);
-        }
-        self.last_param_change = Some(Instant::now());
-        self.status = "Refait.".to_string();
-        ctx.request_repaint();
+        self.load_image(target, ctx);
+    }
+
+    pub(crate) fn folder_position(&self) -> Option<(usize, usize)> {
+        self.folder_index
+            .map(|index| (index + 1, self.folder_images.len()))
+    }
+
+    pub(crate) fn is_supported_image(path: &Path) -> bool {
+        path.extension()
+            .and_then(|e| e.to_str())
+            .map(|e| IMAGE_EXTENSIONS.contains(&e.to_ascii_lowercase().as_str()))
+            .unwrap_or(false)
+    }
+
+    /// Description courte de l'image courante (« 1400×1050 · 1,5 Mpx »).
+    pub(crate) fn image_info(&self) -> Option<String> {
+        let src = self.src_rgb.as_ref()?;
+        let (w, h) = (src.width(), src.height());
+        let megapixels = f64::from(w) * f64::from(h) / 1_000_000.0;
+        Some(format!("{w}×{h} · {megapixels:.1} Mpx"))
     }
 
     pub(crate) fn load_image(&mut self, path: PathBuf, ctx: &egui::Context) {
+        if let Some(index) = self
+            .folder_images
+            .iter()
+            .position(|candidate| candidate == &path)
+        {
+            self.folder_index = Some(index);
+        }
         let dimensions = match ImageReader::open(&path) {
             Ok(reader) => match reader.into_dimensions() {
                 Ok(dimensions) => dimensions,
@@ -179,7 +138,8 @@ impl App {
                 // may still be unwinding, but it must not publish its result.
                 self.compute_generation.fetch_add(1, Ordering::AcqRel);
                 self.cancel.store(true, Ordering::Release);
-                // Use the shared alpha-compositing implementation.
+                self.finalize_at = None;
+                self.final_pass = false;
                 let rgb = filter::flatten_to_rgb(&img, self.params.bg_color);
                 self.density_image = None;
                 self.density_texture = None;
@@ -191,6 +151,9 @@ impl App {
                 *self.result.lock().unwrap_or_else(|e| e.into_inner()) = None;
                 self.result_revision.fetch_add(1, Ordering::Release);
                 *self.last_dots.lock().unwrap_or_else(|e| e.into_inner()) = None;
+                self.history.clear();
+                self.future.clear();
+                self.last_committed = Some(self.params.clone());
                 self.status = if was_resized {
                     format!(
                         "Image chargée et réduite de {}x{} à {}x{} pour respecter la mémoire.",
@@ -213,12 +176,76 @@ impl App {
         }
     }
 
+    // ─── Presets ─────────────────────────────────────────────────────────────
+
+    /// Annule puis relance le calcul courant (le nouveau calcul prend le relais).
+    pub(crate) fn trigger_compute(&mut self, ctx: &egui::Context) {
+        if self.computing.load(Ordering::Relaxed) {
+            // Annuler le calcul en cours, puis relancer
+            self.cancel.store(true, Ordering::Relaxed);
+            // The cached dots belong to the previous parameter set and must not
+            // be offered for SVG export while the replacement is pending.
+            *self.last_dots.lock().unwrap_or_else(|e| e.into_inner()) = None;
+            return;
+        }
+        self.start_compute(ctx);
+    }
+
+    /// Applique un preset intégré ( annulable comme n'importe quel changement).
+    pub(crate) fn apply_preset(&mut self, index: usize, ctx: &egui::Context) {
+        let Some(preset) = filter::builtin_presets().into_iter().nth(index) else {
+            return;
+        };
+        if self.params == preset.params {
+            return;
+        }
+        self.params = preset.params;
+        self.commit_history();
+        self.refresh_src_rgb(ctx);
+        self.on_params_changed(ctx);
+        self.status = format!("Preset « {} » appliqué.", preset.name);
+    }
+
+    /// Index du preset correspondant exactement aux réglages courants.
+    pub(crate) fn preset_index(&self) -> Option<usize> {
+        filter::builtin_presets()
+            .iter()
+            .position(|preset| preset.params == self.params)
+    }
+
+    pub(crate) fn cycle_preset(&mut self, delta: i32, ctx: &egui::Context) {
+        let total = filter::builtin_presets().len() as i32;
+        let current = self.preset_index().map_or(-1, |index| index as i32);
+        let next = (current + delta).rem_euclid(total + 1);
+        if next < 0 {
+            return;
+        }
+        self.apply_preset(next as usize, ctx);
+    }
+
+    /// Tire une nouvelle graine aléatoire et relance le calcul.
+    pub(crate) fn vary_seed(&mut self, ctx: &egui::Context) {
+        use std::collections::hash_map::RandomState;
+        use std::hash::{BuildHasher, Hasher};
+        let mut hasher = RandomState::new().build_hasher();
+        hasher.write_u64(
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map(|duration| duration.as_nanos() as u64)
+                .unwrap_or(0),
+        );
+        self.params.rng_seed = Some(hasher.finish());
+        self.on_params_changed(ctx);
+    }
+
+    // ─── Presets (fichiers) ──────────────────────────────────────────────────
+
     pub(crate) fn load_preset(&mut self, path: PathBuf, ctx: &egui::Context) {
         match frontend::load_preset(&path) {
             Ok(params) => {
                 self.params = params;
                 self.refresh_src_rgb(ctx);
-                self.last_param_change = Some(Instant::now());
+                self.on_params_changed(ctx);
                 self.status = format!("Preset chargé : {}", path.display());
             }
             Err(e) => self.status = format!("Erreur chargement preset : {e}"),
@@ -237,10 +264,114 @@ impl App {
         }
     }
 
-    /// Reconstruit src_rgb depuis src_dynamic si bg_color a changé.
+    // ─── Historique ──────────────────────────────────────────────────────────
+
+    /// Commit d'un nouvel état dans l'historique (undo stack). Le redo stack est
+    /// remis à zéro. On évite de pousser des entrées consécutives identiques
+    /// (ex: drag sans fin du même slider).
+    pub(crate) fn commit_history(&mut self) {
+        let cur = self.params.clone();
+        if let Some(last) = &self.last_committed
+            && last == &cur
+        {
+            return;
+        }
+        // Plafond à 50 entrées (FIFO).
+        if self.history.len() >= 50 {
+            self.history.remove(0);
+        }
+        if let Some(p) = self.last_committed.take() {
+            let label = describe_parameter_change(&p, &cur);
+            self.history.push(HistoryEntry { params: p, label });
+        }
+        self.last_committed = Some(cur);
+        self.future.clear();
+    }
+
+    /// `Ctrl+Z` : restore le FilterParams précédent.
+    pub(crate) fn undo(&mut self, ctx: &egui::Context) {
+        if self.pending_commit {
+            self.commit_history();
+            self.pending_commit = false;
+        }
+        let Some(prev) = self.history.pop() else {
+            self.status = "Rien à annuler.".to_string();
+            return;
+        };
+        if let Some(prev_committed) = self.last_committed.take() {
+            self.future.push(HistoryEntry {
+                params: prev_committed,
+                label: "État annulé".to_string(),
+            });
+        }
+        self.last_committed = Some(prev.params.clone());
+        self.params = prev.params;
+        if self.computing.load(Ordering::Relaxed) {
+            self.cancel.store(true, Ordering::Relaxed);
+        }
+        self.last_param_change = Some(Instant::now());
+        self.status = "Annulé.".to_string();
+        ctx.request_repaint();
+    }
+
+    /// `Ctrl+Y` (ou `Ctrl+Shift+Z`) : restore l'état suivant.
+    pub(crate) fn redo(&mut self, ctx: &egui::Context) {
+        let Some(next) = self.future.pop() else {
+            self.status = "Rien à rétablir.".to_string();
+            return;
+        };
+        if let Some(prev_committed) = self.last_committed.take() {
+            self.history.push(HistoryEntry {
+                params: prev_committed,
+                label: "État rétabli".to_string(),
+            });
+        }
+        self.last_committed = Some(next.params.clone());
+        self.params = next.params;
+        if self.computing.load(Ordering::Relaxed) {
+            self.cancel.store(true, Ordering::Relaxed);
+        }
+        self.last_param_change = Some(Instant::now());
+        self.status = "Rétabli.".to_string();
+        ctx.request_repaint();
+    }
+
+    /// Rétablit tous les réglages par défaut. Passe par l'historique pour rester
+    /// annulable (`Ctrl+Z`).
+    pub(crate) fn reset_params(&mut self, ctx: &egui::Context) {
+        if self.params == FilterParams::default() {
+            self.status = "Réglages déjà par défaut.".to_string();
+            return;
+        }
+        self.params = FilterParams::default();
+        self.commit_history();
+        // `bg_color` change : la source aplatie doit être reconstruite.
+        self.refresh_src_rgb(ctx);
+        self.on_params_changed(ctx);
+        self.status = "Réglages réinitialisés.".to_string();
+    }
+
+    // ─── Zoom ────────────────────────────────────────────────────────────────
+
+    pub(crate) fn current_zoom(&self) -> f32 {
+        if self.zoom_fit {
+            self.effective_zoom
+        } else {
+            self.zoom
+        }
+    }
+
+    /// Change le zoom en sortant du mode « Ajuster ».
+    pub(crate) fn set_zoom(&mut self, value: f32) {
+        self.zoom = value.clamp(0.02, 16.0);
+        self.zoom_fit = false;
+    }
+
+    // ─── Divers ──────────────────────────────────────────────────────────────
+
+    /// Recompose `src_rgb` depuis `src_dynamic` si bg_color a changé.
     pub(crate) fn refresh_src_rgb(&mut self, ctx: &egui::Context) {
         if let Some(img) = &self.src_dynamic {
-            // The shared alpha-compositing implementation.
             let new_rgb = filter::flatten_to_rgb(img, self.params.bg_color);
             self.density_image = None;
             self.density_texture = None;

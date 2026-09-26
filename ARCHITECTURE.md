@@ -724,101 +724,97 @@ struct Dot {
 
 ## 10. GUI Architecture
 
-**Threading model:**
+Two front-ends share the library (`src/frontend.rs` for formatting, atomic
+writes, export and presets):
+
+| Binary          | Toolkit                | Role                                     |
+| --------------- | ---------------------- | ---------------------------------------- |
+| `pointimg-gui`  | `eframe`/`egui`        | immediate mode, default egui look         |
+| `pointimg-gtk`  | `gtk4`/`libadwaita`    | native widgets, `adw::PreferencesPage`    |
+
+### 10.1 UI decisions (shared by both front-ends)
+
+- **Actions live in the header bar**: open, folder, presets, recalculate,
+  undo/redo, export, copy. The side panel only holds *settings*; nothing
+  important is left below the fold.
+- **Before/after comparison** (`ViewMode::Compare`, the default): source and
+  result are drawn in the same area, on either side of a draggable handle.
+  GTK: `gtk::DrawingArea` with cairo surfaces clipped at the handle
+  (`src/gtk/compare.rs`). egui: two `Painter::image` calls with distinct
+  `clip_rect`s.
+- **Fast preview + finalization**: `State.quality` ∈ {`Half`, `Quarter`,
+  `Full`}. Below `Full`, the worker receives a downscaled image
+  (`compute_source()`); after ~900 ms without a change, a `final_pass` at full
+  resolution runs. The result is only `result_is_final` once that pass lands:
+  image and SVG export stay disabled while it is stale.
+- **Density map is indexed by scale**: `State.density_scale` records the scale
+  the cache was computed at; a half-resolution density map is never reused by a
+  full-resolution pass (the sizes do not match).
+- **Built-in presets** live in the library (`filter::builtin_presets()`, tested:
+  each one passes `validate_params` and a TOML round trip). Both front-ends
+  offer the list on top of TOML files.
+- **Typed values**: GTK uses `adw::SpinRow` (slider *and* text entry) bounded by
+  `validate_params`; egui uses `DragValue` with the same ranges. Sliders now
+  stop exactly where the engine refuses to go.
+- **Wheel inside the settings panel** (GTK): an `EventControllerScroll` in the
+  *capture* phase forwards the wheel to the parent `ScrolledWindow` (Ctrl/Shift
+  still adjusts the setting). Without it, scrolling the panel silently changed
+  values and launched a compute per notch.
+- **Synchronized views**: scrolling one preview pane is mirrored to the others
+  (relative position, not absolute value).
+- **Zoom**: "Fit" derives the factor from the viewport and displays it as such
+  (the zoom widget is insensitive in that mode); any zoom change keeps the
+  viewport center instead of jumping to the top-left corner.
+- **Empty state**: `adw::StatusPage` / centered egui panel with "Open an
+  image", "Open a folder" and "Use a sample" (when `assets/examples/` sits next
+  to the binary).
+
+### 10.2 egui (`src/gui/`)
 
 ```
 Main thread (egui)                    Worker thread
 ─────────────────────────             ──────────────────────────────────────
-App::update() [each frame]            filter::apply_with_progress(…, cb)
-  ├─ drag & drop → load_image()           │  cb(iter, total, &img) per iteration
-  ├─ draw widgets                         │  → progress Arc<Mutex<(usize,usize)>>
-  ├─ Lloyd progress bar                   │  → result Arc<Mutex<Option<RgbImage>>>
-  ├─ compute time (Instant)               │  → ctx.request_repaint() (immediate repaint)
-  ├─ read computing (AtomicBool)          │  → returns (RgbImage, Vec<Dot>)
-  ├─ if result ready:                ◄─── computing=false, result=Some(img), last_dots=Some(dots)
-  │    upload egui texture
-  └─ if params changed:
-       trigger_compute()
-         → cancel=true (cancel previous compute)
-         → wait computing=false
-         → start_compute(ctx) (spawn new thread)
+eframe::App::ui() [every frame]       filter::apply_with_progress(…, cb)
+  ├─ poll worker results                   │  cb(iter, total, &img) per iteration
+  ├─ shortcuts / drag & drop               │  → progress Arc<Mutex<(usize,usize)>>
+  ├─ cancel + debounce                     │  → result Arc<Mutex<Option<RgbaImage>>>
+  ├─ Lloyd progress bar                     │  → result_is_final Arc<AtomicBool>
+  ├─ upload egui textures                  │  → returns (RgbImage, Vec<Dot>)
+  ├─ finalize after inactivity       ◄─── computing=false, result=Some(img)
+  └─ on params change:
+       on_params_changed() → 300 ms debounce
+       → trigger_compute() → cancel then start_compute()
 ```
 
-**Inter-thread sharing:**
+Panel order matters: `Panel::top` (actions), `Panel::bottom` (status),
+`Panel::left` (settings, inside a `ScrollArea`), then `CentralPanel`. The
+bottom panel must be allocated *before* the left one, otherwise the settings
+panel overflows on top of it.
 
-| Arc                  | Type                                  | Role                                                        |
-| -------------------- | ------------------------------------- | ----------------------------------------------------------- |
-| `result`             | `Arc<Mutex<Option<RgbImage>>>`        | Image produced by worker                                    |
-| `last_dots`          | `Arc<Mutex<Option<Vec<Dot>>>>`        | Dots from last calculation (SVG export)                     |
-| `computing`          | `Arc<AtomicBool>`                     | "calculation in progress" flag                              |
-| `cancel`             | `Arc<AtomicBool>`                     | Cancellation request (checked between iterations)           |
-| `compute_generation` | `Arc<AtomicU64>`                      | Rejects results from obsolete compute workers               |
-| `density_generation` | `Arc<AtomicU64>`                      | Rejects stale density maps after image/parameter changes    |
-| `progress`           | `Arc<Mutex<(usize, usize)>>`          | (current_iter, total_iter) for progress bar                 |
-| `compute_error`      | `Arc<Mutex<Option<String>>>`          | Error from compute thread                                   |
+### 10.3 GTK4 / libadwaita (`src/gtk/`)
 
-All `Mutex::lock()` use `unwrap_or_else(|e| e.into_inner())` to recover
-content even if the worker panicked (poison-safe).
-
-Workers are generation-tagged. Cancelling a worker is cooperative, so a
-generation check is also performed before publishing previews, final images,
-dots, density data, or errors. This prevents a slow obsolete worker from
-overwriting a newer result after a rapid slider change or image replacement.
-
-**ViewMode (before/after comparison):**
-
-```rust
-enum ViewMode { Side, ResultOnly, SourceOnly, DensityMap }
+```
+GTK main thread                        Worker threads
+─────────────────────────             ──────────────────────────────────────
+State (Rc<RefCell<..>>) + Widgets     filter::apply_with_progress(…, publish)
+  ├─ win.* actions (SimpleActionGroup)      │  publish → Msg::Progress / Preview
+  ├─ widget signals (wire.rs)               │  → async-channel
+  ├─ cancel compute (AtomicBool)       ◄─── Msg::Done { image, dots, elapsed_ms,
+  ├─ zoom / views (preview.rs)                  full_resolution }
+  └─ spawn_local: channel consumer      Msg::Failed / Msg::Density
 ```
 
-- `Side` : source and result side by side (splits available space in two)
-- `ResultOnly` : result fullscreen
-- `SourceOnly` : source fullscreen
-- `DensityMap` : density map preview
-
-**Density map cache:** `src_rgb: Option<RgbImage>` is calculated once
-at load time (including alpha composition), and reused for each recalculation.
-`refresh_src_rgb()` is only called when `bg_color` changes.
-The density map preview is **automatically recalculated** when
-`variance_sensitivity` changes (in addition to load and `bg_color` change), and
-its worker publishes only if its generation is still current.
-
-**Throttled progressive preview:** for Voronoi and K-means, each Lloyd
-iteration can publish an intermediate result via the callback. Image cloning
-for the preview is **limited to 100 ms intervals** to avoid saturating the main
-thread with unnecessary copies. The last iteration is always published.
-
-**Adaptive zoom:** "Fit" mode uses a boolean flag `zoom_fit` instead of
-the magic value `zoom=0.0`. Zoom is calculated dynamically each frame
-based on available space. Any manual zoom interaction
-(slider, `+`, `-`) disables `zoom_fit`; the "Fit" button re-enables it.
-
-**Keyboard shortcuts:**
-
-| Shortcut                   | Action                                                |
-| -------------------------- | ----------------------------------------------------- |
-| `Ctrl+O`                   | Open an image (file dialog)                           |
-| `Ctrl+S`                   | Save the result (file dialog, PNG/JPEG/WebP/BMP/TIFF) |
-| `Ctrl+Z`                   | Undo (last params change, 50-entry stack)             |
-| `Ctrl+Y` or `Ctrl+Shift+Z` | Redo                                                  |
-| `Space`                    | Manually recalculate                                  |
-
-**Undo / Redo architecture:** `App.history: Vec<FilterParams>` + `future:
-Vec<FilterParams>` + `last_committed: Option<FilterParams>`. Un changement de
-paramètre (slider, checkbox…) positionne `pending_commit=true`. Quand le calcul
-associé se termine (compute_start.take()), `commit_history()` pousse
-l'ancienne tête dans `history` et clears `future`. `FilterParams: PartialEq`
-évite de pousser un état identique (ex: drag sans variante). Undo repousse
-l'état courant vers `future`, restore depuis `history`, debounce relance le
-compute. 50 entrées max (FIFO).
-
-**GPU Backend:** forced to Vulkan (+ GL fallback) to avoid the EGL/Wayland
-crash with NVIDIA drivers on Wayland:
-```text
-WgpuSetup::CreateNew { backends: VULKAN | GL, .. }
-```
-
----
+- `State` is built around a **generation counter**: an obsolete worker never
+  publishes (`is_current`), be it a result, a progress update or an error.
+- Any state write from a GTK callback releases its `borrow` **before** touching
+  a widget: GTK setters emit synchronous signals whose handlers call
+  `state.borrow()` (this caused "already mutably borrowed" aborts).
+- An `updating` flag neutralizes handlers during programmatic updates (undo,
+  preset, preset file).
+- `win.*` actions live in a `SimpleActionGroup` inserted on the window;
+  accelerators go through a window-level `ShortcutController`
+  (`gtk_shortcut_action_parse_string` expects `action(win.name)`), and
+  non-`Ctrl` shortcuts through an `EventControllerKey`.
 
 ## 11. SVG Export
 

@@ -5,7 +5,9 @@ use serde::{Deserialize, Serialize};
 use crate::filter::halftone::{HalftoneConfig, HalftoneMode, Screening};
 
 const PRESET_FORMAT_VERSION: u32 = 1;
+/// Longueur maximale d'un côté d'image acceptée par le pipeline (pixels).
 pub const MAX_IMAGE_DIMENSION: u32 = 65_535;
+/// Nombre maximal de pixels acceptés par le pipeline (8 388 608 = 2048×4096).
 pub const MAX_IMAGE_PIXELS: u64 = 8 * 1024 * 1024;
 
 #[derive(Deserialize, Serialize)]
@@ -14,11 +16,16 @@ struct PresetDocument {
     params: FilterParams,
 }
 
+/// Algorithme de placement des points.
 #[derive(Clone, Copy, PartialEq, Debug, Serialize, Deserialize, ValueEnum)]
 pub enum Algorithm {
+    /// Grille régulière de `cols` × `rows` cellules.
     Grid,
+    /// k-means spatial sur (x, y, r, g, b).
     Kmeans,
+    /// Stippling de Lloyd pondéré par la density map.
     Voronoi,
+    /// Subdivision récursive par contraste (tables intégrales).
     Quadtree,
     /// Halftone multi-canal (rosette CMJN ou couleurs dominantes).
     /// Les sous-paramètres (`HalftoneMode`, `Screening`, `halftone_frequency`,
@@ -37,13 +44,23 @@ pub enum DotShape {
     /// Carré plein, côté = 2×rayon
     Square,
     /// Ellipse, `aspect` = ratio width/height ∈ (0, 10], `angle_deg` = rotation en degrés
-    Ellipse { aspect: f32, angle_deg: f32 },
+    Ellipse {
+        /// Ratio largeur/hauteur (0, 10].
+        aspect: f32,
+        /// Rotation en degrés.
+        angle_deg: f32,
+    },
     /// Polygone régulier à `sides` côtés (3 = triangle, 4 = losange, 6 = hexagone, …)
-    RegularPolygon { sides: u8 },
+    RegularPolygon {
+        /// Nombre de côtés (3 à 12).
+        sides: u8,
+    },
 }
 
+/// Ensemble des réglages du filtre, sérialisable en preset TOML.
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 pub struct FilterParams {
+    /// Algorithme de placement.
     pub algorithm: Algorithm,
     /// Nombre de points cible (Kmeans / Voronoi / Quadtree)
     pub num_points: usize,
@@ -195,12 +212,20 @@ impl Default for FilterParams {
 /// Un point résultant du filtre
 #[derive(Clone, Debug)]
 pub struct Dot {
+    /// Position du centre en pixels.
     pub x: f32,
+    /// Position du centre en pixels.
     pub y: f32,
+    /// Couleur RGB8 moyenne de la zone couverte.
     pub color: [u8; 3],
+    /// Rayon en pixels.
     pub radius: f32,
 }
 
+/// Vérifie les dimensions de l'image puis tous les paramètres.
+///
+/// Les paramètres invalides (valeurs négatives, non finies, hors bornes) sont
+/// rejetés ici avant tout calcul, y compris par les GUI et le CLI.
 pub fn validate_params(w: u32, h: u32, params: &FilterParams) -> Result<()> {
     validate_image_dimensions(w, h)?;
     if params.min_radius_ratio <= 0.0 {

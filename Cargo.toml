@@ -4,6 +4,17 @@ version = "0.1.0"
 edition = "2024"
 rust-version = "1.95"
 description = "A pointillist filter that transforms images into compositions of colored dots"
+license = "MIT"
+repository = "https://github.com/pvtc/pointimg"
+homepage = "https://github.com/pvtc/pointimg"
+documentation = "https://docs.rs/pointimg"
+readme = "README.md"
+keywords = ["image-processing", "pointillism", "halftone", "dithering", "voronoi"]
+categories = ["multimedia::images", "command-line-utilities"]
+# Le dossier `fuzz/` est un paquet séparé (son propre Cargo.toml/lock) : il est
+# automatiquement exclu du paquet publié. `assets/` reste inclus car le README
+# référence les images d'exemple par lien relatif.
+exclude = ["/.github", "/.idea"]
 
 [lib]
 name = "pointimg"

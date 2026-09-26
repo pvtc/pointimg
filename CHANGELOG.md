@@ -69,6 +69,13 @@ et ce projet adhère au [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
   borrow est désormais relâché avant de toucher les widgets ; les rafraîchisseurs
   de textures ont été durcis de la même façon. (`src/gtk/wire.rs`,
   `src/gtk/preview.rs`)
+- **Density map calculée pour rien en Quadtree** : `apply_with_progress_inner`
+  et `compute_dots_inner` construisaient la density map (deux tables `f64`
+  pleine résolution, ~128 Mo sur une image de 8 Mpx) alors que le quadtree
+  segmente sur ses propres tables intégrales et ne l'utilise jamais. Le calcul
+  est désormais sauté pour cet algorithme. Sortie **bit-identique** (SHA-256
+  vérifié avant/après), ~4 % de temps et ~128 Mo de pic mémoire en moins.
+  (`src/filter/mod.rs`)
 
 ### Ajouté
 
@@ -168,6 +175,123 @@ et ce projet adhère au [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 - **Dossier d'exemples** `assets/examples/` avec `result.png`.
 - **Badges README** : MSRV 1.95 + exemples + docs des nouveaux flags (EN/FR).
 
+### Interface graphique — refonte des deux front-ends
+
+Décisions communes à `pointimg-gui` (egui) et `pointimg-gtk` (GTK4/libadwaita),
+appliquées après une inspection des deux interfaces en conditions réelles
+(fenêtre vide, image chargée, redimensionnement, molette, 1:1).
+
+**Ajouté**
+
+- **Comparaison avant/après par balayage** : nouveau mode par défaut dans les
+  deux interfaces ; un curseur sépare la source du résultat dans la même zone
+  (double-clic pour le recentrer, glissement pour le déplacer). GTK : rendu
+  cairo avec clipping de part et d'autre du curseur ; egui : deux `clip_rect`.
+  (`src/gtk/compare.rs`, `src/gui/ui.rs`)
+- **Aperçu rapide avec finalisation automatique** : les réglages sont calculés
+  sur une image à 50 % ou 25 % (au choix), puis une passe en pleine résolution
+  est déclenchée après ~900 ms d'inactivité. Le rendu affiché est signalé
+  « obsolète » (opacité réduite + badge) et l'export reste désactivé tant qu'il
+  ne l'est pas. Le mode choisi par l'utilisateur n'est plus écrasé par la
+  finalisation. (`src/gtk/actions.rs`, `src/gui/compute.rs`)
+- **Presets intégrés** : `filter::builtin_presets()` expose neuf points de
+  départ validés (pointillisme classique, stippling fin, aplats graphiques,
+  rosette CMJN, trame FM, moiré, mosaïque, pastilles, calques transparents),
+  proposés dans une liste déroulante par les deux interfaces. Chaque preset est
+  testé (`validate_params` + aller-retour TOML). (`src/filter/presets.rs`)
+- **Réglages en saisie directe, avec les plages réelles du moteur** :
+  `adw::SpinRow` côté GTK (au lieu de curseurs nus) et `DragValue` côté egui.
+  Les bornes suivent `validate_params` : 100 000 points, 8 192 colonnes, 100
+  itérations, 256 couleurs de palette, 32 canaux halftone, rayon max 1.0 — des
+  valeurs auparavant inaccessibles à la souris.
+- **Navigation dans un dossier** : « Ouvrir un dossier » puis `←`/`→` pour
+  passer d'une image à l'autre ; le titre de la fenêtre affiche la position.
+- **Export rapide et presse-papiers** : `Ctrl+E` écrit `<nom>-pointimg.png` à
+  côté de la source sans dialogue, `Ctrl+C` copie l'image, et un menu GTK
+  regroupe ces actions ainsi que l'export SVG rapide.
+- **Bouton « Varier »** : tire une nouvelle graine aléatoire et relance le
+  calcul, pour explorer une variante en un clic.
+- **Réinitialisation par section** : un bouton dans l'en-tête de chaque groupe
+  du panneau GTK rétablit uniquement les réglages de cette section (les autres
+  sont conservés) ; l'opération reste annulable.
+- **État d'accueil** : au lieu d'un écran vide, les deux interfaces proposent
+  « Ouvrir une image », « Ouvrir un dossier » et « Utiliser un exemple » (si
+  `assets/examples/` est présent à côté du binaire).
+- **Notifications** : les erreurs et les actions (enregistrement, copie) passent
+  par des toasts (`adw::Toast`) ou la barre d'état, au lieu de voler la ligne de
+  statut qui décrit l'état courant.
+- **Titre de fenêtre et barre d'état nommants le fichier** : nom du fichier,
+  dimensions et mégapixels, état du calcul, position dans le dossier.
+- **Fenêtre de raccourcis** GTK (`Ctrl+?`) et anneau de raccourcis complet
+  (`+`/`-`/`0`/`1` zoom, `Tab` vue suivante, `Ctrl+molette`, `F11`,
+  `Ctrl+Shift+O`, `Ctrl+E`, `Ctrl+C`, `Ctrl+R`, `Ctrl+P`, `Échap`).
+- **Bordure de sécurité autour de la density map** : `State.density_scale`
+  mémorise l'échelle du cache ; sans cela, la passe pleine résolution
+  réutilisait une density map calculée en ½ et échouait (« density map
+  invalide : 2 095 686 valeurs, 8 382 744 attendues »).
+
+**Corrigé**
+
+- **La molette sur le panneau des réglages GTK ne faisait pas défiler le
+  panneau** : elle changeait la valeur du réglage situé sous le curseur et
+  relançait un calcul à chaque cran (mesuré : « Boost zones uniformes » 2,5 →
+  1,0, puis « Sensibilité variance » et « Rayon min » modifiés au passage).
+  Un `EventControllerScroll` en phase *capture* redirige maintenant la molette
+  vers le `ScrolledWindow` parent ; `Ctrl`/`Shift`/`Alt` ajustent le réglage.
+  (`src/gtk/controls.rs`)
+- **Les actions importantes étaient sous la ligne de flottaison** : « Annuler »,
+  « Export » et la progression étaient dans un panneau de ~1 100 px de haut
+  pour 800 px de fenêtre. Elles sont passées dans l'en-tête, avec la progression
+  et le bouton d'annulation visibles pendant un long calcul.
+- **Le curseur de zoom restait actif en mode « Ajuster »** sans effet et
+  affichait une valeur fictive ; il est désormais insensible et le pourcentage
+  réellement appliqué est affiché. (`src/gtk/preview.rs`)
+- **Passage de « Ajuster » à 1:1** : saut vers le coin haut-gauche ; le centre
+  du viewport est désormais conservé.
+- **Les vues n'étaient pas synchronisées** : faire défiler « Source » ne
+  déplaçait pas « Résultat », rendant la comparaison impossible ; les
+  adjustments sont désormais miroités.
+- **Double affichage du temps de calcul** dans la barre d'état (« Dernier
+  calcul : 671ms » et « Terminé en 671ms. ») ; le message d'état n'est plus
+  redondant.
+- **L'estimation mémoire était anxiogène et peu parlante** : elle affichait
+  « 174 Mo » pour une image de 1,5 Mpx (le plancher de 64 Mio de
+  l'estimateur domine). Elle est signalée par un avertissement au-delà de
+  1,5 Go, et l'image courante est décrite par ses dimensions.
+- **Libellés incohérents** : « Undo »/« Redo » en anglais dans une interface
+  française, boutons d'annulation toujours actifs au lieu d'être désactivés,
+  « Sensibilité variance » sans indication d'unité.
+- **Sections repliées** : « Forme des points » et « Fond et rendu » étaient
+  repliées par défaut alors que la forme est le paramètre le plus identitaire
+  d'un pointillisme ; toutes les sections sont désormais visibles (chacune tient
+  sur une ligne).
+- **Redimensionnement d'une `SpinRow` hors de sa plage** : les curseurs min/max
+  se désynchronisaient (le rayon max restait à l'ancienne valeur) ; la ligne
+  contrainte est réalignée, sans réécrire tous les widgets à chaque cran.
+- **Panneau de gauche déborduant sous la barre d'état** côté egui : l'ordre
+  d'allocation des panneaux (`haut`, `bas`, puis `gauche`) est corrigé et le
+  panneau de réglages est déroulable.
+- **Vue comparaison egui affichée à 2 %** : le zoom était déduit d'une hauteur
+  calculée une ligne trop tôt ; il est maintenant mesuré sur l'espace réellement
+  disponible.
+- **Couleurs fausse dans la comparaison egui** : la teinte des deux couches
+  était verdâtre (teinte sentinelle au lieu de blanc) ; les images sont
+  désormais peintes sans teinte.
+
+**Modifié**
+
+- Le panneau GTK est une `adw::PreferencesPage` : une ligne par réglage
+  (`adw::SpinRow`), groupes `adw::PreferencesGroup`, titre et description par
+  groupe, `adw::SwitchRow` pour les bascules, `adw::ComboRow` pour les listes.
+  Le socle reste libadwaita 1.4 (les widgets 1.6+ — `AdwButtonRow`,
+  `AdwMenuButton`, `AdwSpinner` — sont remplacés par leurs équivalents GTK).
+- egui : style global appliqué une fois (plus d'air, texte à 13 pt), panneaux
+  encadrés, légendes de panneaux, et plus aucun pictogramme Unicode (les
+  emojis s'affichaient en « tofu » selon les polices installées).
+- egui : `eframe::App::style` n'existe plus en 0.36, le style est donc appliqué
+  via `Context::all_styles_mut` au premier rendu ; l'API `Panel::left/top/bottom`
+  remplace `SidePanel`/`TopBottomPanel`.
+
 ### Outillage / CI
 
 - **Clippy couvre tous les targets** : la CI lint désormais tests, benches et
@@ -250,6 +374,18 @@ et ce projet adhère au [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 - **Dithering Floyd-Steinberg accéléré** : palette pré-convertie en `f32`,
   recherche manuelle du plus proche avec sortie anticipée sur correspondance
   exacte (mêmes résultats). (`src/filter/dither.rs`)
+- **Normalisation de la densité en place** : `normalize_variance` transforme son
+  `Vec<f32>` au lieu d'en allouer un second pleine résolution (~33 Mo
+  économisés sur une image de 8 Mpx). (`src/filter/density.rs`)
+- **API publique entièrement documentée** : `#![warn(missing_docs)]` dans la
+  lib (donc bloquant via le `-D warnings` de la CI) ; les 24 items publics
+  manquants (`Algorithm`, `FilterParams`, `Dot`, constantes de bornes, API
+  colorimétrique, density map…) sont désormais documentés. (`src/lib.rs`,
+  `src/filter/params.rs`, `src/color.rs`, `src/filter/density.rs`)
+- **Métadonnées du paquet** : `license`, `repository`, `homepage`,
+  `documentation`, `readme`, `keywords` et `categories` ajoutés (le warning
+  « manifest has no license … » de `cargo package` disparaît) ; `.github` et
+  `.idea` exclus du paquet. (`Cargo.toml`)
 - **Voronoï refactoré** : la boucle de Lloyd pondérée est extraite dans
   `run_lloyd`, partagée entre le chemin progressif et le chemin direct
   (auparavant ~60 lignes dupliquées). (`src/filter/algorithms/voronoi.rs`)
@@ -358,6 +494,36 @@ et ce projet adhère au [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
   bornes dynamiques.
 - `FilterParams: PartialEq` dérivé pour détecter changements réels.
 - Indicateur visuel "Annulé." / "Refait." dans la barre de statut.
+
+#### Simplifications et ergonomie (egui + GTK4)
+
+- **Sections repliables** : le panneau de réglages n'est plus une liste plate de
+  séparateurs. `Ui::collapsing` (egui) et `gtk::Expander` (GTK4) ; « Forme des
+  points » et « Fond et rendu » démarrent repliés, le flux courant
+  (ouvrir → algorithme → calculer → exporter) tient sans défiler.
+- **Infobulles sur tous les paramètres** (≈30 dans chaque frontend) : plus aucun
+  réglage n'est une étiquette opaque (« Boost zones uniformes », « Screening
+  AM/FM », « Rayon max (frac. step) », description de chaque algorithme…).
+- **Plus de contrôles grisés** : le mode halftone affiche désormais son bloc à la
+  place des paramètres de placement qu'il ignore, au lieu de les laisser
+  visibles mais inactifs. Supprime 4 `add_enabled(!is_halftone, …)` (egui) et le
+  `set_sensitive` (GTK4). Le bloc halftone est en outre remonté juste sous le
+  sélecteur d'algorithme dans les deux frontends.
+- **Barre d'affichage en haut (egui)** : mode d'affichage et zoom quittent le
+  panneau de réglages pour une barre au-dessus de l'aperçu — parité avec GTK4,
+  et le contrôle est au plus près de son effet.
+- **Barre d'état épinglée** : message de statut, mémoire estimée et durée du
+  dernier calcul sortent de la zone défilante (`Panel::bottom` en egui, barre
+  dédiée sous l'aperçu en GTK4) et restent donc lisibles pendant qu'on parcourt
+  les réglages.
+- **Algorithme en liste déroulante (egui)** : 5 `selectable_label` empilés
+  remplacés par un `ComboBox`, aligné sur le `DropDown` de GTK4.
+- **Boutons Undo / Redo dans egui** : la fonction n'était découvrable que par
+  `Ctrl+Z` ; les deux boutons existent désormais (parité GTK4).
+- **Bouton « Réinitialiser »** (les deux frontends) : rétablit
+  `FilterParams::default()` en passant par l'historique, donc annulable.
+- **Dialogues d'enregistrement pré-remplis** : dernier dossier utilisé et nom
+  dérivé de l'image source (`photo.jpg` → `photo-pointimg.png`).
 
 ### Sauvegarde GUI multi-format
 

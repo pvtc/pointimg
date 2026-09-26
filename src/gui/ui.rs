@@ -1,59 +1,101 @@
-//! Rendu egui : panneau de contrôle, zone centrale, raccourcis clavier.
+//! Rendu egui : en-tête, panneau de réglages, zone d'aperçu, raccourcis.
+//!
+//! L'interface reprend les décisions de la version GTK4 : actions visibles
+//! dans l'en-tête (rien d'important sous la ligne de flottaison), comparaison
+//! avant/après par balayage, réglages en saisie directe, aperçu rapide avec
+//! finalisation automatique, presets intégrés, et un état d'accueil qui donne
+//! quelque chose à faire.
 
 use eframe::egui;
-use egui::TextureOptions;
-use pointimg::filter::{Algorithm, DotShape, HalftoneMode, Screening};
 use std::sync::atomic::Ordering;
 use std::time::{Duration, Instant};
 
-use super::convert::{gray_to_color_image, rgb_to_color_image, rgba_to_color_image_checker};
-use super::format::{format_duration, format_memory};
-use super::{App, ViewMode};
 use pointimg::filter;
+use pointimg::filter::{Algorithm, DotShape, HalftoneMode, Screening};
+
+use super::convert::{gray_to_color_image, rgb_to_color_image, rgba_to_color_image_checker};
+use super::format::format_duration;
+use super::{App, Quality, ViewMode};
+
+/// Description courte d'un algorithme, affichée sous le sélecteur.
+fn algorithm_help(algorithm: Algorithm) -> &'static str {
+    match algorithm {
+        Algorithm::Grid => "Grille régulière : une cellule = un point. Rapide et prévisible.",
+        Algorithm::Kmeans => {
+            "k-means spatial : les points se répartissent selon la couleur et la position."
+        }
+        Algorithm::Voronoi => {
+            "Lloyd pondéré : répartition régulière guidée par le détail. Rendu le plus « naturel »."
+        }
+        Algorithm::Quadtree => {
+            "Subdivision par contraste : davantage de points là où l'image est détaillée."
+        }
+        Algorithm::Halftone => {
+            "Trame d'encre : rosette CMJN ou couleurs dominantes, style offset print."
+        }
+    }
+}
+
+/// Modes d'affichage, dans l'ordre de cycling.
+const VIEWS: [(&str, ViewMode); 5] = [
+    ("Comparaison", ViewMode::Compare),
+    ("Côte à côte", ViewMode::Side),
+    ("Résultat", ViewMode::ResultOnly),
+    ("Source", ViewMode::SourceOnly),
+    ("Density map", ViewMode::DensityMap),
+];
+
+/// Style global : plus d'air, texte un peu plus grand, panneaux distincts.
+fn tuned_style(style: &mut egui::Style) {
+    style.spacing.item_spacing = egui::vec2(8.0, 6.0);
+    style.spacing.button_padding = egui::vec2(8.0, 4.0);
+    style.spacing.indent = 18.0;
+    style.spacing.interact_size.y = 22.0;
+    for (text, size) in [
+        (egui::TextStyle::Body, 13.0),
+        (egui::TextStyle::Button, 13.0),
+        (egui::TextStyle::Small, 11.5),
+        (egui::TextStyle::Heading, 17.0),
+    ] {
+        style
+            .text_styles
+            .insert(text, egui::FontId::proportional(size));
+    }
+}
 
 impl eframe::App for App {
     fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
         let ctx = ui.ctx().clone();
 
+        // `eframe::App::style` n'existe plus en 0.36 : on applique notre style
+        // au premier rendu seulement.
+        if !self.styled {
+            ctx.all_styles_mut(tuned_style);
+            self.styled = true;
+        }
+
         self.poll_worker_results();
+        self.collect_errors();
+        self.handle_cancel_and_debounce(&ctx);
         self.handle_shortcuts(&ctx);
         self.handle_drag_and_drop(&ctx);
-        self.handle_cancel_and_debounce(&ctx);
 
         let computing = self.computing.load(Ordering::Relaxed);
-        if !computing {
-            // Calculer le temps si on vient de terminer
-            if let Some(start) = self.compute_start.take() {
-                let ms = start.elapsed().as_millis() as u64;
-                self.last_compute_ms = Some(ms);
-                self.status = format!("Terminé en {}.", format_duration(ms));
-                // Commit undo-history : à chaque calcul terminé avec
-                // params réellement différents depuis le dernier commit, on
-                // pousse. `pending_commit` est mis à true quand params_changed.
-                if self.pending_commit {
-                    self.commit_history();
-                    self.pending_commit = false;
-                }
-            }
-        }
+        self.finish_pending_compute(computing);
+        self.sync_window_title(&ctx);
 
-        // ── Erreur du thread ──────────────────────────────────────────────────
-        if let Some(err) = self
-            .compute_error
-            .lock()
-            .unwrap_or_else(|e| e.into_inner())
-            .take()
-        {
-            self.status = err;
-        }
-
-        self.show_control_panel(ui, &ctx, computing);
+        // L'ordre compte : le panneau du bas doit être réservé avant le
+        // panneau de gauche, sinon celui-ci déborde dessus.
+        self.show_view_bar(ui, &ctx, computing);
+        self.show_status_bar(ui, computing);
+        self.show_control_panel(ui, &ctx);
         self.show_central_panel(ui, &ctx, computing);
     }
 }
 
 impl App {
-    /// Récupère les résultats publiés par les workers (density map).
+    // ─── Cycle de vie ────────────────────────────────────────────────────────
+
     fn poll_worker_results(&mut self) {
         if let Some(density) = self
             .density_result
@@ -66,87 +108,234 @@ impl App {
         }
     }
 
-    /// Raccourcis clavier : ouvrir, sauver, recalculer, undo/redo.
-    fn handle_shortcuts(&mut self, ctx: &egui::Context) {
-        let (kb_open, kb_save, kb_recalc, kb_undo, kb_redo) = ctx.input(|i| {
-            let open = i.modifiers.command && i.key_pressed(egui::Key::O);
-            let save = i.modifiers.command && i.key_pressed(egui::Key::S);
-            let recalc = i.key_pressed(egui::Key::Space) && !i.modifiers.command;
-            // Undo : Ctrl+Z (sans Shift). Redo : Ctrl+Y ou Ctrl+Shift+Z.
-            let undo = i.modifiers.command && !i.modifiers.shift && i.key_pressed(egui::Key::Z);
-            let redo = i.modifiers.command
-                && (i.key_pressed(egui::Key::Y)
-                    || (i.modifiers.shift && i.key_pressed(egui::Key::Z)));
-            (open, save, recalc, undo, redo)
-        });
-
-        if kb_open
-            && let Some(path) = rfd::FileDialog::new()
-                .add_filter("Images", &["png", "jpg", "jpeg", "webp", "bmp", "tiff"])
-                .pick_file()
+    fn collect_errors(&mut self) {
+        if let Some(err) = self
+            .compute_error
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .take()
         {
-            self.load_image(path, ctx);
+            self.status = err;
         }
-        if kb_save {
-            let has_result = self
-                .result
-                .lock()
-                .unwrap_or_else(|e| e.into_inner())
-                .is_some();
-            if has_result
-                && !self.computing.load(Ordering::Relaxed)
-                && let Some(path) = rfd::FileDialog::new()
-                    .add_filter("PNG", &["png"])
-                    .add_filter("JPEG", &["jpg", "jpeg"])
-                    .add_filter("WebP", &["webp"])
-                    .add_filter("BMP", &["bmp"])
-                    .add_filter("TIFF", &["tif", "tiff"])
-                    .save_file()
-            {
-                self.save_result(path);
+    }
+
+    /// Clôt le calcul en cours : durée, message, commit d'historique.
+    fn finish_pending_compute(&mut self, computing: bool) {
+        if computing {
+            return;
+        }
+        if let Some(start) = self.compute_start.take() {
+            let ms = start.elapsed().as_millis() as u64;
+            self.last_compute_ms = Some(ms);
+            let final_result = self.result_is_final.load(Ordering::Acquire);
+            self.status = if final_result {
+                format!("Calcul terminé en {}.", format_duration(ms))
+            } else {
+                "Aperçu calculé — finalisation en cours…".to_string()
+            };
+            if self.pending_commit {
+                self.commit_history();
+                self.pending_commit = false;
             }
         }
-        if kb_recalc && self.src_rgb.is_some() && !self.computing.load(Ordering::Relaxed) {
-            self.last_param_change = None;
-            self.start_compute(ctx);
+        // Un aperçu rapide terminé déclenche la passe en pleine résolution.
+        if !self.has_final_result()
+            && !self.computing.load(Ordering::Relaxed)
+            && self.has_any_result()
+        {
+            self.schedule_finalize();
         }
+    }
 
-        // ── Undo / Redo (Ctrl+Z / Ctrl+Y) ──────────────────────────────────
-        // On n'agit que si l'utilisateur n'est pas en train de taper dans un champ.
-        let wants_text = ctx.input(|i| {
-            i.pointer.any_down()
-                || i.raw
-                    .events
-                    .iter()
-                    .any(|e| matches!(e, egui::Event::PointerMoved(_)))
+    /// Programme la passe en pleine résolution quand l'utilisateur arrête de
+    /// manipuler les réglages (mode aperçu rapide).
+    fn schedule_finalize(&mut self) {
+        if self.quality.is_full() || self.finalize_at.is_some() {
+            return;
+        }
+        self.finalize_at = Some(Instant::now() + Duration::from_millis(900));
+    }
+
+    fn poll_finalize(&mut self) {
+        if let Some(at) = self.finalize_at
+            && at <= Instant::now()
+        {
+            self.finalize_at = None;
+            self.final_pass = true;
+            self.last_param_change = Some(Instant::now());
+        }
+    }
+
+    /// Le résultat affiché est-il exploitable (pleine résolution, à jour) ?
+    pub(crate) fn has_final_result(&self) -> bool {
+        self.result_is_final.load(Ordering::Acquire) && self.has_any_result()
+    }
+
+    /// Le résultat affiché ne correspond plus aux réglages courants.
+    pub(crate) fn result_is_stale(&self) -> bool {
+        (!self.result_is_final.load(Ordering::Acquire) && self.has_any_result())
+            || self.computing.load(Ordering::Relaxed)
+    }
+
+    fn has_any_result(&self) -> bool {
+        self.result
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .is_some()
+    }
+
+    fn sync_window_title(&mut self, ctx: &egui::Context) {
+        let name = self
+            .src_path
+            .as_ref()
+            .and_then(|p| p.file_name())
+            .and_then(|n| n.to_str())
+            .unwrap_or("Aucune image");
+        let title = match self.folder_position() {
+            Some((index, total)) => format!("pointimg — {name} ({index}/{total})"),
+            None => format!("pointimg — {name}"),
+        };
+        if title != self.window_title {
+            self.window_title = title.clone();
+            ctx.send_viewport_cmd(egui::ViewportCommand::Title(title));
+        }
+    }
+
+    // ─── Raccourcis et glisser-déposer ───────────────────────────────────────
+
+    fn handle_shortcuts(&mut self, ctx: &egui::Context) {
+        #[derive(Default)]
+        struct Keys {
+            open: bool,
+            open_folder: bool,
+            save: bool,
+            save_svg: bool,
+            quick_save: bool,
+            copy: bool,
+            recalc: bool,
+            undo: bool,
+            redo: bool,
+            preset: bool,
+            view: bool,
+            zoom_in: bool,
+            zoom_out: bool,
+            fit: bool,
+            one: bool,
+            prev: bool,
+            next: bool,
+            reset: bool,
+        }
+        let keys = ctx.input(|i| {
+            let command = i.modifiers.command;
+            let shift = i.modifiers.shift;
+            let plain = !command && !i.modifiers.ctrl && !i.modifiers.alt;
+            Keys {
+                open: command && !shift && i.key_pressed(egui::Key::O),
+                open_folder: command && shift && i.key_pressed(egui::Key::O),
+                save: command && !shift && i.key_pressed(egui::Key::S),
+                save_svg: command && shift && i.key_pressed(egui::Key::S),
+                quick_save: command && i.key_pressed(egui::Key::E),
+                copy: command && i.key_pressed(egui::Key::C),
+                recalc: plain && i.key_pressed(egui::Key::Space),
+                undo: command && !shift && i.key_pressed(egui::Key::Z),
+                redo: command
+                    && (i.key_pressed(egui::Key::Y) || (shift && i.key_pressed(egui::Key::Z))),
+                preset: command && i.key_pressed(egui::Key::P),
+                view: plain && i.key_pressed(egui::Key::Tab),
+                zoom_in: plain
+                    && (i.key_pressed(egui::Key::Plus) || i.key_pressed(egui::Key::Equals)),
+                zoom_out: plain && i.key_pressed(egui::Key::Minus),
+                fit: plain && i.key_pressed(egui::Key::Num0),
+                one: plain && i.key_pressed(egui::Key::Num1),
+                prev: plain && i.key_pressed(egui::Key::ArrowLeft),
+                next: plain && i.key_pressed(egui::Key::ArrowRight),
+                reset: command && i.key_pressed(egui::Key::R),
+            }
         });
-        if kb_undo && !wants_text {
+
+        // Tant qu'un champ de saisie a le focus, les raccourcis « lettre »
+        // seraient tapés dans le champ.
+        let wants_text = ctx.egui_wants_keyboard_input();
+
+        if keys.open {
+            self.choose_image(ctx);
+        }
+        if keys.open_folder {
+            self.choose_folder(ctx);
+        }
+        if keys.save && self.has_final_result() {
+            self.choose_export();
+        }
+        if keys.save_svg && self.has_final_result() {
+            self.choose_svg_export();
+        }
+        if keys.quick_save {
+            self.quick_export();
+        }
+        if keys.copy && !wants_text {
+            self.copy_to_clipboard(ctx);
+        }
+        if keys.reset {
+            self.reset_params(ctx);
+        }
+        if keys.undo && !wants_text {
             self.undo(ctx);
         }
-        if kb_redo && !wants_text {
+        if keys.redo && !wants_text {
             self.redo(ctx);
+        }
+        if keys.recalc {
+            self.request_full_compute(ctx);
+        }
+        if keys.preset && !wants_text {
+            self.cycle_preset(1, ctx);
+        }
+        if keys.view && !wants_text {
+            self.cycle_view(1);
+        }
+        if keys.zoom_in && !wants_text {
+            self.set_zoom(self.current_zoom() * 1.25);
+        }
+        if keys.zoom_out && !wants_text {
+            self.set_zoom(self.current_zoom() / 1.25);
+        }
+        if keys.fit && !wants_text {
+            self.zoom_fit = true;
+        }
+        if keys.one && !wants_text {
+            self.set_zoom(1.0);
+        }
+        if keys.prev && !wants_text {
+            self.step_folder(-1, ctx);
+        }
+        if keys.next && !wants_text {
+            self.step_folder(1, ctx);
         }
     }
 
     fn handle_drag_and_drop(&mut self, ctx: &egui::Context) {
-        let dropped_path = ctx.input(|i| {
-            if !i.raw.dropped_files.is_empty() {
-                Some(i.raw.dropped_files[0].path().to_path_buf())
-            } else {
-                None
-            }
+        let dropped: Vec<std::path::PathBuf> = ctx.input(|i| {
+            i.raw
+                .dropped_files
+                .iter()
+                .map(|file| file.path().to_path_buf())
+                .collect()
         });
-        if let Some(path) = dropped_path {
-            self.load_image(path, ctx);
+        for path in dropped {
+            if path.is_dir() {
+                self.open_folder(path, ctx);
+            } else {
+                self.load_image(path, ctx);
+            }
         }
     }
 
-    /// Relance après annulation + debounce des changements de paramètres.
     fn handle_cancel_and_debounce(&mut self, ctx: &egui::Context) {
         if self.cancel.load(Ordering::Relaxed) && !self.computing.load(Ordering::Relaxed) {
             self.cancel.store(false, Ordering::Relaxed);
             self.start_compute(ctx);
         }
+        self.poll_finalize();
 
         if let Some(t) = self.last_param_change {
             if t.elapsed() >= Duration::from_millis(300) && self.src_rgb.is_some() {
@@ -155,273 +344,339 @@ impl App {
             } else {
                 ctx.request_repaint_after(Duration::from_millis(50));
             }
+        } else if self.finalize_at.is_some() {
+            ctx.request_repaint_after(Duration::from_millis(100));
         }
     }
 
-    // ─── Panneau de contrôle ──────────────────────────────────────────────────
+    // ─── En-tête ─────────────────────────────────────────────────────────────
 
-    fn show_control_panel(&mut self, ui: &mut egui::Ui, ctx: &egui::Context, computing: bool) {
+    /// Tout ce qui est action vit dans l'en-tête : plus rien à faire défiler.
+    fn show_view_bar(&mut self, ui: &mut egui::Ui, ctx: &egui::Context, computing: bool) {
+        let has_final = self.has_final_result();
+        let has_dots = self
+            .last_dots
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .is_some()
+            || self.src_rgb.is_some();
+
+        egui::Panel::top("view_bar").show(ui, |ui| {
+            ui.add_space(4.0);
+            ui.horizontal(|ui| {
+                if ui.button("Ouvrir…").clicked() {
+                    self.choose_image(ctx);
+                }
+                if ui.button("Dossier…").clicked() {
+                    self.choose_folder(ctx);
+                }
+                ui.separator();
+                if computing {
+                    if ui.button("Stop").clicked() {
+                        self.cancel.store(true, Ordering::Relaxed);
+                        self.status = "Annulation…".to_string();
+                    }
+                    ui.spinner();
+                } else if ui.button("Recalculer").clicked() {
+                    self.request_full_compute(ctx);
+                }
+                ui.separator();
+                let undo_label = self
+                    .history
+                    .last()
+                    .map(|entry| format!("Annuler : {} (Ctrl+Z)", entry.label))
+                    .unwrap_or_else(|| "Rien à annuler".to_string());
+                if ui
+                    .add_enabled(
+                        !self.history.is_empty() || self.pending_commit,
+                        egui::Button::new("Annuler"),
+                    )
+                    .on_hover_text(undo_label)
+                    .clicked()
+                {
+                    self.undo(ctx);
+                }
+                let redo_label = self
+                    .future
+                    .last()
+                    .map(|entry| format!("Rétablir : {} (Ctrl+Y)", entry.label))
+                    .unwrap_or_else(|| "Rien à rétablir".to_string());
+                if ui
+                    .add_enabled(!self.future.is_empty(), egui::Button::new("Rétablir"))
+                    .on_hover_text(redo_label)
+                    .clicked()
+                {
+                    self.redo(ctx);
+                }
+                if ui
+                    .button("⟲")
+                    .on_hover_text("Rétablir tous les réglages par défaut (Ctrl+R)")
+                    .clicked()
+                {
+                    self.reset_params(ctx);
+                }
+                ui.separator();
+                if ui
+                    .add_enabled(has_final, egui::Button::new("Exporter l'image…"))
+                    .on_hover_text("Exporter l'image (Ctrl+S)")
+                    .clicked()
+                {
+                    self.choose_export();
+                }
+                if ui
+                    .add_enabled(has_dots, egui::Button::new("Exporter SVG…"))
+                    .on_hover_text("Exporter le rendu en SVG (Ctrl+Shift+S)")
+                    .clicked()
+                {
+                    self.choose_svg_export();
+                }
+                if ui
+                    .add_enabled(has_final, egui::Button::new("Copier"))
+                    .on_hover_text("Copier l'image dans le presse-papiers (Ctrl+C)")
+                    .clicked()
+                {
+                    self.copy_to_clipboard(ctx);
+                }
+            });
+            ui.add_space(3.0);
+        });
+    }
+
+    // ─── Panneau de réglages ────────────────────────────────────────────────
+
+    fn show_control_panel(&mut self, ui: &mut egui::Ui, ctx: &egui::Context) {
         egui::Panel::left("controls")
             .resizable(true)
-            .min_size(290.0)
+            .default_size(330.0)
             .show(ui, |ui| {
                 egui::ScrollArea::vertical().show(ui, |ui| {
-                    ui.heading("pointimg");
+                    ui.horizontal(|ui| {
+                        ui.heading("pointimg");
+                        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                            let info = self
+                                .image_info()
+                                .unwrap_or_else(|| "Aucune image".to_string());
+                            ui.label(info)
+                                .on_hover_text("Dimensions de l'image chargée");
+                        });
+                    });
                     ui.separator();
 
-                    let mut params_changed = self.show_file_section(ui, ctx);
+                    self.show_presets(ui, ctx);
+                    self.show_algorithm_section(ui, ctx);
+                    self.show_shape_and_palette_section(ui);
+                    self.show_bg_section(ui, ctx);
+                    self.show_quality_section(ui, ctx);
                     ui.separator();
-                    params_changed |= self.show_algorithm_section(ui, ctx);
-                    ui.separator();
-                    params_changed |= self.show_shape_and_palette_section(ui);
-                    ui.separator();
-                    params_changed |= self.show_bg_section(ui, ctx);
-                    params_changed |= self.show_gamma_and_zoom_section(ui);
-                    ui.separator();
-                    if self.params.algorithm == Algorithm::Halftone {
-                        params_changed |= self.show_halftone_section(ui);
+                    if ui.button("Réinitialiser les réglages").clicked() {
+                        self.reset_params(ctx);
                     }
-                    self.show_compute_buttons(ui, ctx, computing, &mut params_changed);
-                    ui.separator();
-                    self.show_view_mode_section(ui);
-                    ui.separator();
-                    self.show_export_buttons(ui, computing);
-                    ui.separator();
-                    self.show_status_section(ui);
                 });
             });
     }
 
-    /// Section fichiers/presets. Retourne true si un changement nécessite un compute.
-    fn show_file_section(&mut self, ui: &mut egui::Ui, ctx: &egui::Context) -> bool {
-        if ui.button("Ouvrir une image…").clicked()
-            && let Some(path) = rfd::FileDialog::new()
-                .add_filter("Images", &["png", "jpg", "jpeg", "webp", "bmp", "tiff"])
-                .pick_file()
-        {
-            self.load_image(path, ctx);
-        }
-        ui.small("(ou glisser-déposer une image dans la fenêtre)");
+    /// Presets intégrés : le point de départ le plus rapide.
+    fn show_presets(&mut self, ui: &mut egui::Ui, ctx: &egui::Context) {
+        let presets = filter::builtin_presets();
+        let current = self.preset_index();
+        section(ui, "Réglages rapides");
+        let mut selected = current;
         ui.horizontal(|ui| {
-            if ui.button("Charger preset").clicked()
-                && let Some(path) = rfd::FileDialog::new()
-                    .add_filter("Preset TOML", &["toml"])
-                    .pick_file()
+            ui.label("Preset");
+            egui::ComboBox::from_id_salt("preset_combo")
+                .selected_text(match current {
+                    None => "Personnalisé".to_string(),
+                    Some(index) => presets[index].name.to_string(),
+                })
+                .show_ui(ui, |ui| {
+                    ui.selectable_value(&mut selected, None, "Personnalisé");
+                    for (index, preset) in presets.iter().enumerate() {
+                        ui.selectable_value(&mut selected, Some(index), preset.name)
+                            .on_hover_text(preset.description);
+                    }
+                });
+            if ui
+                .small_button("Suivant")
+                .on_hover_text("Preset suivant (Ctrl+P)")
+                .clicked()
             {
-                self.load_preset(path, ctx);
-            }
-            if ui.button("Sauver preset").clicked()
-                && let Some(path) = rfd::FileDialog::new()
-                    .add_filter("Preset TOML", &["toml"])
-                    .save_file()
+                self.cycle_preset(1, ctx);
+            } else if current.is_some()
+                && selected != current
+                && let Some(index) = selected
             {
-                self.save_preset(path);
+                self.apply_preset(index, ctx);
             }
         });
-        false
+        ui.horizontal(|ui| {
+            if ui.button("Charger un preset…").clicked() {
+                self.choose_load_preset(ctx);
+            }
+            if ui.button("Sauver le preset…").clicked() {
+                self.choose_save_preset();
+            }
+        });
     }
 
-    /// Section algorithme + paramètres de placement. Retourne true si changement.
-    fn show_algorithm_section(&mut self, ui: &mut egui::Ui, ctx: &egui::Context) -> bool {
-        ui.label("Algorithme");
-
-        let mut algo_changed = false;
-        egui::Grid::new("algo_grid").num_columns(2).show(ui, |ui| {
-            for (label, algo) in [
-                ("Grille", Algorithm::Grid),
-                ("K-means", Algorithm::Kmeans),
-                ("Voronoi (Lloyd)", Algorithm::Voronoi),
-                ("Quadtree", Algorithm::Quadtree),
-                ("Halftone (rosette)", Algorithm::Halftone),
-            ] {
-                if ui
-                    .selectable_label(self.params.algorithm == algo, label)
-                    .clicked()
-                {
-                    self.params.algorithm = algo;
-                    // Si on active Halftone et que le mode interne est Off,
-                    // on force Cmyk par défaut.
-                    if algo == Algorithm::Halftone && self.params.halftone == HalftoneMode::Off {
-                        self.params.halftone = HalftoneMode::Cmyk {
-                            angles: [15.0, 75.0, 0.0, 45.0],
-                        };
+    fn show_algorithm_section(&mut self, ui: &mut egui::Ui, ctx: &egui::Context) {
+        const ALGOS: [(&str, Algorithm); 5] = [
+            ("Grille", Algorithm::Grid),
+            ("K-means", Algorithm::Kmeans),
+            ("Voronoi (Lloyd)", Algorithm::Voronoi),
+            ("Quadtree", Algorithm::Quadtree),
+            ("Halftone (rosette)", Algorithm::Halftone),
+        ];
+        section(ui, "Algorithme");
+        let current = ALGOS
+            .iter()
+            .find(|(_, algo)| *algo == self.params.algorithm)
+            .map(|(label, _)| *label)
+            .unwrap_or("Voronoi (Lloyd)");
+        ui.horizontal(|ui| {
+            ui.label("Placement");
+            egui::ComboBox::from_id_salt("algo_combo")
+                .selected_text(current)
+                .show_ui(ui, |ui| {
+                    for (label, algo) in ALGOS {
+                        ui.selectable_value(&mut self.params.algorithm, algo, label)
+                            .on_hover_text(algorithm_help(algo));
                     }
-                    algo_changed = true;
-                }
-                ui.end_row();
-            }
+                });
         });
+        ui.add(
+            egui::Label::new(egui::RichText::new(algorithm_help(self.params.algorithm)).size(11.5))
+                .wrap(),
+        );
 
-        let mut params_changed = algo_changed;
-        let is_halftone = self.params.algorithm == Algorithm::Halftone;
-        if self.params.max_radius_ratio < self.params.min_radius_ratio {
-            self.params.max_radius_ratio = self.params.min_radius_ratio;
-            params_changed = true;
+        if self.params.algorithm == Algorithm::Halftone {
+            self.show_halftone_section(ui);
+            self.on_params_changed(ctx);
+            return;
         }
-        // En mode Halftone, les sliders de placement (variance, rayons,
-        // boost, cols, num_points, iterations, grid_angle) sont inutiles
-        // car le pipeline les ignore. On les grise pour clarté.
 
-        ui.label("Sensibilite variance");
-        let vs_changed = ui
-            .add_enabled(
-                !is_halftone,
-                egui::Slider::new(&mut self.params.variance_sensitivity, 0.0..=1.0).step_by(0.01),
-            )
-            .changed();
-        if vs_changed {
+        let variance_before = self.params.variance_sensitivity;
+        if number_row_with_hint(
+            ui,
+            "Sensibilité variance",
+            &mut self.params.variance_sensitivity,
+            0.0..=1.0,
+            Some("0 = uniforme · 1 = détail maximal"),
+        )
+        .changed()
+        {
+            // La density map dépend de ce seul réglage : on la recalcule sans
+            // relancer le filtre.
             self.start_density_compute(ctx);
         }
-        params_changed |= vs_changed;
-
-        ui.label("Rayons des points (fraction image)");
-        let mut min_radius = self.params.min_radius_ratio;
-        let mut max_radius = self.params.max_radius_ratio.max(min_radius);
-        let radius_limit = 0.3_f32.max(max_radius).min(1.0);
-        let mut radius_changed = false;
-        ui.horizontal(|ui| {
-            ui.label("Min");
-            radius_changed |= ui
-                .add_enabled(
-                    !is_halftone,
-                    egui::Slider::new(&mut min_radius, 0.001..=max_radius)
-                        .step_by(0.001)
-                        .show_value(true),
-                )
-                .changed();
-            ui.label("Max");
-            radius_changed |= ui
-                .add_enabled(
-                    !is_halftone,
-                    egui::Slider::new(&mut max_radius, min_radius..=radius_limit)
-                        .step_by(0.005)
-                        .show_value(true),
-                )
-                .changed();
-        });
-        if radius_changed {
-            // Each slider is constrained by the other one, and the
-            // final clamp also protects values loaded from presets.
-            self.params.min_radius_ratio = min_radius.min(max_radius);
-            self.params.max_radius_ratio = max_radius.max(min_radius);
+        let min_before = self.params.min_radius_ratio;
+        let max_before = self.params.max_radius_ratio;
+        number_row_with_hint(
+            ui,
+            "Rayon min",
+            &mut self.params.min_radius_ratio,
+            0.0005..=1.0,
+            None,
+        );
+        number_row_with_hint(
+            ui,
+            "Rayon max",
+            &mut self.params.max_radius_ratio,
+            0.0005..=1.0,
+            None,
+        );
+        if self.params.min_radius_ratio > self.params.max_radius_ratio {
+            std::mem::swap(
+                &mut self.params.min_radius_ratio,
+                &mut self.params.max_radius_ratio,
+            );
         }
-        params_changed |= radius_changed;
-
-        ui.label("Boost zones uniformes (×max)");
-        params_changed |= ui
-            .add_enabled(
-                !is_halftone,
-                egui::Slider::new(&mut self.params.max_boost, 1.0..=5.0).step_by(0.1),
-            )
-            .changed();
+        number_row_with_hint(
+            ui,
+            "Boost zones uniformes",
+            &mut self.params.max_boost,
+            1.0..=8.0,
+            None,
+        );
 
         match self.params.algorithm {
             Algorithm::Grid => {
-                ui.label("Colonnes");
-                params_changed |= ui
-                    .add(egui::Slider::new(&mut self.params.cols, 10..=300))
-                    .changed();
-                ui.label("Angle grille (°)");
-                params_changed |= ui
-                    .add(
-                        egui::Slider::new(&mut self.params.grid_angle_deg, -90.0..=90.0)
-                            .step_by(1.0),
-                    )
-                    .changed();
+                let mut cols = self.params.cols as f32;
+                if number_row(ui, "Colonnes", &mut cols, 2.0..=8192.0).changed() {
+                    self.params.cols = cols.round().max(1.0) as u32;
+                }
+                number_row_with_hint(
+                    ui,
+                    "Angle grille",
+                    &mut self.params.grid_angle_deg,
+                    -180.0..=180.0,
+                    None,
+                );
             }
             Algorithm::Kmeans | Algorithm::Voronoi | Algorithm::Quadtree => {
-                ui.label("Nombre de points");
-                params_changed |= ui
-                    .add(
-                        egui::Slider::new(&mut self.params.num_points, 50..=5000).logarithmic(true),
-                    )
-                    .changed();
-
+                let mut points = self.params.num_points as f32;
+                if number_row(ui, "Nombre de points", &mut points, 10.0..=100_000.0).changed() {
+                    self.params.num_points = points.round().max(1.0) as usize;
+                }
                 if matches!(
                     self.params.algorithm,
                     Algorithm::Kmeans | Algorithm::Voronoi
                 ) {
-                    ui.label("Itérations");
-                    params_changed |= ui
-                        .add(egui::Slider::new(&mut self.params.iterations, 1..=30))
-                        .changed();
+                    let mut iterations = self.params.iterations as f32;
+                    if number_row(ui, "Itérations", &mut iterations, 1.0..=100.0).changed() {
+                        self.params.iterations = iterations.round().max(1.0) as usize;
+                    }
                 }
             }
-            Algorithm::Halftone => {
-                // Pas de sous-params placement. Les sous-params
-                // halftone (mode, screening, fréquence, rayons) sont
-                // affichés plus bas dans la section dédiée.
-                ui.small("(les paramètres de placement ci-dessus sont ignorés)");
-            }
+            Algorithm::Halftone => unreachable!("traité plus haut"),
         }
-        params_changed
+
+        if variance_before != self.params.variance_sensitivity
+            || min_before != self.params.min_radius_ratio
+            || max_before != self.params.max_radius_ratio
+        {
+            self.on_params_changed(ctx);
+        }
     }
 
-    /// Section forme des dots, palette, dithering et seed. Retourne true si changement.
-    fn show_shape_and_palette_section(&mut self, ui: &mut egui::Ui) -> bool {
-        let mut params_changed = false;
-
-        ui.label("Forme des points");
-        params_changed |= show_shape_selector(ui, &mut self.params.dot_shape);
-        ui.separator();
-
-        // Palette réduite
-        ui.horizontal(|ui| {
-            let mut use_palette = self.params.palette_size.is_some();
-            if ui.checkbox(&mut use_palette, "Palette réduite").changed() {
-                self.params.palette_size = if use_palette { Some(8) } else { None };
-                params_changed = true;
-            }
-            if let Some(ref mut n) = self.params.palette_size {
-                params_changed |= ui.add(egui::Slider::new(n, 2..=32)).changed();
-            }
+    fn show_shape_and_palette_section(&mut self, ui: &mut egui::Ui) {
+        section(ui, "Forme des points");
+        show_shape_selector(ui, &mut self.params.dot_shape);
+        ui.checkbox(
+            &mut self.params.palette_size.is_some(),
+            egui::RichText::new("Palette réduite").size(13.0),
+        )
+        .on_hover_text("Quantifie l'image vers quelques couleurs (effet sérigraphie)")
+        .changed()
+        .then(|| {
+            self.params.palette_size = if self.params.palette_size.is_some() {
+                None
+            } else {
+                Some(8)
+            };
         });
-        // Dithering Floyd-Steinberg : ne s'applique que si palette est activée.
-        ui.horizontal(|ui| {
-            ui.label("Dithering FS");
-            let enabled = self.params.palette_size.is_some();
-            let mut dither = self.params.dithering;
-            if ui
-                .add_enabled(enabled, egui::Checkbox::new(&mut dither, ""))
-                .changed()
-            {
-                self.params.dithering = dither;
-                params_changed = true;
+        if let Some(size) = self.params.palette_size.as_mut() {
+            let mut value = *size as f32;
+            if number_row(ui, "Couleurs", &mut value, 2.0..=256.0).changed() {
+                *size = value.round().max(2.0) as usize;
             }
-            if !enabled {
-                ui.small("(active la palette pour utiliser le dithering)");
-            }
-        });
-
-        // Seed reproductible
-        ui.horizontal(|ui| {
-            let mut use_seed = self.params.rng_seed.is_some();
-            if ui.checkbox(&mut use_seed, "Seed fixé").changed() {
-                self.params.rng_seed = if use_seed { Some(42) } else { None };
-                params_changed = true;
-            }
-            if let Some(ref mut s) = self.params.rng_seed {
-                let mut seed_i64 = *s as i64;
-                if ui
-                    .add(egui::DragValue::new(&mut seed_i64).speed(1.0))
-                    .changed()
-                {
-                    *s = seed_i64.unsigned_abs();
-                    params_changed = true;
-                }
-            }
-        });
-        params_changed
+            ui.checkbox(
+                &mut self.params.dithering,
+                egui::RichText::new("Dithering Floyd-Steinberg").size(13.0),
+            )
+            .on_hover_text("Diffusion d'erreur sur la palette : conserve les dégradés")
+            .changed();
+        }
     }
 
-    /// Section couleur de fond (le changement invalide la density → refresh).
-    /// Retourne true si un recompute du filtre est nécessaire.
-    fn show_bg_section(&mut self, ui: &mut egui::Ui, ctx: &egui::Context) -> bool {
-        let mut params_changed = false;
-        ui.label("Couleur de fond");
+    fn show_bg_section(&mut self, ui: &mut egui::Ui, ctx: &egui::Context) {
+        section(ui, "Fond et rendu");
+        let mut color = egui::Color32::from_rgb(
+            self.params.bg_color[0],
+            self.params.bg_color[1],
+            self.params.bg_color[2],
+        );
         ui.horizontal(|ui| {
-            let old_color = self.params.bg_color;
-            let mut color = egui::Color32::from_rgb(old_color[0], old_color[1], old_color[2]);
+            ui.label("Couleur de fond");
             if egui::color_picker::color_edit_button_srgba(
                 ui,
                 &mut color,
@@ -432,112 +687,153 @@ impl App {
                 self.params.bg_color = [color.r(), color.g(), color.b()];
                 self.params.transparent = false;
                 self.refresh_src_rgb(ctx);
-                params_changed = true;
+                self.on_params_changed(ctx);
             }
-            // Raccourcis Blanc / Noir
             if ui.small_button("Blanc").clicked() {
                 self.params.bg_color = [255, 255, 255];
                 self.params.transparent = false;
                 self.refresh_src_rgb(ctx);
-                params_changed = true;
+                self.on_params_changed(ctx);
             }
             if ui.small_button("Noir").clicked() {
                 self.params.bg_color = [0, 0, 0];
                 self.params.transparent = false;
                 self.refresh_src_rgb(ctx);
-                params_changed = true;
+                self.on_params_changed(ctx);
             }
         });
-        // Mode transparent : produit RGBA à la sauvegarde. La preview
-        // GUI reste sur fond coloré (le panneau résultat affiche du RGB).
-        params_changed |= ui
-            .checkbox(&mut self.params.transparent, "Fond transparent (RGBA)")
-            .changed();
-        params_changed
-    }
+        if ui
+            .checkbox(
+                &mut self.params.transparent,
+                egui::RichText::new("Fond transparent (RGBA)").size(13.0),
+            )
+            .on_hover_text("Alpha conservé à l'export PNG/WebP/TIFF")
+            .changed()
+        {
+            self.on_params_changed(ctx);
+        }
+        if ui
+            .checkbox(
+                &mut self.params.gamma_correct,
+                egui::RichText::new("Correction gamma").size(13.0),
+            )
+            .on_hover_text(
+                "Moyennes de couleur en espace linéaire : évite les mi-tons trop sombres",
+            )
+            .changed()
+        {
+            self.on_params_changed(ctx);
+        }
 
-    /// Section gamma + zoom. Retourne true si changement (gamma uniquement).
-    fn show_gamma_and_zoom_section(&mut self, ui: &mut egui::Ui) -> bool {
-        let mut params_changed = false;
         ui.horizontal(|ui| {
-            ui.label("Correction gamma");
-            params_changed |= ui
-                .checkbox(&mut self.params.gamma_correct, "espace linéaire")
-                .changed();
-        });
-        ui.small("(moyennes perceptuelles, évite les mi-tons trop sombres)");
-        ui.separator();
-
-        ui.horizontal(|ui| {
-            ui.label("Zoom");
             if ui
-                .add(egui::Slider::new(&mut self.zoom, 0.1..=4.0).step_by(0.1))
+                .checkbox(
+                    &mut self.params.rng_seed.is_some(),
+                    egui::RichText::new("Graine fixée").size(13.0),
+                )
+                .on_hover_text("Deux exécutions avec les mêmes réglages donnent le même résultat")
                 .changed()
             {
-                self.zoom_fit = false; // Manual zoom disables fit.
+                self.params.rng_seed = if self.params.rng_seed.is_some() {
+                    None
+                } else {
+                    Some(42)
+                };
+                self.on_params_changed(ctx);
             }
-            if ui.small_button("1:1").clicked() {
-                self.zoom = 1.0;
-                self.zoom_fit = false;
-            }
-            if ui.small_button("Fit").clicked() {
-                self.zoom_fit = true; // Re-enable fit mode.
+            if let Some(seed) = self.params.rng_seed.as_mut() {
+                let mut value = *seed;
+                if ui
+                    .add(egui::DragValue::new(&mut value).range(0..=u32::MAX as u64))
+                    .changed()
+                {
+                    *seed = value;
+                    self.on_params_changed(ctx);
+                }
+                if ui
+                    .small_button("Varier")
+                    .on_hover_text("Tirer une nouvelle graine")
+                    .clicked()
+                {
+                    self.vary_seed(ctx);
+                }
             }
         });
-        params_changed
     }
 
-    /// Sous-contrôles du mode halftone. Retourne true si changement.
-    fn show_halftone_section(&mut self, ui: &mut egui::Ui) -> bool {
-        let mut params_changed = false;
-        ui.label("Mode halftone");
+    fn show_quality_section(&mut self, ui: &mut egui::Ui, ctx: &egui::Context) {
+        section(ui, "Calcul");
         ui.horizontal(|ui| {
+            ui.label("Aperçu");
+            let mut index = match self.quality {
+                Quality::Half => 0,
+                Quality::Quarter => 1,
+                Quality::Full => 2,
+            };
+            let response = ui.selectable_value(&mut index, 0, "Rapide ½");
+            if response.clicked() {
+                self.set_quality(Quality::Half, ctx);
+            }
+            response.on_hover_text("Calcul sur une image à 50 % : très réactif");
+            let response = ui.selectable_value(&mut index, 1, "Rapide ¼");
+            if response.clicked() {
+                self.set_quality(Quality::Quarter, ctx);
+            }
+            response.on_hover_text("Calcul sur une image à 25 % : le plus réactif");
+            let response = ui.selectable_value(&mut index, 2, "Plein");
+            if response.clicked() {
+                self.set_quality(Quality::Full, ctx);
+            }
+            response.on_hover_text("Toujours en pleine résolution");
+        });
+        ui.add(
+            egui::Label::new(
+                egui::RichText::new(
+                    "En mode rapide, la pleine résolution est calculée dès que vous arrêtez \
+                     de manipuler les réglages.",
+                )
+                .size(11.5),
+            )
+            .wrap(),
+        );
+    }
+
+    fn show_halftone_section(&mut self, ui: &mut egui::Ui) {
+        ui.horizontal(|ui| {
+            ui.label("Mode");
             if ui
                 .selectable_label(
                     matches!(self.params.halftone, HalftoneMode::Cmyk { .. }),
-                    "CMYK",
+                    "CMJN",
                 )
+                .on_hover_text("Rosette classique Cyan / Magenta / Jaune / Noir, à 15°/75°/0°/45°")
                 .clicked()
             {
                 self.params.halftone = HalftoneMode::Cmyk {
                     angles: [15.0, 75.0, 0.0, 45.0],
                 };
-                params_changed = true;
             }
             if ui
                 .selectable_label(
                     matches!(self.params.halftone, HalftoneMode::Dominant { .. }),
                     "Dominant",
                 )
+                .on_hover_text("Les N couleurs dominantes de l'image deviennent chacune une encre")
                 .clicked()
             {
                 self.params.halftone = HalftoneMode::Dominant {
                     n: 5,
                     base_angle_deg: 15.0,
                 };
-                params_changed = true;
             }
         });
-        // Sous-params dépendant du mode.
         match &mut self.params.halftone {
             HalftoneMode::Dominant { n, base_angle_deg } => {
-                ui.horizontal(|ui| {
-                    ui.label("Canaux");
-                    let mut nv = *n as i32;
-                    if ui
-                        .add(egui::Slider::new(&mut nv, 2..=12).step_by(1.0))
-                        .changed()
-                    {
-                        *n = nv as usize;
-                        params_changed = true;
-                    }
-                });
-                ui.horizontal(|ui| {
-                    ui.label("Angle base (°)");
-                    params_changed |= ui
-                        .add(egui::Slider::new(base_angle_deg, 0.0..=180.0).step_by(1.0))
-                        .changed();
-                });
+                let mut channels = *n as f32;
+                if number_row(ui, "Canaux", &mut channels, 2.0..=32.0).changed() {
+                    *n = channels.round().clamp(2.0, 32.0) as usize;
+                }
+                number_row_with_hint(ui, "Angle de base", base_angle_deg, 0.0..=180.0, None);
             }
             HalftoneMode::Cmyk { angles } => {
                 ui.small(format!(
@@ -546,403 +842,519 @@ impl App {
                 ));
             }
             HalftoneMode::Off => {
-                ui.small("(sélectionnez CMYK ou Dominant)");
+                ui.small("(sélectionnez CMJN ou Dominant)");
             }
         }
-        // Screening AM/FM
         ui.horizontal(|ui| {
             ui.label("Screening");
-            if ui
-                .selectable_label(self.params.screening == Screening::Am, "AM (grille)")
-                .clicked()
-            {
-                self.params.screening = Screening::Am;
-                params_changed = true;
-            }
-            if ui
-                .selectable_label(self.params.screening == Screening::Fm, "FM (blue noise)")
-                .clicked()
-            {
-                self.params.screening = Screening::Fm;
-                params_changed = true;
-            }
+            ui.selectable_value(&mut self.params.screening, Screening::Am, "AM (grille)")
+                .on_hover_text("Trame régulière : le rayon du dot code la couverture d'encre");
+            ui.selectable_value(&mut self.params.screening, Screening::Fm, "FM (blue noise)")
+                .on_hover_text(
+                    "Trame stochastique : la densité des dots code la couverture d'encre",
+                );
         });
-        // Fréquence de trame
-        ui.horizontal(|ui| {
-            ui.label("Fréquence trame");
-            params_changed |= ui
-                .add(
-                    egui::Slider::new(&mut self.params.halftone_frequency, 20.0..=200.0)
-                        .step_by(5.0),
-                )
-                .changed();
-        });
-        // Rayons halftone
-        ui.horizontal(|ui| {
-            ui.label("Rayon min (frac. min)");
-            params_changed |= ui
-                .add(
-                    egui::Slider::new(&mut self.params.halftone_min_radius_ratio, 0.001..=0.05)
-                        .step_by(0.001),
-                )
-                .changed();
-        });
-        ui.horizontal(|ui| {
-            ui.label("Rayon max (frac. step)");
-            params_changed |= ui
-                .add(
-                    egui::Slider::new(&mut self.params.halftone_max_dot_ratio, 0.3..=1.5)
-                        .step_by(0.05),
-                )
-                .changed();
-        });
-        params_changed
+        number_row(
+            ui,
+            "Fréquence de trame",
+            &mut self.params.halftone_frequency,
+            4.0..=400.0,
+        );
+        number_row_with_hint(
+            ui,
+            "Rayon min",
+            &mut self.params.halftone_min_radius_ratio,
+            0.0..=1.0,
+            None,
+        );
+        number_row_with_hint(
+            ui,
+            "Rayon max",
+            &mut self.params.halftone_max_dot_ratio,
+            0.05..=10.0,
+            None,
+        );
     }
 
-    /// Boutons Annuler/Recalculer + barre de progression + armement du debounce.
-    fn show_compute_buttons(
-        &mut self,
-        ui: &mut egui::Ui,
-        ctx: &egui::Context,
-        computing: bool,
-        params_changed: &mut bool,
-    ) {
-        let has_src = self.src_rgb.is_some();
-        let is_computing = computing;
-        let is_cancelling = self.cancel.load(Ordering::Relaxed);
-
-        ui.separator();
-        ui.horizontal(|ui| {
-            if is_computing || is_cancelling {
-                if ui.button("Annuler").clicked() {
-                    self.cancel.store(true, Ordering::Relaxed);
-                }
-                ui.spinner();
-                ctx.request_repaint();
-            } else {
-                if ui
-                    .add_enabled(has_src, egui::Button::new("Recalculer"))
-                    .clicked()
-                {
-                    self.last_param_change = None;
-                    self.start_compute(ctx);
-                }
-                // Debounce : déclencher avec délai si params changed
-                if *params_changed && has_src {
-                    self.last_param_change = Some(Instant::now());
-                    self.pending_commit = true;
-                }
-            }
-        });
-        *params_changed = false;
-
-        // Progress bar for Voronoi / K-means.
-        if is_computing || is_cancelling {
-            let (cur, tot) = *self.progress.lock().unwrap_or_else(|e| e.into_inner());
-            if tot > 0 {
-                let frac = cur as f32 / tot as f32;
-                ui.add(egui::ProgressBar::new(frac).text(format!("{cur}/{tot}")));
-            }
-        }
-    }
-
-    fn show_view_mode_section(&mut self, ui: &mut egui::Ui) {
-        ui.label("Affichage");
-        ui.horizontal(|ui| {
-            ui.selectable_value(&mut self.view_mode, ViewMode::Side, "Côte à côte");
-            ui.selectable_value(&mut self.view_mode, ViewMode::ResultOnly, "Résultat");
-            ui.selectable_value(&mut self.view_mode, ViewMode::SourceOnly, "Source");
-            ui.selectable_value(&mut self.view_mode, ViewMode::DensityMap, "Density");
-        });
-    }
-
-    fn show_export_buttons(&mut self, ui: &mut egui::Ui, computing: bool) {
-        let has_src = self.src_rgb.is_some();
-        // Sauvegarder PNG
-        let has_result = self
-            .result
-            .lock()
-            .unwrap_or_else(|e| e.into_inner())
-            .is_some();
-        if ui
-            .add_enabled(
-                has_result && !computing,
-                egui::Button::new("Sauvegarder image…"),
-            )
-            .clicked()
-            && let Some(path) = rfd::FileDialog::new()
-                .add_filter("PNG", &["png"])
-                .add_filter("JPEG", &["jpg", "jpeg"])
-                .add_filter("WebP", &["webp"])
-                .add_filter("BMP", &["bmp"])
-                .add_filter("TIFF", &["tif", "tiff"])
-                .save_file()
+    /// Charge (une seule fois) les textures egui correspondant aux images.
+    fn ensure_textures(&mut self, ctx: &egui::Context) {
+        if let Some(src) = &self.src_rgb
+            && self.src_texture.is_none()
         {
-            self.save_result(path);
-        }
-
-        // Sauvegarder SVG
-        let has_dots = self
-            .last_dots
-            .lock()
-            .unwrap_or_else(|e| e.into_inner())
-            .is_some();
-        if ui
-            .add_enabled(
-                (has_src || has_dots) && !computing,
-                egui::Button::new("Sauvegarder SVG…"),
-            )
-            .clicked()
-            && let Some(path) = rfd::FileDialog::new()
-                .add_filter("SVG", &["svg"])
-                .save_file()
-        {
-            self.save_svg(path);
-        }
-    }
-
-    fn show_status_section(&mut self, ui: &mut egui::Ui) {
-        // Statut + temps de calcul
-        if let Some(src) = &self.src_rgb {
-            ui.small(format!(
-                "Mémoire estimée : {}",
-                format_memory(filter::estimate_memory_bytes_for(
-                    src.width(),
-                    src.height(),
-                    &self.params
-                ))
+            self.src_texture = Some(ctx.load_texture(
+                "src",
+                rgb_to_color_image(src),
+                egui::TextureOptions::default(),
             ));
         }
-        if let Some(ms) = self.last_compute_ms {
-            ui.small(format!("Dernier calcul : {}", format_duration(ms)));
-        }
-        ui.collapsing("Historique des réglages", |ui| {
-            if self.history.is_empty() && self.future.is_empty() {
-                ui.small("Aucune modification enregistrée.");
-            } else {
-                for entry in self.history.iter().rev().take(8) {
-                    ui.small(format!("✓ {}", entry.label));
-                }
-                for entry in self.future.iter().rev().take(8) {
-                    ui.small(format!("↶ {}", entry.label));
-                }
+        {
+            let guard = self.result.lock().unwrap_or_else(|e| e.into_inner());
+            let revision = self.result_revision.load(Ordering::Acquire);
+            if self.result_texture_revision != revision
+                && let Some(img) = guard.as_ref()
+            {
+                self.result_texture = Some(ctx.load_texture(
+                    "result",
+                    rgba_to_color_image_checker(img),
+                    egui::TextureOptions::default(),
+                ));
+                self.result_texture_revision = revision;
             }
-        });
-        ui.label(&self.status);
+        }
+        if let Some(density) = &self.density_image
+            && self.density_texture.is_none()
+        {
+            self.density_texture = Some(ctx.load_texture(
+                "density",
+                gray_to_color_image(density),
+                egui::TextureOptions::default(),
+            ));
+        }
     }
 
-    // ─── Zone centrale ────────────────────────────────────────────────────────
+    /// Passe au mode d'affichage suivant (Tab).
+    fn cycle_view(&mut self, delta: i32) {
+        let index = VIEWS
+            .iter()
+            .position(|(_, mode)| *mode == self.view_mode)
+            .unwrap_or(0) as i32;
+        let next = (index + delta).rem_euclid(VIEWS.len() as i32) as usize;
+        self.view_mode = VIEWS[next].1;
+    }
+
+    // ─── Zone centrale ───────────────────────────────────────────────────────
 
     fn show_central_panel(&mut self, ui: &mut egui::Ui, ctx: &egui::Context, computing: bool) {
         egui::CentralPanel::default().show(ui, |ui| {
-            let available = ui.available_size();
+            self.ensure_textures(ctx);
 
-            // Lazy build textures
-            if let Some(src) = &self.src_rgb
-                && self.src_texture.is_none()
-            {
-                self.src_texture = Some(ctx.load_texture(
-                    "src",
-                    rgb_to_color_image(src),
-                    TextureOptions::default(),
-                ));
-            }
-            {
-                let guard = self.result.lock().unwrap_or_else(|e| e.into_inner());
-                let revision = self.result_revision.load(Ordering::Acquire);
-                if self.result_texture_revision != revision
-                    && let Some(img) = guard.as_ref()
-                {
-                    self.result_texture = Some(ctx.load_texture(
-                        "result",
-                        rgba_to_color_image_checker(img),
-                        TextureOptions::default(),
-                    ));
-                    self.result_texture_revision = revision;
+            ui.horizontal(|ui| {
+                ui.label("Affichage");
+                for (label, mode) in VIEWS {
+                    ui.selectable_value(&mut self.view_mode, mode, label);
                 }
-            }
-            if let Some(density) = &self.density_image
-                && self.density_texture.is_none()
-            {
-                self.density_texture = Some(ctx.load_texture(
-                    "density",
-                    gray_to_color_image(density),
-                    TextureOptions::default(),
-                ));
+                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                    if ui
+                        .small_button("1:1")
+                        .on_hover_text("Revenir à 100 % (1)")
+                        .clicked()
+                    {
+                        self.set_zoom(1.0);
+                    }
+                    let fit = ui
+                        .selectable_label(self.zoom_fit, "Ajuster")
+                        .on_hover_text("Ajuster l'aperçu à la fenêtre (0)");
+                    if fit.clicked() {
+                        self.zoom_fit = true;
+                    }
+                    let mut percent = (self.current_zoom() * 100.0).round();
+                    let editable = !self.zoom_fit;
+                    let response = ui.add_enabled(
+                        editable,
+                        egui::DragValue::new(&mut percent)
+                            .speed(20.0)
+                            .range(2.0..=1600.0)
+                            .suffix(" %"),
+                    );
+                    if response.changed() {
+                        self.set_zoom(percent / 100.0);
+                    }
+                });
+            });
+            ui.separator();
+
+            if self.src_rgb.is_none() {
+                self.show_empty_state(ui, ctx);
+                return;
             }
 
-            // Zoom and pan via ScrollArea.
-            let zoom = if self.zoom_fit { 0.0 } else { self.zoom };
-
+            let (source, result, density) = (
+                self.src_texture.clone(),
+                self.result_texture.clone(),
+                self.density_texture.clone(),
+            );
+            let zoom = self.zoom;
+            let zoom_fit = self.zoom_fit;
+            let stale = self.result_is_stale();
             match self.view_mode {
+                ViewMode::Compare => self.show_compare(ui, stale),
                 ViewMode::Side => {
-                    let panel_w = available.x / 2.0 - 4.0;
-                    let panel_h = available.y;
                     ui.horizontal(|ui| {
-                        show_panel_zoomable(
-                            ui,
-                            "Source",
-                            &self.src_texture,
-                            panel_w,
-                            panel_h,
-                            false,
-                            zoom,
-                        );
+                        show_pane(ui, "Source", source.as_ref(), zoom, zoom_fit, false);
                         ui.separator();
-                        show_panel_zoomable(
+                        show_pane(
                             ui,
                             "Résultat",
-                            &self.result_texture,
-                            panel_w,
-                            panel_h,
-                            computing,
+                            result.as_ref(),
                             zoom,
+                            zoom_fit,
+                            computing || stale,
                         );
                     });
                 }
-                ViewMode::ResultOnly => {
-                    show_panel_zoomable(
-                        ui,
-                        "Résultat",
-                        &self.result_texture,
-                        available.x,
-                        available.y,
-                        computing,
-                        zoom,
-                    );
-                }
+                ViewMode::ResultOnly => show_pane(
+                    ui,
+                    "Résultat",
+                    result.as_ref(),
+                    zoom,
+                    zoom_fit,
+                    computing || stale,
+                ),
                 ViewMode::SourceOnly => {
-                    show_panel_zoomable(
-                        ui,
-                        "Source",
-                        &self.src_texture,
-                        available.x,
-                        available.y,
-                        false,
-                        zoom,
-                    );
+                    show_pane(ui, "Source", source.as_ref(), zoom, zoom_fit, false)
                 }
                 ViewMode::DensityMap => {
-                    show_panel_zoomable(
-                        ui,
-                        "Density map",
-                        &self.density_texture,
-                        available.x,
-                        available.y,
-                        false,
-                        zoom,
-                    );
+                    show_pane(ui, "Density map", density.as_ref(), zoom, zoom_fit, false)
                 }
             }
+        });
+    }
+
+    /// Comparaison avant/après : source à gauche d'un curseur, résultat à
+    /// droite, dans la même zone — la comparaison porte sur la même zone pixel.
+    fn show_compare(&mut self, ui: &mut egui::Ui, stale: bool) {
+        let (Some(source), Some(result)) = (&self.src_texture, &self.result_texture) else {
+            ui.centered_and_justified(|ui| {
+                if self.computing.load(Ordering::Relaxed) {
+                    ui.spinner();
+                }
+                ui.label("Calcul en cours…");
+            });
+            return;
+        };
+        let available = ui.available_size();
+        let sw = source.size_vec2().x.max(1.0);
+        let sh = source.size_vec2().y.max(1.0);
+        let rw = result.size_vec2().x.max(1.0);
+        let rh = result.size_vec2().y.max(1.0);
+        let zoom = if self.zoom_fit {
+            (available.x / sw.max(rw))
+                .min((available.y - 22.0).max(32.0) / sh.max(rh))
+                .max(0.01)
+        } else {
+            self.zoom
+        };
+        self.effective_zoom = zoom;
+        let total_w = (sw.max(rw) * zoom).max(1.0);
+        let total_h = (sh.max(rh) * zoom).max(1.0);
+
+        ui.horizontal(|ui| {
+            ui.label(egui::RichText::new("Comparaison").size(12.0).weak());
+            ui.label(
+                egui::RichText::new("glissez le curseur (double-clic : centré)")
+                    .size(11.0)
+                    .weak(),
+            );
+        });
+        egui::ScrollArea::both()
+            .id_salt("compare")
+            .max_width(available.x)
+            .max_height((available.y - 22.0).max(32.0))
+            .show(ui, |ui| {
+                let (rect, response) = ui.allocate_exact_size(
+                    egui::vec2(total_w, total_h),
+                    egui::Sense::click_and_drag(),
+                );
+                let split = (rect.width() * self.compare_split)
+                    .clamp(16.0, (rect.width() - 16.0).max(16.0));
+                let cursor_x = rect.min.x + split;
+                let uv = egui::Rect::from_min_max(egui::Pos2::ZERO, egui::Pos2::new(1.0, 1.0));
+
+                // Source à gauche, résultat à droite, découpés au curseur.
+                ui.painter()
+                    .with_clip_rect(egui::Rect::from_min_max(
+                        rect.min,
+                        egui::pos2(cursor_x, rect.max.y),
+                    ))
+                    .image(
+                        source.id(),
+                        egui::Rect::from_min_size(rect.min, egui::vec2(sw * zoom, sh * zoom)),
+                        uv,
+                        egui::Color32::WHITE,
+                    );
+                ui.painter()
+                    .with_clip_rect(egui::Rect::from_min_max(
+                        egui::pos2(cursor_x, rect.min.y),
+                        rect.max,
+                    ))
+                    .image(
+                        result.id(),
+                        egui::Rect::from_min_size(rect.min, egui::vec2(rw * zoom, rh * zoom)),
+                        uv,
+                        egui::Color32::WHITE,
+                    );
+
+                let painter = ui.painter();
+                painter.line_segment(
+                    [
+                        egui::pos2(cursor_x, rect.min.y),
+                        egui::pos2(cursor_x, rect.max.y),
+                    ],
+                    egui::Stroke::new(2.0, egui::Color32::WHITE),
+                );
+                let center = egui::pos2(cursor_x, rect.center().y);
+                painter.circle_filled(center, 11.0, egui::Color32::WHITE);
+                painter.circle_stroke(
+                    center,
+                    11.0,
+                    egui::Stroke::new(1.5, egui::Color32::DARK_GRAY),
+                );
+                if stale {
+                    painter.text(
+                        egui::pos2(rect.min.x + 10.0, rect.min.y + 18.0),
+                        egui::Align2::LEFT_CENTER,
+                        "aperçu obsolète — recalcul en cours",
+                        egui::FontId::proportional(12.0),
+                        egui::Color32::WHITE,
+                    );
+                }
+                for direction in [-1.0f32, 1.0] {
+                    painter.line_segment(
+                        [
+                            egui::pos2(cursor_x + direction * 6.0, center.y),
+                            egui::pos2(cursor_x + direction * 2.0, center.y + direction * 4.0),
+                        ],
+                        egui::Stroke::new(1.5, egui::Color32::DARK_GRAY),
+                    );
+                }
+
+                if response.dragged() {
+                    self.compare_split = (self.compare_split
+                        + response.drag_delta().x / rect.width().max(1.0))
+                    .clamp(0.02, 0.98);
+                }
+                if response.double_clicked() {
+                    self.compare_split = 0.5;
+                }
+            });
+    }
+
+    /// État d'accueil : quelque chose à faire tant qu'aucune image n'est chargée.
+    fn show_empty_state(&mut self, ui: &mut egui::Ui, ctx: &egui::Context) {
+        ui.vertical_centered(|ui| {
+            ui.add_space((ui.available_height() * 0.22).max(24.0));
+            ui.heading("Aucune image");
+            ui.label("Glissez-déposez un fichier dans la fenêtre, ou ouvrez-en un.");
+            ui.add_space(8.0);
+            ui.horizontal(|ui| {
+                if ui.button("Ouvrir une image…").clicked() {
+                    self.choose_image(ctx);
+                }
+                if ui.button("Ouvrir un dossier…").clicked() {
+                    self.choose_folder(ctx);
+                }
+                if let Some(sample) = super::sample_image()
+                    && ui.button("Utiliser un exemple").clicked()
+                {
+                    self.load_image(sample, ctx);
+                }
+            });
+        });
+    }
+
+    // ─── Barre d'état ───────────────────────────────────────────────────────
+
+    fn show_status_bar(&mut self, ui: &mut egui::Ui, computing: bool) {
+        let stale = self.result_is_stale();
+        let timing = self.last_compute_ms;
+        let quick = !self.quality.is_full() && self.src_rgb.is_some();
+        let quick_stale = stale;
+        let status = self.status.clone();
+        egui::Panel::bottom("status_bar").show(ui, |ui| {
+            ui.horizontal_wrapped(|ui| {
+                if computing {
+                    ui.spinner();
+                    let (done, total) = *self.progress.lock().unwrap_or_else(|e| e.into_inner());
+                    if total > 0 {
+                        ui.add(
+                            egui::ProgressBar::new(done as f32 / total as f32).desired_width(160.0),
+                        );
+                        ui.small(format!("{done}/{total}"));
+                    } else {
+                        ui.label("Calcul en cours…");
+                    }
+                } else {
+                    ui.label(&status);
+                }
+                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                    if quick && quick_stale {
+                        ui.small("pleine résolution…");
+                    } else if quick {
+                        ui.small("aperçu rapide").on_hover_text(
+                            "Calcul sur une image réduite ; la pleine résolution est \
+                                 obtenue automatiquement dès que vous arrêtez.",
+                        );
+                    }
+                    if let Some(ms) = timing {
+                        ui.small(format!("Dernier calcul : {}", format_duration(ms)));
+                    }
+                });
+            });
         });
     }
 }
 
-// ─── Sélecteur de forme ───────────────────────────────────────────────────────
+// ─── Aides ───────────────────────────────────────────────────────────────────
 
-/// Affiche les contrôles de sélection de forme. Retourne true si la forme a changé.
-fn show_shape_selector(ui: &mut egui::Ui, shape: &mut DotShape) -> bool {
-    let mut changed = false;
+/// Panneau d'aperçu : cadre, légende, image avec zoom et défilement.
+fn show_pane(
+    ui: &mut egui::Ui,
+    caption: &str,
+    texture: Option<&egui::TextureHandle>,
+    zoom: f32,
+    zoom_fit: bool,
+    spinning: bool,
+) {
+    egui::Frame::central_panel(ui.style())
+        .inner_margin(6.0)
+        .show(ui, |ui| {
+            ui.label(egui::RichText::new(caption).size(12.0).weak());
+            let (w, h) = (
+                ui.available_width().max(1.0),
+                ui.available_height().max(1.0),
+            );
+            let (tw, th) = texture
+                .map(|tex| (tex.size_vec2().x.max(1.0), tex.size_vec2().y.max(1.0)))
+                .unwrap_or((w, h));
+            let scale = if zoom_fit {
+                (w / tw).min(h / th).max(0.01)
+            } else {
+                zoom
+            };
+            let (img_w, img_h) = (tw * scale, th * scale);
+            egui::ScrollArea::both()
+                .id_salt(caption)
+                .max_width(w)
+                .max_height(h)
+                .show(ui, |ui| match texture {
+                    Some(tex) => {
+                        ui.image((tex.id(), egui::vec2(img_w, img_h)));
+                    }
+                    None => {
+                        if spinning {
+                            ui.spinner();
+                        } else {
+                            ui.centered_and_justified(|ui| {
+                                ui.label("Aucune image");
+                            });
+                        }
+                    }
+                });
+        });
+}
 
+/// Titre de section, façon `adw::PreferencesGroup`.
+fn section(ui: &mut egui::Ui, title: &str) {
+    ui.add_space(6.0);
+    ui.strong(title);
+    ui.separator();
+}
+
+/// Ligne « libellé + saisie directe » : la plage réelle (celle de
+/// `validate_params`) est donnée en infobulle, plus une indication d'unité.
+fn number_row(
+    ui: &mut egui::Ui,
+    label: &str,
+    value: &mut f32,
+    range: std::ops::RangeInclusive<f32>,
+) -> egui::Response {
+    number_row_with_hint(ui, label, value, range, None)
+}
+
+fn number_row_with_hint(
+    ui: &mut egui::Ui,
+    label: &str,
+    value: &mut f32,
+    range: std::ops::RangeInclusive<f32>,
+    hint: Option<&str>,
+) -> egui::Response {
+    let range_label = format!("{:.4} – {:.4}", *range.start(), range.end());
+    let mut tooltip = match hint {
+        Some(hint) => format!("{hint}\nPlage autorisée : {range_label}"),
+        None => format!("Plage autorisée : {range_label}"),
+    };
+    if label.contains("Itérations") || label.contains("Côtés") || label.contains("Canaux") {
+        tooltip.push_str("\nMolette : ajustement fin (avec Ctrl ou Maj)");
+    }
     ui.horizontal(|ui| {
+        ui.label(egui::RichText::new(label).size(13.0));
+        // `DragValue` n'a pas de pas en 0.36 : la vitesse fixe l'incrément de
+        // la molette, la saisie directe accepte n'importe quelle valeur.
+        ui.add(
+            egui::DragValue::new(value)
+                .speed(0.25)
+                .clamp_existing_to_range(true)
+                .range(*range.start()..=*range.end()),
+        )
+        .on_hover_text(tooltip)
+    })
+    .inner
+}
+
+/// Sélecteur de forme des points.
+fn show_shape_selector(ui: &mut egui::Ui, shape: &mut DotShape) {
+    let current = match shape {
+        DotShape::Circle => "Cercle",
+        DotShape::Square => "Carré",
+        DotShape::Ellipse { .. } => "Ellipse",
+        DotShape::RegularPolygon { .. } => "Polygone",
+    };
+    ui.horizontal(|ui| {
+        ui.label("Forme");
         for (label, variant) in [("Cercle", DotShape::Circle), ("Carré", DotShape::Square)] {
-            let selected = std::mem::discriminant(shape) == std::mem::discriminant(&variant);
-            if ui.selectable_label(selected, label).clicked() && !selected {
-                *shape = variant;
-                changed = true;
-            }
+            ui.selectable_value(shape, variant, label);
         }
-    });
-    ui.horizontal(|ui| {
-        let is_ellipse = matches!(shape, DotShape::Ellipse { .. });
-        if ui.selectable_label(is_ellipse, "Ellipse").clicked() && !is_ellipse {
+        if ui
+            .selectable_label(matches!(shape, DotShape::Ellipse { .. }), "Ellipse")
+            .clicked()
+            && !matches!(shape, DotShape::Ellipse { .. })
+        {
             *shape = DotShape::Ellipse {
                 aspect: 1.5,
                 angle_deg: 0.0,
             };
-            changed = true;
         }
-        let is_poly = matches!(shape, DotShape::RegularPolygon { .. });
-        if ui.selectable_label(is_poly, "Polygone").clicked() && !is_poly {
+        if ui
+            .selectable_label(matches!(shape, DotShape::RegularPolygon { .. }), "Polygone")
+            .clicked()
+            && !matches!(shape, DotShape::RegularPolygon { .. })
+        {
             *shape = DotShape::RegularPolygon { sides: 6 };
-            changed = true;
         }
     });
-
-    // Paramètres de forme secondaires
+    let _ = current;
     match shape {
         DotShape::Ellipse { aspect, angle_deg } => {
-            ui.horizontal(|ui| {
-                ui.label("Aspect");
-                changed |= ui
-                    .add(egui::Slider::new(aspect, 0.2..=5.0).step_by(0.05))
-                    .changed();
-            });
-            ui.horizontal(|ui| {
-                ui.label("Angle (°)");
-                changed |= ui
-                    .add(egui::Slider::new(angle_deg, -180.0..=180.0).step_by(1.0))
-                    .changed();
-            });
+            number_row(ui, "Rapport l/h", aspect, 0.1..=10.0);
+            number_row_with_hint(ui, "Angle", angle_deg, -180.0..=180.0, None);
         }
         DotShape::RegularPolygon { sides } => {
-            ui.horizontal(|ui| {
-                ui.label("Côtés");
-                let mut s = *sides as u32;
-                if ui.add(egui::Slider::new(&mut s, 3..=12)).changed() {
-                    *sides = s as u8;
-                    changed = true;
-                }
-            });
+            let mut value = *sides as f32;
+            if number_row(ui, "Côtés", &mut value, 3.0..=12.0).changed() {
+                *sides = value.round().clamp(3.0, 12.0) as u8;
+            }
         }
         _ => {}
     }
-
-    changed
 }
 
-// ─── Affichage image avec zoom/pan ────────────────────────────────────────────
+#[cfg(test)]
+mod tests {
+    use super::*;
 
-/// Displays an image in a panel with zoom and scrolling.
-/// zoom=0.0 signifie "fit" (comportement original).
-fn show_panel_zoomable(
-    ui: &mut egui::Ui,
-    label: &str,
-    texture: &Option<egui::TextureHandle>,
-    max_w: f32,
-    max_h: f32,
-    spinning: bool,
-    zoom: f32,
-) {
-    ui.allocate_ui(egui::vec2(max_w, max_h), |ui| {
-        ui.vertical(|ui| {
-            ui.label(label);
-            let remaining_h = ui.available_height();
-            let remaining_w = ui.available_width();
-            if let Some(tex) = texture {
-                let (tw, th) = (tex.size()[0] as f32, tex.size()[1] as f32);
-                let (img_w, img_h) = if zoom <= 0.0 {
-                    // fit : respecte la largeur ET la hauteur restante
-                    let scale = (remaining_w / tw).min(remaining_h / th);
-                    (tw * scale, th * scale)
-                } else {
-                    (tw * zoom, th * zoom)
-                };
+    #[test]
+    fn view_cycle_wraps() {
+        let len = VIEWS.len() as i32;
+        for index in 0..len {
+            let next = ((index + 1).rem_euclid(len)) as usize;
+            assert_ne!(VIEWS[next].1, VIEWS[index as usize].1);
+        }
+    }
 
-                egui::ScrollArea::both()
-                    // Salt unique par panneau : en vue côte-à-côte, les deux
-                    // ScrollAreas identiques recevaient le même ID egui.
-                    .id_salt(label)
-                    .max_width(remaining_w)
-                    .max_height(remaining_h)
-                    .show(ui, |ui| {
-                        ui.image((tex.id(), egui::vec2(img_w, img_h)));
-                    });
-            } else if spinning {
-                ui.spinner();
-            } else {
-                ui.label("Aucune image");
-            }
-        });
-    });
+    #[test]
+    fn number_row_range_is_inclusive() {
+        let range = 2.0..=256.0;
+        assert_eq!(*range.start(), 2.0);
+        assert_eq!(*range.end(), 256.0);
+    }
 }

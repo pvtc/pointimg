@@ -8,6 +8,7 @@ use adw::prelude::*;
 use crate::State;
 use crate::controls;
 use crate::preview;
+use crate::shortcuts;
 use crate::wire;
 
 /// Construit la fenêtre complète et renvoie ses poignées.
@@ -18,28 +19,31 @@ pub(crate) fn build_ui(
     let window = adw::ApplicationWindow::builder()
         .application(app)
         .title("pointimg")
-        .default_width(1240)
-        .default_height(800)
+        .default_width(1280)
+        .default_height(820)
         .build();
 
-    let (paned, widgets) = controls::build();
+    let (toast_overlay, widgets) = controls::build();
 
-    let header = adw::HeaderBar::new();
-    header.set_title_widget(Some(&adw::WindowTitle::new(
-        "pointimg",
-        "Filtre pointilliste",
-    )));
-    let toolbar = adw::ToolbarView::new();
-    toolbar.add_top_bar(&header);
-    toolbar.set_content(Some(&paned));
-    window.set_content(Some(&toolbar));
+    window.set_content(Some(&toast_overlay));
 
+    // La fenêtre des raccourcis partage le même overlay de notifications.
+    widgets.shortcuts.set_transient_for(Some(&window));
+    widgets.shortcuts.set_modal(true);
+    widgets.shortcuts.set_title(Some("Raccourcis clavier"));
+    widgets.shortcuts.set_default_size(520, 560);
+    widgets
+        .shortcuts
+        .set_content(Some(&shortcuts::build_page()));
+
+    wire::install_actions(&state, &widgets, &window);
     wire::wire(&state, &widgets, &window);
     wire::install_dnd(&window, &state, &widgets);
+    wire::install_shortcuts(&state, &widgets, &window);
     preview::connect_fit_signals(&state, &widgets);
 
-    wire::sync_widgets(&state, &widgets);
-    wire::update_sections(&widgets, &state.borrow().params);
+    crate::sections::sync_widgets(&state, &widgets);
+    crate::sections::update_sections(&widgets, &state.borrow().params);
     preview::refresh_preview(&state, &widgets);
     preview::refresh_actions(&state, &widgets);
     preview::update_status_labels(&state, &widgets);

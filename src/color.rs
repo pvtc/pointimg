@@ -8,6 +8,15 @@ use image::{DynamicImage, ImageDecoder, ImageReader, Limits, RgbImage, RgbaImage
 use moxcms::{ColorProfile, Layout, TransformOptions};
 use std::path::Path;
 
+/// Décode un fichier image et le convertit vers l'espace sRGB.
+///
+/// `profile_spec` vaut `auto` (profil embarqué, sinon sRGB), `srgb`,
+/// `display-p3` ou un chemin vers un fichier `.icc`. L'image est réduite aux
+/// limites du pipeline avant la transformation ICC.
+///
+/// Retourne `(image, was_converted, was_resized)` : les deux booléens
+/// indiquent si une conversion colorimétrique a réellement eu lieu et si
+/// l'image a été redimensionnée.
 pub fn decode_to_srgb(path: &Path, profile_spec: &str) -> Result<(DynamicImage, bool, bool)> {
     let mut reader = ImageReader::open(path)
         .with_context(|| format!("Impossible de lire '{}'", path.display()))?
@@ -38,6 +47,8 @@ pub fn decode_to_srgb(path: &Path, profile_spec: &str) -> Result<(DynamicImage, 
     convert_to_srgb(image, &profile).map(|image| (image, was_converted, was_resized))
 }
 
+/// Résout le profil de sortie. `srgb`/`auto` renvoient `None` (aucun tagging) ;
+/// sinon le fichier ICC est lu et renvoyé avec les octets à embarquer.
 pub fn output_profile_from_spec(spec: &str) -> Result<Option<(ColorProfile, Vec<u8>)>> {
     if spec.eq_ignore_ascii_case("srgb") || spec.eq_ignore_ascii_case("auto") {
         return Ok(None);
@@ -49,6 +60,8 @@ pub fn output_profile_from_spec(spec: &str) -> Result<Option<(ColorProfile, Vec<
     Ok(Some((profile, bytes)))
 }
 
+/// Construit un `ColorProfile` depuis une spécification : `auto` (profil
+/// embarqué si présent), `srgb`, `display-p3` ou un chemin `.icc`.
 pub fn profile_from_spec(spec: &str, embedded: Option<&[u8]>) -> Result<ColorProfile> {
     match spec.to_ascii_lowercase().as_str() {
         "auto" => match embedded {
@@ -72,6 +85,7 @@ fn convert_to_srgb(image: DynamicImage, profile: &ColorProfile) -> Result<Dynami
     convert_image(image, profile, &destination)
 }
 
+/// Convertit une image de l'espace sRGB vers `profile`.
 pub fn convert_from_srgb(image: DynamicImage, profile: &ColorProfile) -> Result<DynamicImage> {
     let source = ColorProfile::new_srgb();
     convert_image(image, &source, profile)

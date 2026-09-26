@@ -4,5 +4,5 @@
 //! frontend GTK4 ; ce module ne fait que les ré-exposer en `pub(crate)`.
 
 pub(crate) use pointimg::frontend::{
-    describe_parameter_change, format_duration, format_memory, generation_is_current,
+    describe_parameter_change, format_duration, generation_is_current,
 };

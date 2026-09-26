@@ -21,21 +21,34 @@ struct ComputeChannels {
     computing: Arc<std::sync::atomic::AtomicBool>,
     cancel: Arc<std::sync::atomic::AtomicBool>,
     status_err: Arc<Mutex<Option<String>>>,
+    result_is_final: Arc<std::sync::atomic::AtomicBool>,
 }
 
 impl App {
+    /// Lance un calcul. En mode aperçu rapide, l'image est sous-échantillonnée ;
+    /// `full_resolution` indique si le résultat sera exportable tel quel.
     pub(crate) fn start_compute(&mut self, ctx: &egui::Context) {
         if self.computing.load(Ordering::Acquire) {
             self.cancel.store(true, Ordering::Release);
             return;
         }
-        let src = match &self.src_rgb {
-            Some(s) => s.clone(),
-            None => return,
+        let full_resolution = self.computes_full_resolution();
+        let Some(src) = self.compute_source() else {
+            return;
         };
         *self.last_dots.lock().unwrap_or_else(|e| e.into_inner()) = None;
+        if !full_resolution {
+            self.result_is_final.store(false, Ordering::Release);
+        }
         let params = self.params.clone();
-        let density_data = Arc::clone(&self.density_data);
+        // La density map n'est réutilisable que par un calcul de même résolution.
+        let density_data = if (self.density_scale - self.quality.scale()).abs() < f32::EPSILON
+            && !self.final_pass
+        {
+            Arc::clone(&self.density_data)
+        } else {
+            Arc::new(Mutex::new(None))
+        };
         let compute_generation = Arc::clone(&self.compute_generation);
         let ctx = ctx.clone();
         let generation = compute_generation.fetch_add(1, Ordering::AcqRel) + 1;
@@ -47,12 +60,17 @@ impl App {
             computing: Arc::clone(&self.computing),
             cancel: Arc::clone(&self.cancel),
             status_err: Arc::clone(&self.compute_error),
+            result_is_final: Arc::clone(&self.result_is_final),
         };
 
         channels.computing.store(true, Ordering::Relaxed);
         channels.cancel.store(false, Ordering::Relaxed);
         *self.progress.lock().unwrap_or_else(|e| e.into_inner()) = (0, params.iterations);
-        self.status = "Calcul en cours…".to_string();
+        self.status = if full_resolution {
+            "Calcul en cours…".to_string()
+        } else {
+            "Aperçu rapide en cours…".to_string()
+        };
         self.compute_start = Some(Instant::now());
         self.last_param_change = None;
 
@@ -64,13 +82,14 @@ impl App {
                 density_data,
                 compute_generation,
                 generation,
+                full_resolution,
                 ctx,
             );
         });
     }
 
     pub(crate) fn start_density_compute(&self, ctx: &egui::Context) {
-        let Some(src) = self.src_rgb.clone() else {
+        let Some(src) = self.compute_source() else {
             return;
         };
         let sensitivity = self.params.variance_sensitivity;
@@ -97,6 +116,7 @@ impl App {
 }
 
 /// Corps du worker de calcul (exécuté hors thread GUI).
+#[allow(clippy::too_many_arguments)]
 fn run_compute_worker(
     src: RgbImage,
     params: FilterParams,
@@ -104,9 +124,12 @@ fn run_compute_worker(
     density_data: Arc<Mutex<Option<Arc<Vec<f32>>>>>,
     compute_generation: Arc<std::sync::atomic::AtomicU64>,
     generation: u64,
+    full_resolution: bool,
     ctx: egui::Context,
 ) {
     let iters = params.iterations;
+    // Le résultat affiché n'est plus considered final tant qu'un aperçu rapide
+    // est en vol : l'export reste bloqué jusqu'à la passe pleine résolution.
     let ComputeChannels {
         result,
         result_revision,
@@ -115,6 +138,7 @@ fn run_compute_worker(
         computing,
         cancel,
         status_err,
+        result_is_final,
     } = channels;
     // Throttle preview cloning to at most once per 100ms to avoid
     // cloning a full image (potentially 36MB on 4K) at every iteration
@@ -133,6 +157,7 @@ fn run_compute_worker(
                     *result.lock().unwrap_or_else(|e| e.into_inner()) = Some(dst_rgba);
                     result_revision.fetch_add(1, Ordering::Release);
                     *last_dots.lock().unwrap_or_else(|e| e.into_inner()) = Some(dots);
+                    result_is_final.store(full_resolution, Ordering::Release);
                 }
             }
             Err(e) => {
@@ -152,7 +177,6 @@ fn run_compute_worker(
     let publish_preview = |iter: usize,
                            total: usize,
                            preview: &RgbImage,
-                           progress: &Arc<Mutex<(usize, usize)>>,
                            result: &Arc<Mutex<Option<image::RgbaImage>>>,
                            result_revision: &Arc<std::sync::atomic::AtomicU64>,
                            last_preview: &mut Instant,
@@ -186,7 +210,6 @@ fn run_compute_worker(
                     iter,
                     total,
                     preview,
-                    &progress,
                     &result,
                     &result_revision,
                     &mut last_preview,
@@ -200,7 +223,6 @@ fn run_compute_worker(
                 iter,
                 total,
                 preview,
-                &progress,
                 &result,
                 &result_revision,
                 &mut last_preview,
@@ -215,6 +237,7 @@ fn run_compute_worker(
                 result_revision.fetch_add(1, Ordering::Release);
                 *progress.lock().unwrap_or_else(|e| e.into_inner()) = (iters, iters);
                 *last_dots.lock().unwrap_or_else(|e| e.into_inner()) = Some(dots);
+                result_is_final.store(full_resolution, Ordering::Release);
             }
         }
         Err(e) => {

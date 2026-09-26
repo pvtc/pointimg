@@ -156,25 +156,30 @@ than being interpreted with potentially different defaults.
 
 ## GUI Usage
 
+Both front-ends (egui and GTK4) offer the same capabilities:
+
+- **Actions always visible**: open, folder, presets, recalculate, undo/redo,
+  export, copy — nothing important is buried below the fold any more.
+- **Before/after comparison**: the default view draws the source and the result
+  in the same image, separated by a draggable handle (double-click to recenter).
+- **Fast preview**: settings are computed on a half- or quarter-size image by
+  default, then a full-resolution pass runs as soon as you stop tweaking. The
+  displayed render is flagged as stale until the final one is ready, and export
+  stays disabled until then.
+- **Built-in presets**: a list of validated starting points (classic
+  pointillism, fine stippling, flat graphic colors, CMYK rosette, FM screen,
+  moiré, mosaic, dots, transparent overlays) on top of TOML files.
+- **Typed values**: every setting can be typed, with the ranges the engine
+  actually accepts (up to 100,000 points, 8,192 columns, 256 palette colors).
+- **Folder navigation**: open a folder, then use `←`/`→` to move between images.
+- **Window title and status bar** naming the file, its dimensions and the
+  compute state; errors surface as notifications.
+
 ### egui (default)
 
 ```bash
 pointimg-gui
 ```
-
-- Drag & drop an image or click "Open"
-- Adjust parameters in the left panel (automatic recalculation with debounce)
-- Export to PNG or SVG
-
-**Keyboard shortcuts:**
-
-| Shortcut                   | Action                    |
-| -------------------------- | ------------------------- |
-| `Ctrl+O`                   | Open an image             |
-| `Ctrl+S`                   | Save the result           |
-| `Ctrl+Z`                   | Undo (last params change) |
-| `Ctrl+Y` or `Ctrl+Shift+Z` | Redo                      |
-| `Space`                    | Recalculate               |
 
 ### GTK4 / libadwaita (optional)
 
@@ -182,9 +187,38 @@ pointimg-gui
 cargo run --no-default-features --features gtk --bin pointimg-gtk
 ```
 
-The GTK front-end exposes the same features as the egui one (all algorithms,
-presets, undo/redo, density map, zoom, PNG/SVG export) with a native
-libadwaita look and the same keyboard shortcuts.
+The GTK front-end is built on `adw::PreferencesPage`: one row per setting,
+always-visible groups, actions in the header bar, `adw::Toast` notifications
+and a shortcuts window (`Ctrl+?`).
+
+### Keyboard shortcuts
+
+| Shortcut                            | Action                                    |
+| ----------------------------------- | ----------------------------------------- |
+| `Ctrl+O`                            | Open an image                             |
+| `Ctrl+Shift+O`                      | Open a folder of images                   |
+| `←` / `→`                           | Previous / next image of the folder       |
+| `Ctrl+S`                            | Export the image                          |
+| `Ctrl+Shift+S`                      | Export as SVG                             |
+| `Ctrl+E`                            | Export next to the source (no dialog)     |
+| `Ctrl+C`                            | Copy the image to the clipboard           |
+| `Ctrl+P`                            | Next preset                               |
+| `Ctrl+Z` / `Ctrl+Y`                 | Undo / Redo                               |
+| `Ctrl+R`                            | Reset all settings                        |
+| `Space`                             | Recalculate (at full resolution)          |
+| `Escape`                            | Cancel the running compute                |
+| `Tab`                               | Next view                                 |
+| `+` / `-`                           | Zoom in / out                             |
+| `0` / `1`                           | Fit to window / 100 %                     |
+| `Ctrl+wheel`                        | Zoom (GTK4)                               |
+| `F11`                               | Fullscreen (GTK4)                         |
+| `Ctrl+?`                            | Shortcuts window (GTK4)                   |
+
+Images exceeding 8,388,608 pixels or 65,535 pixels per side are automatically
+downscaled while preserving aspect ratio, with a warning in the GUI and CLI
+logs. The estimated working memory is shown in the status bar and is explicitly
+flagged above 1.5 GB. The CLI additionally offers `--preview WxH` for faster
+non-GUI processing.
 
 ## Tests
 

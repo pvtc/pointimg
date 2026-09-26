@@ -158,31 +158,34 @@ de ne pas appliquer des valeurs par défaut potentiellement différentes.
 
 ## Utilisation GUI
 
+Les deux interfaces (egui et GTK4) offrent les mêmes capacités :
+
+- **Actions visibles en permanence** : ouvrir, dossier, presets, recalculer,
+  annuler/rétablir, exporter, copier — plus rien d'important caché en bas d'un
+  panneau à faire défiler.
+- **Comparaison avant/après** : mode par défaut, un curseur sépare la source du
+  résultat dans la même image (double-clic pour le recentrer).
+- **Aperçu rapide** : par défaut, les réglages sont calculés sur une image
+  réduite (moitié ou quart), puis la passe en pleine résolution est déclenchée
+  dès que vous arrêtez de manipuler les réglages. Le rendu affiché est signalé
+  comme « obsolète » tant que la version définitive n'est pas prête, et l'export
+  reste bloqué tant qu'il ne l'est pas.
+- **Presets intégrés** : une liste de points de départ validés (pointillisme
+  classique, stippling fin, aplats graphiques, rosette CMJN, trame FM, moiré,
+  mosaïque, pastilles, calques transparents) en plus des fichiers TOML.
+- **Réglages en saisie directe** : chaque valeur est modifiable au clavier, avec
+  les plages réelles acceptées par le moteur (jusqu'à 100 000 points, 8 192
+  colonnes, 256 couleurs de palette).
+- **Navigation dans un dossier** : ouvrir un dossier puis `←`/`→` pour passer
+  d'une image à l'autre.
+- **Titre de fenêtre et barre d'état** nommant le fichier, ses dimensions et
+  l'état du calcul ; les erreurs passent par des notifications.
+
 ### egui (par défaut)
 
 ```bash
 pointimg-gui
 ```
-
-- Glisser-déposer une image ou cliquer "Ouvrir"
-- Charger ou sauvegarder un preset TOML depuis le panneau de contrôle
-- Ajuster les paramètres dans le panneau gauche (recalcul automatique avec debounce)
-- Exporter en PNG ou SVG
-
-Les images dépassant 8 millions de pixels ou 65 535 pixels par côté sont
-automatiquement réduites en conservant leur ratio, avec un avertissement dans
-la GUI et les logs CLI. L'estimation mémoire est affichée dans la GUI. Utilisez
-`--preview WxH` pour obtenir un traitement encore plus rapide.
-
-**Raccourcis clavier :**
-
-| Raccourci                  | Action                    |
-| -------------------------- | ------------------------- |
-| `Ctrl+O`                   | Ouvrir une image          |
-| `Ctrl+S`                   | Sauvegarder le résultat   |
-| `Ctrl+Z`                   | Annuler (dernier réglage) |
-| `Ctrl+Y` ou `Ctrl+Shift+Z` | Refaire                   |
-| `Espace`                   | Relancer le calcul        |
 
 ### GTK4 / libadwaita (optionnelle)
 
@@ -190,9 +193,38 @@ la GUI et les logs CLI. L'estimation mémoire est affichée dans la GUI. Utilise
 cargo run --no-default-features --features gtk --bin pointimg-gtk
 ```
 
-La GUI GTK4 expose les mêmes fonctionnalités que la GUI egui (tous les
-algorithmes, presets, undo/redo, density map, zoom, export PNG/SVG) avec un
-aspect natif libadwaita et les mêmes raccourcis clavier.
+L'interface GTK4 est construite sur `adw::PreferencesPage` : une ligne par
+réglage, sections toujours visibles, actions dans l'en-tête, notifications
+`adw::Toast`, fenêtre de raccourcis (`Ctrl+?`).
+
+### Raccourcis clavier
+
+| Raccourci                            | Action                                      |
+| ------------------------------------ | ------------------------------------------- |
+| `Ctrl+O`                             | Ouvrir une image                            |
+| `Ctrl+Maj+O`                         | Ouvrir un dossier d'images                  |
+| `←` / `→`                            | Image précédente / suivante du dossier      |
+| `Ctrl+S`                             | Exporter l'image                            |
+| `Ctrl+Maj+S`                         | Exporter en SVG                             |
+| `Ctrl+E`                             | Exporter à côté de la source (sans dialogue) |
+| `Ctrl+C`                             | Copier l'image dans le presse-papiers       |
+| `Ctrl+P`                             | Preset suivant                              |
+| `Ctrl+Z` / `Ctrl+Y`                  | Annuler / Rétablir                          |
+| `Ctrl+R`                             | Rétablir tous les réglages                  |
+| `Espace`                             | Recalculer (en pleine résolution)           |
+| `Échap`                              | Annuler le calcul en cours                  |
+| `Tab`                                | Aperçu suivant                              |
+| `+` / `−`                            | Zoomer / Dézoomer                           |
+| `0` / `1`                            | Ajuster à la fenêtre / 100 %                |
+| `Ctrl+molette`                       | Zoom (GTK4)                                 |
+| `F11`                                | Plein écran (GTK4)                          |
+| `Ctrl+?`                             | Fenêtre de raccourcis (GTK4)                |
+
+Les images dépassant 8 millions de pixels ou 65 535 pixels par côté sont
+automatiquement réduites en conservant leur ratio, avec un avertissement dans la
+GUI et les logs CLI. L'estimation mémoire est affichée dans la barre d'état et
+se signale explicitement lorsqu'elle dépasse 1,5 Go. Le CLI dispose en plus de
+`--preview WxH` pour un traitement hors-GUI encore plus rapide.
 
 ## Tests
 

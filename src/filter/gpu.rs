@@ -76,7 +76,7 @@ fn request_adapter_on(instance: &wgpu::Instance) -> Option<wgpu::Adapter> {
 pub fn compute_density_map_raw(src: &RgbImage, sensitivity: f32) -> Option<Vec<f32>> {
     let _gpu_guard = GPU_LOCK.lock().ok()?;
     let raw = compute_raw_variance(src)?;
-    Some(super::density::normalize_variance(&raw, sensitivity))
+    Some(super::density::normalize_variance(raw, sensitivity))
 }
 
 /// Computes the raw local variance values on the GPU and normalizes them using
@@ -92,7 +92,7 @@ pub(crate) fn compute_density_map(src: &RgbImage, sensitivity: f32) -> Option<Ve
         let max = raw.iter().copied().fold(f32::NEG_INFINITY, f32::max);
         eprintln!("gpu density raw min={min} max={max} len={}", raw.len());
     }
-    Some(super::density::normalize_variance(&raw, sensitivity))
+    Some(super::density::normalize_variance(raw, sensitivity))
 }
 
 fn compute_raw_variance(src: &RgbImage) -> Option<Vec<f32>> {

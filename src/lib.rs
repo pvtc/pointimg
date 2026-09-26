@@ -37,6 +37,8 @@
 //! Fixer [`filter::FilterParams::rng_seed`] rend le placement des dots
 //! déterministe pour un même couple (image, paramètres).
 
+#![warn(missing_docs)]
+
 pub mod color;
 pub mod filter;
 pub mod frontend;

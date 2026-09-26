@@ -23,6 +23,7 @@ mod gamma;
 pub mod gpu;
 mod halftone;
 mod params;
+mod presets;
 mod render;
 mod sampling;
 mod seedgrid;
@@ -73,6 +74,7 @@ pub use params::{
     Algorithm, Dot, DotShape, FilterParams, MAX_IMAGE_DIMENSION, MAX_IMAGE_PIXELS,
     validate_image_dimensions, validate_params,
 };
+pub use presets::{BuiltinPreset, builtin_presets};
 pub use render::{render_halftone, render_rgba};
 pub use svg::{render_svg, render_svg_dynamic, render_svg_from_dots};
 pub use util::{
@@ -123,12 +125,17 @@ where
     let (w, h) = src.dimensions();
     validate_params(w, h, params)?;
 
+    // Le quadtree segmente sur le contraste via ses propres tables intégrales et
+    // n'utilise jamais la density map. La calculer coûterait un passage
+    // O(pixels) et deux tables `f64` pleine résolution pour rien.
     let owned_density;
-    let density = if let Some(cached) = cached_density {
-        cached
-    } else {
-        owned_density = compute_density_map(src, params.variance_sensitivity);
-        &owned_density
+    let density: &[f32] = match cached_density {
+        Some(cached) => cached,
+        None if params.algorithm == Algorithm::Quadtree => &[],
+        None => {
+            owned_density = compute_density_map(src, params.variance_sensitivity);
+            &owned_density
+        }
     };
 
     match params.algorithm {
@@ -195,18 +202,25 @@ fn compute_dots_inner(src: &RgbImage, params: &FilterParams) -> Result<Vec<Dot>>
         let cfg = params.halftone_config();
         return Ok(dots_halftone(src, &cfg));
     }
-    let density = compute_density_map(src, params.variance_sensitivity);
+    // Le quadtree n'utilise pas la density map (voir `apply_with_progress_inner`).
+    let owned_density;
+    let density: &[f32] = if params.algorithm == Algorithm::Quadtree {
+        &[]
+    } else {
+        owned_density = compute_density_map(src, params.variance_sensitivity);
+        &owned_density
+    };
 
     let dots = match params.algorithm {
-        Algorithm::Grid => dots_grid(src, &density, params),
+        Algorithm::Grid => dots_grid(src, density, params),
         Algorithm::Quadtree => dots_quadtree(src, params),
         Algorithm::Voronoi => {
             let never_cancel = std::sync::atomic::AtomicBool::new(false);
-            compute_dots_voronoi(src, &density, params, &never_cancel)?
+            compute_dots_voronoi(src, density, params, &never_cancel)?
         }
         Algorithm::Kmeans => {
             let never_cancel = std::sync::atomic::AtomicBool::new(false);
-            compute_dots_kmeans(src, &density, params, &never_cancel)?
+            compute_dots_kmeans(src, density, params, &never_cancel)?
         }
         Algorithm::Halftone => {
             // Halftone est sélectionné mais mode = Off → pas de dots.
@@ -341,6 +355,12 @@ where
     apply_with_progress_inner(src, params, cancel, Some(density), on_progress)
 }
 
+/// Applique le filtre à une `RgbImage` et rend le résultat.
+///
+/// C'est le chemin direct, sans preview intermédiaire : les dots sont calculés
+/// une fois puis rendus une seule fois. Quand `gamma_correct` est vrai, le
+/// pipeline s'opère en espace linéaire puis ré-encode le résultat ; le halftone
+/// actif passe par le compositeur `apply_rgba` (donc `render_halftone`).
 pub fn apply(src: &RgbImage, params: &FilterParams) -> Result<RgbImage> {
     if params.gamma_correct {
         // Tout halftone actif (CMJN ou dominant) passe par `apply_rgba`, qui
