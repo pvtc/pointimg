@@ -175,7 +175,9 @@ Les deux interfaces (egui et GTK4) offrent les mêmes capacités :
   mosaïque, pastilles, calques transparents) en plus des fichiers TOML.
 - **Réglages en saisie directe** : chaque valeur est modifiable au clavier, avec
   les plages réelles acceptées par le moteur (jusqu'à 100 000 points, 8 192
-  colonnes, 256 couleurs de palette).
+  colonnes, 256 couleurs de palette), et doublée d'un curseur pour les plages
+  larges (nombre de points, rayons — dont une paire « min / max » réglable d'un
+  geste, en échelle logarithmique ou racine selon la plage).
 - **Navigation dans un dossier** : ouvrir un dossier puis `←`/`→` pour passer
   d'une image à l'autre.
 - **Titre de fenêtre et barre d'état** nommant le fichier, ses dimensions et

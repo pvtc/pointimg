@@ -89,6 +89,9 @@ pub(crate) fn sync_widgets(state: &Rc<RefCell<State>>, widgets: &Rc<Widgets>) {
         .adjustment()
         .set_value(f64::from(p.variance_sensitivity));
     widgets
+        .variance_slider
+        .set_value(f64::from(p.variance_sensitivity));
+    widgets
         .min_radius
         .adjustment()
         .set_value(f64::from(p.min_radius_ratio));
@@ -96,11 +99,26 @@ pub(crate) fn sync_widgets(state: &Rc<RefCell<State>>, widgets: &Rc<Widgets>) {
         .max_radius
         .adjustment()
         .set_value(f64::from(p.max_radius_ratio));
+    // Chaque curseur marque l'autre borne : la plage se lit sans le titre.
+    widgets
+        .min_radius_slider
+        .set_value(f64::from(p.min_radius_ratio));
+    widgets
+        .min_radius_slider
+        .set_bound(f64::from(p.max_radius_ratio));
+    widgets
+        .max_radius_slider
+        .set_value(f64::from(p.max_radius_ratio));
+    widgets
+        .max_radius_slider
+        .set_bound(f64::from(p.min_radius_ratio));
     widgets
         .max_boost
         .adjustment()
         .set_value(f64::from(p.max_boost));
+    widgets.max_boost_slider.set_value(f64::from(p.max_boost));
     widgets.cols.adjustment().set_value(f64::from(p.cols));
+    widgets.cols_slider.set_value(f64::from(p.cols));
     widgets
         .grid_angle
         .adjustment()
@@ -109,10 +127,12 @@ pub(crate) fn sync_widgets(state: &Rc<RefCell<State>>, widgets: &Rc<Widgets>) {
         .num_points
         .adjustment()
         .set_value(p.num_points as f64);
+    widgets.num_points_slider.set_value(p.num_points as f64);
     widgets
         .iterations
         .adjustment()
         .set_value(p.iterations as f64);
+    widgets.iterations_slider.set_value(p.iterations as f64);
 
     widgets.shape.set_selected(shape_index(&p.dot_shape));
     match p.dot_shape {
@@ -174,6 +194,9 @@ pub(crate) fn sync_widgets(state: &Rc<RefCell<State>>, widgets: &Rc<Widgets>) {
         .adjustment()
         .set_value(f64::from(p.halftone_frequency));
     widgets
+        .halftone_freq_slider
+        .set_value(f64::from(p.halftone_frequency));
+    widgets
         .halftone_min_radius
         .adjustment()
         .set_value(f64::from(p.halftone_min_radius_ratio));
@@ -181,6 +204,18 @@ pub(crate) fn sync_widgets(state: &Rc<RefCell<State>>, widgets: &Rc<Widgets>) {
         .halftone_max_dot
         .adjustment()
         .set_value(f64::from(p.halftone_max_dot_ratio));
+    widgets
+        .halftone_min_slider
+        .set_value(f64::from(p.halftone_min_radius_ratio));
+    widgets
+        .halftone_min_slider
+        .set_bound(f64::from(p.halftone_max_dot_ratio));
+    widgets
+        .halftone_max_slider
+        .set_value(f64::from(p.halftone_max_dot_ratio));
+    widgets
+        .halftone_max_slider
+        .set_bound(f64::from(p.halftone_min_radius_ratio));
 
     state.borrow_mut().updating = false;
 }
@@ -207,6 +242,27 @@ pub(crate) fn update_sections(widgets: &Widgets, p: &FilterParams) {
     widgets.max_radius.set_visible(!is_halftone);
     widgets.max_boost.set_visible(!is_halftone);
     widgets.halftone_group.set_visible(is_halftone);
+    // Les curseurs vivent dans des `ActionRow` à part : leur visibilité suit
+    // celle du réglage qu'ils doublent, sans quoi une rangée vide subsisterait
+    // sous un réglage masqué.
+    let is_points = matches!(
+        p.algorithm,
+        Algorithm::Kmeans | Algorithm::Voronoi | Algorithm::Quadtree
+    );
+    for (slider, visible) in [
+        (&widgets.variance_slider, !is_halftone),
+        (&widgets.min_radius_slider, !is_halftone),
+        (&widgets.max_radius_slider, !is_halftone),
+        (&widgets.max_boost_slider, !is_halftone),
+        (&widgets.cols_slider, p.algorithm == Algorithm::Grid),
+        (&widgets.num_points_slider, is_points),
+        (
+            &widgets.iterations_slider,
+            matches!(p.algorithm, Algorithm::Kmeans | Algorithm::Voronoi),
+        ),
+    ] {
+        slider.set_row_visible(visible);
+    }
 
     widgets
         .ellipse_box

@@ -12,7 +12,7 @@ use pointimg::frontend::{VIEW_COUNT, view_from_index, view_index};
 
 use crate::State;
 use crate::actions;
-use crate::controls::Widgets;
+use crate::controls::{ValueSlider, Widgets};
 use crate::files;
 use crate::preview;
 use crate::sections;
@@ -276,14 +276,61 @@ fn on_value(
         if state.borrow().updating {
             return;
         }
+        let before = state.borrow().params.clone();
         apply(&mut state.borrow_mut().params, adjustment.value());
-        if let Some(after) = after {
-            after(&state, &widgets);
-        }
-        files::mark_preset_custom(&state, &widgets);
-        files::update_preset_row(&state, &widgets);
-        actions::on_params_changed(&state, &widgets);
+        commit_value_change(&state, &widgets, before, after, false);
     });
+}
+
+/// Branche le curseur qui double un réglage numérique.
+fn on_slider(
+    state: &St,
+    widgets: &Wi,
+    slider: &ValueSlider,
+    apply: fn(&mut pointimg::filter::FilterParams, f64),
+    after: Option<fn(&St, &Wi)>,
+) {
+    let (state, widgets) = clone_state_widgets(state, widgets);
+    // `spec` est `Copy` : le callback ne peut pas capturer le widget.
+    let spec = slider.spec;
+    slider.scale.connect_value_changed(move |scale| {
+        if state.borrow().updating {
+            return;
+        }
+        let before = state.borrow().params.clone();
+        apply(&mut state.borrow_mut().params, spec.value(scale.value()));
+        commit_value_change(&state, &widgets, before, after, true);
+    });
+}
+
+/// Effets d'un changement de valeur numérique.
+///
+/// GTK réémet `value-changed` au retrait du focus d'une `SpinRow`, avec la
+/// valeur ré-analysée du champ : sans ce garde-fou, l'image était recalculée
+/// alors que rien n'avait bougé (passer du nombre de points au rayon min, par
+/// exemple). On ne relance donc que si les paramètres ont réellement changé.
+fn commit_value_change(
+    state: &St,
+    widgets: &Wi,
+    before: pointimg::filter::FilterParams,
+    after: Option<fn(&St, &Wi)>,
+    from_slider: bool,
+) {
+    if state.borrow().params == before {
+        return;
+    }
+    if from_slider {
+        // La valeur vient du curseur : la `SpinRow` jumelle affiche encore
+        // l'ancienne, et le curseur lui-même doit être recalé sur les
+        // réglages voisins (bornes min/max, sections visibles).
+        sections::sync_widgets(state, widgets);
+    }
+    if let Some(after) = after {
+        after(state, widgets);
+    }
+    files::mark_preset_custom(state, widgets);
+    files::update_preset_row(state, widgets);
+    actions::on_params_changed(state, widgets);
 }
 
 /// Branche un interrupteur.
@@ -411,51 +458,31 @@ pub(crate) fn wire(state: &St, widgets: &Wi, window: &adw::ApplicationWindow) {
         });
     }
 
+    // Les réglages doublés d'un curseur passent par des fonctions nommées :
+    // la `SpinRow` et son curseur appliquent exactement la même conversion.
     on_value(
         state,
         widgets,
         &widgets.variance,
-        |p, v| p.variance_sensitivity = v as f32,
+        set_variance,
         Some(after_variance),
     );
     on_value(
         state,
         widgets,
         &widgets.min_radius,
-        |p, v| {
-            p.min_radius_ratio = v as f32;
-            if p.max_radius_ratio < p.min_radius_ratio {
-                p.max_radius_ratio = p.min_radius_ratio;
-            }
-        },
+        set_min_radius,
         Some(sync_radii),
     );
     on_value(
         state,
         widgets,
         &widgets.max_radius,
-        |p, v| {
-            p.max_radius_ratio = v as f32;
-            if p.min_radius_ratio > p.max_radius_ratio {
-                p.min_radius_ratio = p.max_radius_ratio;
-            }
-        },
+        set_max_radius,
         Some(sync_radii),
     );
-    on_value(
-        state,
-        widgets,
-        &widgets.max_boost,
-        |p, v| p.max_boost = v as f32,
-        None,
-    );
-    on_value(
-        state,
-        widgets,
-        &widgets.cols,
-        |p, v| p.cols = v.round().max(1.0) as u32,
-        None,
-    );
+    on_value(state, widgets, &widgets.max_boost, set_max_boost, None);
+    on_value(state, widgets, &widgets.cols, set_cols, None);
     on_value(
         state,
         widgets,
@@ -463,18 +490,50 @@ pub(crate) fn wire(state: &St, widgets: &Wi, window: &adw::ApplicationWindow) {
         |p, v| p.grid_angle_deg = v as f32,
         None,
     );
-    on_value(
+    on_value(state, widgets, &widgets.num_points, set_num_points, None);
+    on_value(state, widgets, &widgets.iterations, set_iterations, None);
+
+    on_slider(
         state,
         widgets,
-        &widgets.num_points,
-        |p, v| p.num_points = v.round().max(1.0) as usize,
+        &widgets.variance_slider,
+        set_variance,
+        Some(after_variance),
+    );
+    on_slider(
+        state,
+        widgets,
+        &widgets.min_radius_slider,
+        set_min_radius,
+        Some(sync_radii),
+    );
+    on_slider(
+        state,
+        widgets,
+        &widgets.max_radius_slider,
+        set_max_radius,
+        Some(sync_radii),
+    );
+    on_slider(
+        state,
+        widgets,
+        &widgets.max_boost_slider,
+        set_max_boost,
         None,
     );
-    on_value(
+    on_slider(state, widgets, &widgets.cols_slider, set_cols, None);
+    on_slider(
         state,
         widgets,
-        &widgets.iterations,
-        |p, v| p.iterations = v.round().max(1.0) as usize,
+        &widgets.num_points_slider,
+        set_num_points,
+        None,
+    );
+    on_slider(
+        state,
+        widgets,
+        &widgets.iterations_slider,
+        set_iterations,
         None,
     );
 
@@ -562,22 +621,43 @@ pub(crate) fn wire(state: &St, widgets: &Wi, window: &adw::ApplicationWindow) {
         state,
         widgets,
         &widgets.halftone_freq,
-        |p, v| p.halftone_frequency = v as f32,
+        set_halftone_freq,
         None,
     );
     on_value(
         state,
         widgets,
         &widgets.halftone_min_radius,
-        |p, v| p.halftone_min_radius_ratio = v as f32,
-        None,
+        set_halftone_min_radius,
+        Some(sync_halftone_radii),
     );
     on_value(
         state,
         widgets,
         &widgets.halftone_max_dot,
-        |p, v| p.halftone_max_dot_ratio = v as f32,
+        set_halftone_max_dot,
+        Some(sync_halftone_radii),
+    );
+    on_slider(
+        state,
+        widgets,
+        &widgets.halftone_freq_slider,
+        set_halftone_freq,
         None,
+    );
+    on_slider(
+        state,
+        widgets,
+        &widgets.halftone_min_slider,
+        set_halftone_min_radius,
+        Some(sync_halftone_radii),
+    );
+    on_slider(
+        state,
+        widgets,
+        &widgets.halftone_max_slider,
+        set_halftone_max_dot,
+        Some(sync_halftone_radii),
     );
 
     // ── Forme des points ────────────────────────────────────────────────────
@@ -759,6 +839,87 @@ fn after_variance(state: &St, widgets: &Wi) {
     let _ = widgets;
 }
 
+fn set_variance(p: &mut pointimg::filter::FilterParams, v: f64) {
+    p.variance_sensitivity = v as f32;
+}
+
+fn set_min_radius(p: &mut pointimg::filter::FilterParams, v: f64) {
+    p.min_radius_ratio = v as f32;
+    // La borne basse ne peut pas dépasser la haute.
+    if p.max_radius_ratio < p.min_radius_ratio {
+        p.max_radius_ratio = p.min_radius_ratio;
+    }
+}
+
+fn set_max_radius(p: &mut pointimg::filter::FilterParams, v: f64) {
+    p.max_radius_ratio = v as f32;
+    if p.min_radius_ratio > p.max_radius_ratio {
+        p.min_radius_ratio = p.max_radius_ratio;
+    }
+}
+
+fn set_max_boost(p: &mut pointimg::filter::FilterParams, v: f64) {
+    p.max_boost = v as f32;
+}
+
+fn set_cols(p: &mut pointimg::filter::FilterParams, v: f64) {
+    p.cols = v.round().max(1.0) as u32;
+}
+
+fn set_num_points(p: &mut pointimg::filter::FilterParams, v: f64) {
+    p.num_points = v.round().max(1.0) as usize;
+}
+
+fn set_iterations(p: &mut pointimg::filter::FilterParams, v: f64) {
+    p.iterations = v.round().max(1.0) as usize;
+}
+
+fn set_halftone_freq(p: &mut pointimg::filter::FilterParams, v: f64) {
+    p.halftone_frequency = v as f32;
+}
+
+fn set_halftone_min_radius(p: &mut pointimg::filter::FilterParams, v: f64) {
+    p.halftone_min_radius_ratio = v as f32;
+    if p.halftone_max_dot_ratio < p.halftone_min_radius_ratio {
+        p.halftone_max_dot_ratio = p.halftone_min_radius_ratio;
+    }
+}
+
+fn set_halftone_max_dot(p: &mut pointimg::filter::FilterParams, v: f64) {
+    p.halftone_max_dot_ratio = v as f32;
+    if p.halftone_min_radius_ratio > p.halftone_max_dot_ratio {
+        p.halftone_min_radius_ratio = p.halftone_max_dot_ratio;
+    }
+}
+
+/// Idem [`sync_radii`] pour la paire de bornes du halftone.
+fn sync_halftone_radii(state: &St, widgets: &Wi) {
+    if state.borrow().updating {
+        return;
+    }
+    let (min, max) = {
+        let st = state.borrow();
+        (
+            st.params.halftone_min_radius_ratio,
+            st.params.halftone_max_dot_ratio,
+        )
+    };
+    state.borrow_mut().updating = true;
+    widgets
+        .halftone_min_radius
+        .adjustment()
+        .set_value(f64::from(min));
+    widgets
+        .halftone_max_dot
+        .adjustment()
+        .set_value(f64::from(max));
+    widgets.halftone_min_slider.set_value(f64::from(min));
+    widgets.halftone_max_slider.set_value(f64::from(max));
+    widgets.halftone_min_slider.set_bound(f64::from(max));
+    widgets.halftone_max_slider.set_bound(f64::from(min));
+    state.borrow_mut().updating = false;
+}
+
 /// Les deux rayons sont bornés l'un par l'autre : après un changement, la ligne
 /// contrainte doit être réalignée sur la valeur retenue.
 fn sync_radii(state: &St, widgets: &Wi) {
@@ -772,6 +933,10 @@ fn sync_radii(state: &St, widgets: &Wi) {
     state.borrow_mut().updating = true;
     widgets.min_radius.adjustment().set_value(f64::from(min));
     widgets.max_radius.adjustment().set_value(f64::from(max));
+    widgets.min_radius_slider.set_value(f64::from(min));
+    widgets.max_radius_slider.set_value(f64::from(max));
+    widgets.min_radius_slider.set_bound(f64::from(max));
+    widgets.max_radius_slider.set_bound(f64::from(min));
     state.borrow_mut().updating = false;
 }
 

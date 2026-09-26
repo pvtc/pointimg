@@ -100,6 +100,53 @@ impl Quality {
     }
 }
 
+/// Répartition d'une valeur le long d'un curseur.
+///
+/// Une course linéaire serait inexploitable sur les plages de réglages de
+/// pointimg : le rayon minimum (0,0005) et le maximum (1,0) sont séparés de
+/// trois ordres de grandeur, et la plage du halftone (0 → 10) est à dominante
+/// zéro. Les deux interfaces s'en servent pour placer la poignée — et pour
+/// déduire la valeur d'un clic sur le rail, GTK n'ayant pas de curseur
+/// logarithmique.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum Curve {
+    /// Proportionnelle à la plage, pour les plages déjà homogènes (0 → 1).
+    Linear,
+    /// Logarithme, pour les plages entièrement positives (0,0005 → 1,0).
+    Log,
+    /// Racine, pour les plages qui commencent à 0 (0 → 10) : le logarithme y
+    /// est indéfini, et le linéaire confine les valeurs utiles dans le premier
+    /// dixième du rail.
+    Sqrt,
+}
+
+impl Curve {
+    /// Position relative (0 → 1) d'une valeur à l'intérieur de la plage.
+    ///
+    /// Les valeurs hors plage sont ramenées dans les bornes — y compris une
+    /// valeur négative ou nulle passée à [`Curve::Log`], pour laquelle le
+    /// logarithme serait indéfini.
+    pub fn position(self, value: f64, start: f64, end: f64) -> f64 {
+        let t = match self {
+            Curve::Linear => (value - start) / (end - start),
+            Curve::Log => (value.max(0.0).ln() - start.ln()) / (end.ln() - start.ln()),
+            Curve::Sqrt => (value / end).max(0.0).sqrt(),
+        };
+        t.clamp(0.0, 1.0)
+    }
+
+    /// Valeur de la plage correspondant à une position relative (0 → 1).
+    pub fn value(self, position: f64, start: f64, end: f64) -> f64 {
+        let t = position.clamp(0.0, 1.0);
+        match self {
+            Curve::Linear => start + t * (end - start),
+            Curve::Log => (start.ln() + t * (end.ln() - start.ln())).exp(),
+            Curve::Sqrt => t * t * end,
+        }
+        .clamp(start.min(end), end.max(start))
+    }
+}
+
 /// Image d'exemple proposée dans l'état d'accueil.
 ///
 /// Cherche les quelques images livrées avec le projet à côté du binaire (usage
@@ -382,6 +429,45 @@ pub fn load_preset(path: &Path) -> Result<FilterParams, String> {
 mod tests {
     use super::*;
     use crate::filter::Algorithm;
+
+    #[test]
+    fn curve_round_trips_over_its_range() {
+        for (curve, (start, end)) in [
+            (Curve::Linear, (-180.0_f64, 180.0)),
+            (Curve::Log, (0.0005_f64, 1.0_f64)),
+            (Curve::Sqrt, (0.0, 10.0)),
+        ] {
+            for value in [start, (start + end) / 2.0, end] {
+                let back = curve.value(curve.position(value, start, end), start, end);
+                assert!(
+                    (back - value).abs() <= end * 1e-6,
+                    "{curve:?} : {value} est revenu {back}"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn curve_positions_are_clamped() {
+        assert_eq!(Curve::Log.position(-1.0, 0.0005, 1.0), 0.0);
+        assert_eq!(Curve::Log.position(99.0, 0.0005, 1.0), 1.0);
+        assert_eq!(Curve::Sqrt.value(2.0, 0.0, 10.0), 10.0);
+    }
+
+    #[test]
+    fn log_curve_spreads_small_values() {
+        // 0,06 dans 0,0005 → 1,0 : à mi-chemin des trois ordres de grandeur,
+        // là où le linéaire la collerait au bord du curseur.
+        let position = Curve::Log.position(0.06, 0.0005, 1.0);
+        assert!((0.55..=0.7).contains(&position), "position : {position}");
+    }
+
+    #[test]
+    fn sqrt_curve_uses_the_first_tenth() {
+        // 0,85 sur 0 → 10 : 29 % du curseur au lieu de 8 %.
+        let position = Curve::Sqrt.position(0.85, 0.0, 10.0);
+        assert!((0.28..=0.3).contains(&position), "position : {position}");
+    }
 
     #[test]
     fn history_labels_changed_algorithm() {

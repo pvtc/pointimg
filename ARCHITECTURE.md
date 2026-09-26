@@ -797,6 +797,21 @@ changes. eframe's `App::save` is not used because it only runs on its 30-second
 autosave — a preference changed just before quitting would be lost. "Auto" maps
 to egui's `ThemePreference::System`, which is reapplied on the first frame.
 
+- **A single recompute guard**: `show_control_panel` compares `params` before and
+  after drawing *all* the settings sections, and only calls `on_params_changed`
+  if something actually moved. Without it the comparison has to be written field
+  by field — which is exactly what the integer fields were missing, so changing
+  the point count or the iteration count recomputed nothing.
+- **Display precision**: `display_decimals` (in `src/gui/sliders.rs`) pins each
+  `DragValue` to the number of decimals of its value and its range. egui
+  otherwise picks a precision from the pointer's distance to the screen edge,
+  and rewrote the text on focus loss whenever that was coarser.
+- **Sliders** (`src/gui/sliders.rs`): `slider_row` delegates to `egui::Slider`
+  (logarithmic on wide ranges), `range_slider` draws a two-handle slider for
+  bound pairs, with two disjoint interaction zones split halfway between the
+  handles — so no state has to be kept across frames. The mapping comes from
+  `frontend::Curve`, shared with GTK.
+
 ### 10.3 GTK4 / libadwaita (`src/gtk/`)
 
 ```
@@ -821,6 +836,19 @@ State (Rc<RefCell<..>>) + Widgets     filter::apply_with_progress(…, publish)
   accelerators go through a window-level `ShortcutController`
   (`gtk_shortcut_action_parse_string` expects `action(win.name)`), and
   non-`Ctrl` shortcuts through an `EventControllerKey`.
+- **Sliders** (`controls.rs`): a `GtkScale` doubling every wide-range
+  `SpinRow`. GTK has no logarithmic scale, so the slider works in relative
+  position (0 → 1) and `SliderSpec` (copied by value into the callbacks, which
+  cannot capture the widget) converts through `frontend::Curve`, rounding to the
+  `SpinRow`'s precision. `adw::PreferencesGroup` only accepts
+  `AdwPreferencesRow` and an `AdwActionRow` suffix does not expand, so a slider
+  row is a title-less `ActionRow` with the slider aligned to its right — and
+  that row is what must be hidden when the doubled setting disappears, not the
+  slider alone.
+- **`commit_value_change`** (`wire.rs`) is the common exit point for spin rows
+  and sliders: it compares `params` before/after before scheduling a recompute
+  (GTK re-emits `value-changed` on focus loss, with the re-parsed entry value)
+  and re-syncs the widgets when the value came from a slider.
 
 ## 11. SVG Export
 

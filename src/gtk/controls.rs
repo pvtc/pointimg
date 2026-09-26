@@ -1,16 +1,162 @@
 //! Construction des widgets et de la disposition de la fenêtre GTK4.
 //!
 //! Le panneau de gauche est une `adw::PreferencesPage` : chaque réglage occupe
-//! une seule ligne (`adw::SpinRow` = glissière *et* saisie clavier, donc les
-//! plages réelles de `validate_params` sont accessibles), les sections restent
-//! visibles et les actions principales vivent dans l'en-tête plutôt qu'en bas
-//! d'un panneau à faire défiler.
+//! une seule ligne (`adw::SpinRow` = saisie clavier aux plages réelles de
+//! `validate_params`), les sections restent visibles et les actions principales
+//! vivent dans l'en-tête plutôt qu'en bas d'un panneau à faire défiler.
+//!
+//! Les réglages à course large (nombre de points, rayons) sont doublés d'un
+//! `GtkScale` : le `SpinRow` reste l'outil de la valeur exacte, le curseur
+//! celui du réglage à la souris — impossible avec la seule molette du
+//! `SpinButton`, dont le pas est fixe.
 
 use std::cell::RefCell;
 use std::rc::Rc;
 
 use adw::prelude::*;
 use gtk::glib;
+
+use pointimg::frontend::Curve;
+
+/// Conversion entre la position d'un curseur (0 → 1) et la valeur du filtre.
+///
+/// `Copy` pour être recopié dans les callbacks GTK, qui ne peuvent pas
+/// capturer le widget lui-même.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub(crate) struct SliderSpec {
+    curve: Curve,
+    start: f64,
+    end: f64,
+    digits: u32,
+}
+
+impl SliderSpec {
+    /// Position du curseur correspondant à une valeur de filtre.
+    pub(crate) fn position(self, value: f64) -> f64 {
+        self.curve.position(value, self.start, self.end)
+    }
+
+    /// Valeur de filtre correspondant à une position du curseur, arrondie à la
+    /// précision du champ de saisie voisin : sans cela, le glissement laisserait
+    /// `0,25317937` dans les réglages.
+    pub(crate) fn value(self, position: f64) -> f64 {
+        let factor = 10f64.powi(self.digits as i32);
+        let value = (self.curve.value(position, self.start, self.end) * factor).round() / factor;
+        value.clamp(self.start, self.end)
+    }
+}
+
+/// Curseur horizontal doublant un `adw::SpinRow`.
+pub(crate) struct ValueSlider {
+    pub scale: gtk::Scale,
+    pub spec: SliderSpec,
+    /// Rangée qui héberge le curseur, pour la masquer avec le réglage qu'elle
+    /// double (le curseur seul ne suffirait pas : la rangée resterait visible,
+    /// vide de son curseur).
+    row: Option<adw::ActionRow>,
+}
+
+impl ValueSlider {
+    /// `digits` est la précision du `SpinRow` associé, pour que les deux
+    /// représentations tombent d'accord.
+    pub(crate) fn new(start: f64, end: f64, digits: u32, curve: Curve) -> Self {
+        // Le curseur travaille en position relative : GTK n'a pas d'échelle
+        // logarithmique, et une course linéaire sur 0,0005 → 1,0 rendrait les
+        // petits rayons impossibles à atteindre à la souris.
+        let scale = gtk::Scale::with_range(gtk::Orientation::Horizontal, 0.0, 1.0, 0.002);
+        scale.set_draw_value(false);
+        scale.set_value_pos(gtk::PositionType::Right);
+        scale.set_has_origin(false);
+        scale.set_hexpand(true);
+        scale.set_digits(3);
+        // Un `GtkScale` capte la molette : sans cette interception, faire
+        // défiler le panneau des réglages modifiait silencieusement les valeurs.
+        forward_wheel_to_scroller(&scale);
+        Self {
+            scale,
+            spec: SliderSpec {
+                curve,
+                start,
+                end,
+                digits,
+            },
+            row: None,
+        }
+    }
+
+    /// Place la poignée sur une valeur de filtre.
+    pub(crate) fn set_value(&self, value: f64) {
+        self.scale.set_value(self.spec.position(value));
+    }
+
+    /// Marque la position de l'autre borne d'une paire (l'ancienne marque est
+    /// remplacée : `gtk_scale_add_mark` ne renvoie pas de handle).
+    pub(crate) fn set_bound(&self, other: f64) {
+        self.scale.clear_marks();
+        self.scale
+            .add_mark(self.spec.position(other), gtk::PositionType::Bottom, None);
+    }
+
+    /// Rangée qui héberge le curseur.
+    ///
+    /// `adw::PreferencesGroup` n'accepte que des `AdwPreferencesRow`, et le
+    /// suffixe d'un `AdwActionRow` n'est pas extensible : le curseur occupe
+    /// donc la partie droite de la rangée, comme les curseurs des réglages
+    /// GNOME. `hint` explique l'échelle, peu lisible sans elle.
+    pub(crate) fn row(&mut self, hint: &str, tooltip: &str) -> adw::ActionRow {
+        let row = adw::ActionRow::new();
+        row.set_activatable(false);
+        row.set_subtitle(hint);
+        row.set_tooltip_text(Some(tooltip));
+        row.add_suffix(&self.scale);
+        self.row = Some(row.clone());
+        row
+    }
+
+    /// Masque la rangée entière quand le réglage doublé n'est pas visible.
+    pub(crate) fn set_row_visible(&self, visible: bool) {
+        if let Some(row) = &self.row {
+            row.set_visible(visible);
+        }
+    }
+}
+
+/// Une rangée de curseur pour une paire min/max.
+///
+/// GTK n'a pas de curseur à deux poignées (c'est aussi vrai de libadwaita,
+/// dont `AdwSliderRow` n'existe qu'à partir de 1.6). On met donc les deux
+/// curseurs l'un sous l'autre, chacun marquant la position de l'autre borne :
+/// la lecture de la plage et de son écart reste immédiate, et la saisie
+/// chiffrée se fait dans les deux `SpinRow` du dessus.
+fn pair_row(
+    low: &mut ValueSlider,
+    high: &mut ValueSlider,
+    hint: &str,
+    tooltip: &str,
+) -> adw::ActionRow {
+    let row = adw::ActionRow::new();
+    row.set_activatable(false);
+    row.set_subtitle(hint);
+    row.set_tooltip_text(Some(tooltip));
+    let box_ = gtk::Box::new(gtk::Orientation::Vertical, 0);
+    box_.set_hexpand(true);
+    for (label, slider) in [("min", &*low), ("max", &*high)] {
+        let line = gtk::Box::new(gtk::Orientation::Horizontal, 6);
+        line.set_hexpand(true);
+        let caption = gtk::Label::new(Some(label));
+        caption.add_css_class("dim-label");
+        caption.set_width_chars(4);
+        caption.set_xalign(0.0);
+        line.append(&caption);
+        line.append(&slider.scale);
+        box_.append(&line);
+    }
+    row.add_suffix(&box_);
+    // La rangée est mémorisée par la borne basse : c'est elle qui pilote la
+    // visibilité du couple.
+    low.row = Some(row.clone());
+    row
+}
 
 /// Portées de « réinitialiser » : un bouton par section du panneau.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
@@ -67,15 +213,22 @@ pub(crate) struct Widgets {
     // ── Algorithme ───────────────────────────────────────────────────────────
     pub algo: adw::ComboRow,
     pub variance: adw::SpinRow,
+    pub variance_slider: ValueSlider,
     pub min_radius: adw::SpinRow,
     pub max_radius: adw::SpinRow,
+    pub min_radius_slider: ValueSlider,
+    pub max_radius_slider: ValueSlider,
     pub max_boost: adw::SpinRow,
+    pub max_boost_slider: ValueSlider,
     pub grid_group: adw::PreferencesGroup,
     pub cols: adw::SpinRow,
+    pub cols_slider: ValueSlider,
     pub grid_angle: adw::SpinRow,
     pub points_group: adw::PreferencesGroup,
     pub num_points: adw::SpinRow,
+    pub num_points_slider: ValueSlider,
     pub iterations: adw::SpinRow,
+    pub iterations_slider: ValueSlider,
 
     // ── Halftone ─────────────────────────────────────────────────────────────
     pub halftone_group: adw::PreferencesGroup,
@@ -85,8 +238,11 @@ pub(crate) struct Widgets {
     pub dominant_angle: adw::SpinRow,
     pub screening: adw::ComboRow,
     pub halftone_freq: adw::SpinRow,
+    pub halftone_freq_slider: ValueSlider,
     pub halftone_min_radius: adw::SpinRow,
     pub halftone_max_dot: adw::SpinRow,
+    pub halftone_min_slider: ValueSlider,
+    pub halftone_max_slider: ValueSlider,
 
     // ── Forme des points ─────────────────────────────────────────────────────
     pub shape: adw::ComboRow,
@@ -220,6 +376,13 @@ pub(crate) fn build() -> (adw::ToastOverlay, Rc<Widgets>) {
         0.1,
         2,
     );
+    // Curseurs : la molette du `SpinButton` a un pas fixe (0,1), ce qui rend
+    // les 4 décimales du rayon min pénibles à atteindre. Le curseur se règle
+    // à la souris ; la `SpinRow` reste l'outil de la valeur exacte.
+    let mut variance_slider = ValueSlider::new(0.0, 1.0, 2, Curve::Linear);
+    let mut min_radius_slider = ValueSlider::new(0.0005, 1.0, 4, Curve::Log);
+    let mut max_radius_slider = ValueSlider::new(0.0005, 1.0, 4, Curve::Log);
+    let mut max_boost_slider = ValueSlider::new(1.0, 8.0, 2, Curve::Log);
     let cols = spin_row(
         "Colonnes",
         Some("2 – 8 192"),
@@ -247,6 +410,8 @@ pub(crate) fn build() -> (adw::ToastOverlay, Rc<Widgets>) {
         10.0,
         0,
     );
+    let mut cols_slider = ValueSlider::new(2.0, 8192.0, 0, Curve::Log);
+    let mut num_points_slider = ValueSlider::new(10.0, 100_000.0, 0, Curve::Log);
     let iterations = spin_row(
         "Itérations",
         Some("1 – 100"),
@@ -256,6 +421,7 @@ pub(crate) fn build() -> (adw::ToastOverlay, Rc<Widgets>) {
         1.0,
         0,
     );
+    let mut iterations_slider = ValueSlider::new(1.0, 100.0, 0, Curve::Log);
 
     let halftone_mode = combo_row("Mode", &["CMJN (rosette)", "Couleurs dominantes"], None);
     let dominant_n = spin_row(
@@ -309,6 +475,11 @@ pub(crate) fn build() -> (adw::ToastOverlay, Rc<Widgets>) {
         0.05,
         2,
     );
+    let mut halftone_freq_slider = ValueSlider::new(4.0, 400.0, 0, Curve::Log);
+    // La plage 0 → 10 passe en racine : en linéaire, les valeurs utiles
+    // (0,002 et 0,85) seraient tassées dans le premier dixième du rail.
+    let mut halftone_min_slider = ValueSlider::new(0.0, 10.0, 3, Curve::Sqrt);
+    let mut halftone_max_slider = ValueSlider::new(0.0, 10.0, 2, Curve::Sqrt);
 
     let shape = combo_row("Forme", &SHAPES, None);
     let ellipse_aspect = spin_row(
@@ -462,21 +633,32 @@ pub(crate) fn build() -> (adw::ToastOverlay, Rc<Widgets>) {
     algo_group.set_title("Algorithme");
     algo_group.add(&algo);
     algo_group.add(&variance);
+    algo_group.add(&variance_slider.row("curseur", "Sensibilité à la souris"));
     algo_group.add(&min_radius);
     algo_group.add(&max_radius);
+    algo_group.add(&pair_row(
+        &mut min_radius_slider,
+        &mut max_radius_slider,
+        "logarithme · repère = autre borne",
+        "Curseurs des bornes min et max ; le repère marque l'autre borne",
+    ));
     algo_group.add(&max_boost);
+    algo_group.add(&max_boost_slider.row("curseur", "Boost à la souris"));
     page.add(&algo_group);
 
     let grid_group = adw::PreferencesGroup::new();
     grid_group.set_title("Grille");
     grid_group.add(&cols);
+    grid_group.add(&cols_slider.row("logarithme", "De 2 à 8 192 cellules"));
     grid_group.add(&grid_angle);
     page.add(&grid_group);
 
     let points_group = adw::PreferencesGroup::new();
     points_group.set_title("Densité de points");
     points_group.add(&num_points);
+    points_group.add(&num_points_slider.row("logarithme", "De 10 à 100 000 points"));
     points_group.add(&iterations);
+    points_group.add(&iterations_slider.row("curseur", "Itérations de Lloyd"));
     page.add(&points_group);
 
     let halftone_group = adw::PreferencesGroup::new();
@@ -488,8 +670,15 @@ pub(crate) fn build() -> (adw::ToastOverlay, Rc<Widgets>) {
     halftone_group.add(&dominant_box);
     halftone_group.add(&screening);
     halftone_group.add(&halftone_freq);
+    halftone_group.add(&halftone_freq_slider.row("logarithme", "De 4 à 400 cellules"));
     halftone_group.add(&halftone_min_radius);
     halftone_group.add(&halftone_max_dot);
+    halftone_group.add(&pair_row(
+        &mut halftone_min_slider,
+        &mut halftone_max_slider,
+        "repère = autre borne",
+        "Curseurs des bornes min et max du halftone ; le repère marque l'autre borne",
+    ));
     page.add(&halftone_group);
 
     let shape_group = adw::PreferencesGroup::new();
@@ -709,15 +898,22 @@ pub(crate) fn build() -> (adw::ToastOverlay, Rc<Widgets>) {
         folder_row,
         algo,
         variance,
+        variance_slider,
         min_radius,
         max_radius,
+        min_radius_slider,
+        max_radius_slider,
         max_boost,
+        max_boost_slider,
         grid_group,
         cols,
+        cols_slider,
         grid_angle,
         points_group,
         num_points,
+        num_points_slider,
         iterations,
+        iterations_slider,
         halftone_group,
         halftone_mode,
         dominant_box,
@@ -725,8 +921,11 @@ pub(crate) fn build() -> (adw::ToastOverlay, Rc<Widgets>) {
         dominant_angle,
         screening,
         halftone_freq,
+        halftone_freq_slider,
         halftone_min_radius,
         halftone_max_dot,
+        halftone_min_slider,
+        halftone_max_slider,
         shape,
         ellipse_box,
         ellipse_aspect,
@@ -950,4 +1149,42 @@ fn step_adjustment(adjustment: &gtk::Adjustment, delta: f64) {
     let upper = (adjustment.upper() - adjustment.page_size()).max(adjustment.lower());
     let value = (adjustment.value() + delta * step).clamp(adjustment.lower(), upper);
     adjustment.set_value(value);
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Curseur des rayons : logarithmique sur 0,0005 → 1, au pas de la
+    /// `SpinRow` (4 décimales).
+    fn radius_spec() -> SliderSpec {
+        SliderSpec {
+            curve: Curve::Log,
+            start: 0.0005,
+            end: 1.0,
+            digits: 4,
+        }
+    }
+
+    #[test]
+    fn slider_value_is_quantised_to_the_spin_row_precision() {
+        // Le curseur travaille en position relative : sans arrondi, la valeur
+        // demanderait sept décimales et le champ voisin affiche « 0,2531794 ».
+        assert_eq!(radius_spec().value(0.7), 0.1023);
+    }
+
+    #[test]
+    fn slider_position_round_trips() {
+        let spec = radius_spec();
+        for value in [0.0005, 0.003, 0.06, 1.0] {
+            assert_eq!(spec.value(spec.position(value)), value, "valeur {value}");
+        }
+    }
+
+    #[test]
+    fn slider_value_stays_inside_its_range() {
+        let spec = radius_spec();
+        assert_eq!(spec.value(-1.0), 0.0005);
+        assert_eq!(spec.value(2.0), 1.0);
+    }
 }

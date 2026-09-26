@@ -170,7 +170,10 @@ Both front-ends (egui and GTK4) offer the same capabilities:
   pointillism, fine stippling, flat graphic colors, CMYK rosette, FM screen,
   moiré, mosaic, dots, transparent overlays) on top of TOML files.
 - **Typed values**: every setting can be typed, with the ranges the engine
-  actually accepts (up to 100,000 points, 8,192 columns, 256 palette colors).
+  actually accepts (up to 100,000 points, 8,192 columns, 256 palette colors), and
+  the wide ones also have a slider (point count, radii — including a “min / max”
+  pair adjustable in one gesture, on a logarithmic or square-root scale depending
+  on the range).
 - **Folder navigation**: open a folder, then use `←`/`→` to move between images.
 - **Window title and status bar** naming the file, its dimensions and the
   compute state; errors surface as notifications.

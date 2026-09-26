@@ -639,6 +639,23 @@ s'exécute qu'à son autosave de 30 s, et une préférence modifiée juste avant
 quitter serait perdue. « Auto » correspond à `ThemePreference::System` d'egui,
 réappliqué dès la première frame.
 
+- **Un seul garde-fou de recalcul** : `show_control_panel` compare `params` avant
+  et après avoir dessiné *toutes* les sections, et n'appelle
+  `on_params_changed` que si quelque chose a bougé. Sans lui, il faut
+  comparer champ par champ — et c'est ce qui manquait aux champs entiers, qui
+  ne déclenchaient aucun calcul.
+- **Précision d'affichage** : `display_decimals` (dans `src/gui/sliders.rs`)
+  impose à chaque `DragValue` le nombre de décimales de sa valeur et de sa
+  plage. egui choisit sinon une précision selon la distance du pointeur au bord
+  de l'écran, et réécrivait la saisie à la perte de focus quand elle était plus
+  grossière.
+- **Curseurs** (`src/gui/sliders.rs`) : `slider_row` délègue à `egui::Slider`
+  (logarithme pour les plages larges), `range_slider` dessine un curseur à deux
+  poignées pour les paires de bornes, avec deux zones de saisie disjointes
+  séparées à mi-chemin des poignées — donc sans état à conserver d'une frame à
+  l'autre. La courbe de répartition vient de `frontend::Curve`, partagée avec
+  GTK.
+
 ### 10.3 GTK4 / libadwaita (`src/gtk/`)
 
 ```
@@ -664,6 +681,20 @@ State (Rc<RefCell<..>>) + Widgets    filter::apply_with_progress(…, publish)
   fenêtre ; les accélérateurs passent par un `ShortcutController` greffé à la
   fenêtre (`gtk_shortcut_action_parse_string` attend `action(win.nom)`), les
   raccourcis non-`Ctrl` par un `EventControllerKey`.
+- **Curseurs** (`controls.rs`) : un `GtkScale` doublant chaque `SpinRow` à
+  course large. GTK n'a pas d'échelle logarithmique, le curseur travaille donc en
+  position relative (0 → 1) et `SliderSpec` (recopié par valeur dans les
+  callbacks, qui ne peuvent pas capturer le widget) fait la conversion via
+  `frontend::Curve`, en arrondissant à la précision de la `SpinRow`.
+  `adw::PreferencesGroup` n'accepte que des `AdwPreferencesRow` et le suffixe
+  d'un `AdwActionRow` n'est pas extensible : la rangée de curseur est donc une
+  `ActionRow` sans titre, à droite de laquelle le curseur s'aligne — et c'est
+  elle qu'il faut masquer quand le réglage doublé disparaît, pas le curseur seul.
+- **`commit_value_change`** (`wire.rs`) est le point de sortie commun des
+  `SpinRow` et des curseurs : il compare `params` avant/après avant de
+  planifier un recalcul (GTK réémet `value-changed` au retrait du focus, avec la
+  valeur ré-analysée du champ) et resynchronise les widgets quand la valeur
+  venait d'un curseur.
 
 ## 11. Export SVG
 

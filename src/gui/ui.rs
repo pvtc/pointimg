@@ -16,7 +16,8 @@ use pointimg::filter::{Algorithm, DotShape, HalftoneMode, Screening};
 use super::App;
 use super::convert::{gray_to_color_image, rgb_to_color_image, rgba_to_color_image_checker};
 use super::format::format_duration;
-use pointimg::frontend::{Quality, ViewMode, sample_image, view_from_index, view_index};
+use super::sliders::{display_decimals, int_slider_row, range_slider, slider_row};
+use pointimg::frontend::{Curve, Quality, ViewMode, sample_image, view_from_index, view_index};
 
 /// Description courte d'un algorithme, affichée sous le sélecteur.
 fn algorithm_help(algorithm: Algorithm) -> &'static str {
@@ -73,7 +74,9 @@ fn tuned_style(style: &mut egui::Style, scale: f32) {
     style.spacing.button_padding = egui::vec2(10.0, 5.0) * scale;
     style.spacing.indent = 20.0 * scale;
     style.spacing.interact_size.y = 24.0 * scale;
-    style.spacing.slider_width = 120.0 * scale;
+    // Les curseurs occupent la largeur du panneau (comme le curseur à deux
+    // poignées des rayons) : 120 px étaient trop étroits pour régler finely.
+    style.spacing.slider_width = 320.0 * scale;
     style.spacing.window_margin = egui::Margin::same((8.0 * scale) as i8);
     style.spacing.menu_margin = egui::Margin::same((6.0 * scale) as i8);
 
@@ -379,6 +382,11 @@ impl App {
         if let Some(t) = self.last_param_change {
             if t.elapsed() >= Duration::from_millis(300) && self.src_rgb.is_some() {
                 self.last_param_change = None;
+                // La density map suit le même debounce que le filtre.
+                if self.density_pending {
+                    self.density_pending = false;
+                    self.start_density_compute(ctx);
+                }
                 self.trigger_compute(ctx);
             } else {
                 ctx.request_repaint_after(Duration::from_millis(50));
@@ -501,12 +509,21 @@ impl App {
                     });
                     ui.separator();
 
+                    // Un seul garde-fou pour tout le panneau : on ne relance un
+                    // calcul que si les paramètres ont *réellement* changé.
+                    // Sinon, un simple changement de focus entre deux champs —
+                    // ou la revalidation d'un curseur par egui — suffirait à
+                    // faire recalculer l'image.
+                    let before = self.params.clone();
                     self.show_display_preferences(ui);
                     self.show_presets(ui, ctx);
-                    self.show_algorithm_section(ui, ctx);
+                    self.show_algorithm_section(ui);
                     self.show_shape_and_palette_section(ui);
                     self.show_bg_section(ui, ctx);
                     self.show_quality_section(ui, ctx);
+                    if self.params != before {
+                        self.on_params_changed(ctx);
+                    }
                     ui.separator();
                     if ui.button("Réinitialiser les réglages").clicked() {
                         self.reset_params(ctx);
@@ -594,7 +611,7 @@ impl App {
         });
     }
 
-    fn show_algorithm_section(&mut self, ui: &mut egui::Ui, ctx: &egui::Context) {
+    fn show_algorithm_section(&mut self, ui: &mut egui::Ui) {
         const ALGOS: [(&str, Algorithm); 5] = [
             ("Grille", Algorithm::Grid),
             ("K-means", Algorithm::Kmeans),
@@ -626,26 +643,32 @@ impl App {
 
         if self.params.algorithm == Algorithm::Halftone {
             self.show_halftone_section(ui);
-            self.on_params_changed(ctx);
             return;
         }
 
         let variance_before = self.params.variance_sensitivity;
-        if number_row_with_hint(
+        number_row_with_hint(
             ui,
             "Sensibilité variance",
             &mut self.params.variance_sensitivity,
             0.0..=1.0,
             Some("0 = uniforme · 1 = détail maximal"),
-        )
-        .changed()
-        {
+        );
+        slider_row(
+            ui,
+            "variance",
+            &mut self.params.variance_sensitivity,
+            0.0..=1.0,
+            false,
+            "0 = répartition uniforme · 1 = détail maximal",
+        );
+        if variance_before != self.params.variance_sensitivity {
             // La density map dépend de ce seul réglage : on la recalcule sans
-            // relancer le filtre.
-            self.start_density_compute(ctx);
+            // relancer le filtre — mais au même moment que lui (le debounce),
+            // sinon un glissement de curseur lancerait un calcul par pixel.
+            self.density_pending = true;
         }
-        let min_before = self.params.min_radius_ratio;
-        let max_before = self.params.max_radius_ratio;
+
         number_row_with_hint(
             ui,
             "Rayon min",
@@ -660,12 +683,24 @@ impl App {
             0.0005..=1.0,
             None,
         );
+        // Curseur à deux poignées : la plage se règle d'un geste, et l'ordre
+        // des bornes ne peut pas s'inverser.
+        range_slider(
+            ui,
+            "rayon",
+            &mut self.params.min_radius_ratio,
+            &mut self.params.max_radius_ratio,
+            0.0005..=1.0,
+            Curve::Log,
+            "Rayon min et max, en fraction du plus petit côté",
+        );
         if self.params.min_radius_ratio > self.params.max_radius_ratio {
             std::mem::swap(
                 &mut self.params.min_radius_ratio,
                 &mut self.params.max_radius_ratio,
             );
         }
+
         number_row_with_hint(
             ui,
             "Boost zones uniformes",
@@ -673,13 +708,29 @@ impl App {
             1.0..=8.0,
             None,
         );
+        slider_row(
+            ui,
+            "boost",
+            &mut self.params.max_boost,
+            1.0..=8.0,
+            false,
+            "Agrandit les points dans les zones sans détail. 1 = aucun agrandissement.",
+        );
 
         match self.params.algorithm {
             Algorithm::Grid => {
-                let mut cols = self.params.cols as f32;
-                if number_row(ui, "Colonnes", &mut cols, 2.0..=8192.0).changed() {
-                    self.params.cols = cols.round().max(1.0) as u32;
-                }
+                // 2 → 8 192 : logarithmique, sinon les petites grilles
+                // n'occupent qu'un pixel de la piste.
+                let mut cols = self.params.cols as usize;
+                int_number_row(
+                    ui,
+                    "Colonnes",
+                    &mut cols,
+                    2.0..=8192.0,
+                    true,
+                    "Nombre de cellules de la grille",
+                );
+                self.params.cols = cols as u32;
                 number_row_with_hint(
                     ui,
                     "Angle grille",
@@ -689,28 +740,33 @@ impl App {
                 );
             }
             Algorithm::Kmeans | Algorithm::Voronoi | Algorithm::Quadtree => {
-                let mut points = self.params.num_points as f32;
-                if number_row(ui, "Nombre de points", &mut points, 10.0..=100_000.0).changed() {
-                    self.params.num_points = points.round().max(1.0) as usize;
-                }
+                let mut points = self.params.num_points;
+                int_number_row(
+                    ui,
+                    "Nombre de points",
+                    &mut points,
+                    10.0..=100_000.0,
+                    true,
+                    "De 10 à 100 000 points, en échelle logarithmique",
+                );
+                self.params.num_points = points;
                 if matches!(
                     self.params.algorithm,
                     Algorithm::Kmeans | Algorithm::Voronoi
                 ) {
-                    let mut iterations = self.params.iterations as f32;
-                    if number_row(ui, "Itérations", &mut iterations, 1.0..=100.0).changed() {
-                        self.params.iterations = iterations.round().max(1.0) as usize;
-                    }
+                    let mut iterations = self.params.iterations;
+                    int_number_row(
+                        ui,
+                        "Itérations",
+                        &mut iterations,
+                        1.0..=100.0,
+                        false,
+                        "Passes de Lloyd. Au-delà de ~30, le gain devient marginal.",
+                    );
+                    self.params.iterations = iterations;
                 }
             }
             Algorithm::Halftone => unreachable!("traité plus haut"),
-        }
-
-        if variance_before != self.params.variance_sensitivity
-            || min_before != self.params.min_radius_ratio
-            || max_before != self.params.max_radius_ratio
-        {
-            self.on_params_changed(ctx);
         }
     }
 
@@ -905,10 +961,16 @@ impl App {
         });
         match &mut self.params.halftone {
             HalftoneMode::Dominant { n, base_angle_deg } => {
-                let mut channels = *n as f32;
-                if number_row(ui, "Canaux", &mut channels, 2.0..=32.0).changed() {
-                    *n = channels.round().clamp(2.0, 32.0) as usize;
-                }
+                let mut channels = *n;
+                int_number_row(
+                    ui,
+                    "Canaux",
+                    &mut channels,
+                    2.0..=32.0,
+                    false,
+                    "Nombre d'encres retenues parmi les couleurs dominantes",
+                );
+                *n = channels;
                 number_row_with_hint(ui, "Angle de base", base_angle_deg, 0.0..=180.0, None);
             }
             HalftoneMode::Cmyk { angles } => {
@@ -936,6 +998,16 @@ impl App {
             &mut self.params.halftone_frequency,
             4.0..=400.0,
         );
+        // 4 → 400 : logarithmique, la plage est trop large pour une course
+        // linéaire.
+        slider_row(
+            ui,
+            "halftone_frequency",
+            &mut self.params.halftone_frequency,
+            4.0..=400.0,
+            true,
+            "Cellules de la trame par unité de longueur",
+        );
         number_row_with_hint(
             ui,
             "Rayon min",
@@ -949,6 +1021,17 @@ impl App {
             &mut self.params.halftone_max_dot_ratio,
             0.05..=10.0,
             None,
+        );
+        // Même paire de bornes que pour les points : curseur à deux poignées,
+        // échelle logarithmique (le rayon varie d'un facteur 100).
+        range_slider(
+            ui,
+            "halftone_rayon",
+            &mut self.params.halftone_min_radius_ratio,
+            &mut self.params.halftone_max_dot_ratio,
+            0.0..=10.0,
+            Curve::Sqrt,
+            "Rayon min et max des dots d'encre",
         );
     }
 
@@ -1431,6 +1514,11 @@ fn number_row_with_hint(
     if label.contains("Itérations") || label.contains("Côtés") || label.contains("Canaux") {
         tooltip.push_str("\nMolette : ajustement fin (avec Ctrl ou Maj)");
     }
+    // egui choisit la précision d'affichage selon la distance du pointeur au
+    // bord de l'écran : près d'un bord, « Rayon min » s'afficherait « 0,000 »
+    // puis la saisie serait réécrite en 0 à la perte de focus. On impose donc
+    // les décimales utiles au réglage (cf. `display_decimals`).
+    let decimals = display_decimals(*value, &range);
     ui.horizontal(|ui| {
         ui.label(egui::RichText::new(label).size(13.0));
         // `DragValue` n'a pas de pas en 0.36 : la vitesse fixe l'incrément de
@@ -1439,11 +1527,30 @@ fn number_row_with_hint(
             egui::DragValue::new(value)
                 .speed(0.25)
                 .clamp_existing_to_range(true)
+                .min_decimals(decimals)
+                .max_decimals(decimals)
                 .range(*range.start()..=*range.end()),
         )
         .on_hover_text(tooltip)
     })
     .inner
+}
+
+/// Ligne « libellé + saisie directe + curseur » pour un réglage entier : la
+/// saisie comme le glissement sont arrondis à l'unité.
+fn int_number_row(
+    ui: &mut egui::Ui,
+    label: &str,
+    value: &mut usize,
+    range: std::ops::RangeInclusive<f32>,
+    logarithmic: bool,
+    hint: &str,
+) {
+    let mut mirror = *value as f32;
+    if number_row(ui, label, &mut mirror, range.clone()).changed() {
+        *value = mirror.round().max(1.0) as usize;
+    }
+    int_slider_row(ui, label, value, range, logarithmic, hint);
 }
 
 /// Sélecteur de forme des points.

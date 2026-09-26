@@ -9,7 +9,39 @@ et ce projet adhère au [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ### Corrigé
 
-- **Conflit d'ID egui** : en vue côte-à-côte (Source/Résultat), les deux
+- **Recalcul sans changement de valeur** : les deux interfaces ne relancent plus
+  un calcul que si les paramètres ont *réellement* changé. GTK réémet
+  `value-changed` au retrait du focus d'une `SpinRow`, avec la valeur
+  ré-analysée du champ ; egui compare désormais l'ensemble des paramètres avant
+  et après le panneau de réglages au lieu de trois champs isolés. Un curseur
+  n'est plus ignored… et, à l'inverse, **nombre de points, itérations, colonnes,
+  angle de grille, boost, forme des points et palette ne déclenchaient
+  aucun calcul** alors que leur valeur changeait. (`src/gui/ui.rs`,
+  `src/gtk/wire.rs`)
+- **Saisie réécrite à la perte de focus** : egui choisit la précision
+  d'affichage d'un `DragValue` selon la distance du pointeur au bord de
+  l'écran ; près d'un bord, « Rayon min » s'affichait « 0,000 » puis la saisie
+  revenait à 0 (et relançait un calcul). Les décimales affichées sont désormais
+  celles de la valeur et de la plage, donc stables. Les entiers s'affichent
+  aussi sans décimale parasite (« 800 » et non « 800.0 »).
+  (`src/gui/sliders.rs`)
+- **Density map recalculée à chaque pixel de glissement** : le calcul de la
+  density map part désormais avec le debounce du filtre au lieu d'être lancé à
+  chaque variation de la sensibilité. (`src/gui/ui.rs`)
+- **Curseur GTK désynchronisé** : un réglage modifié au curseur laissait la
+  `SpinRow` jumelle afficher l'ancienne valeur (le curseur GTK n'est pas la
+  source de vérité pour `sync_widgets`). (`src/gtk/wire.rs`)
+- **Rangées de curseur vides** : masquer un réglage masquait son curseur mais
+  laissait sa rangée (vide) visible ; la rangée est désormais mémorisée par le
+  curseur. (`src/gtk/sections.rs`)
+- **Recalcul sans changement de valeur** : les deux interfaces ne relancent plus
+  un calcul que si les paramètres ont *réellement* changé. GTK réémet
+  `value-changed` au retrait du focus d'une `SpinRow`, avec la valeur
+  ré-analysée du champ ; egui compare désormais l'ensemble des paramètres avant
+  et après le panneau de réglages, au lieu de trois champs isolés. À l'inverse,
+  **nombre de points, itérations, colonnes, angle de grille, boost, forme des
+  points et palette ne déclenchaient aucun calcul** alors que leur valeur
+  changeait. (`src/gui/ui.rs`, `src/gtk/wire.rs`)
   `ScrollArea` de la zone image partageaient le même salt par défaut et
   recevaient le même ID persisté — egui affichait une erreur rouge. Chaque
   panneau utilise désormais son label comme `id_salt`. (`src/gui/ui.rs`)
@@ -292,8 +324,37 @@ appliquées après une inspection des deux interfaces en conditions réelles
   via `Context::all_styles_mut` au premier rendu ; l'API `Panel::left/top/bottom`
   remplace `SidePanel`/`TopBottomPanel`.
 
-### Interface graphique (egui) — confort et répartition de l'espace
+### Curseurs de réglage (les deux interfaces)
 
+- **Saisie + curseur** : les réglages à course large sont doublés d'un curseur
+  sous leur champ de saisie. La molette d'un `SpinButton` a un pas fixe (0,1),
+  ce qui rend les quatre décimales du rayon min pénibles à atteindre ; le
+  curseur se règle à la souris, la saisie chiffrée reste l'outil de la valeur
+  exacte. Curseurs ajoutés à la sensibilité, au boost, au nombre de points, aux
+  itérations, aux colonnes, à la fréquence de trame, et à la paire min/max des
+  rayons (points et halftone).
+- **Échelle adaptée à la plage** : logarithmique sur le nombre de points
+  (10 → 100 000), les colonnes (2 → 8 192), la fréquence de trame et les rayons
+  (0,0005 → 1) ; racine sur la plage du halftone (0 → 10), où le logarithme est
+  indéfini et où le linéaire confinerait les valeurs utiles dans le premier
+  dixième du rail. La courbe est partagée par les deux interfaces
+  (`pointimg::frontend::Curve`) et le curseur arrondit à la précision du champ
+  voisin, pour ne pas laisser « 0,25317937 » dans les réglages.
+- **Curseur à deux poignées (egui)** : egui n'a pas d'équivalent du curseur à
+  deux poignées, le widget est donc dessiné à la main — rail coupé en deux zones
+  de saisie disjointes, les bornes ne pouvant pas se croiser. Le segment entre
+  les poignées porte la couleur d'accent, la largeur de la plage se lit d'un
+  coup d'œil.
+- **Paire min/max (GTK)** : GTK n'a pas plus de curseur à deux poignées que
+  libadwaita (`AdwSliderRow` n'existe qu'à partir de 1.6). Les deux curseurs
+  sont donc empilés, étiquetés « min » et « max », chacun marquant la position de
+  l'autre borne ; la contrainte `min ≤ max` reste appliquée, comme sur les
+  champs de saisie.
+- **Erreur de curseur** : la sensibilité était en échelle logarithmique sur une
+  plage commençant à 0 (position indéfinie, poignée collée au maximum) ; elle
+  est linéaire.
+
+### Interface graphique (egui) — confort et répartition de l'espace
 - **Côte-à-côte rogné** : dans une mise en page horizontale, `available_width()`
   vaut la largeur restante *pour chaque enfant* ; le premier panneau prenait
   toute la place et le second était expulsé hors de la fenêtre (les deux

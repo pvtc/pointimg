@@ -27,6 +27,7 @@ mod format;
 mod io;
 mod prefs;
 mod save;
+mod sliders;
 mod ui;
 
 use eframe::egui;
@@ -159,6 +160,10 @@ pub(crate) struct App {
     // cours. Quand le compute se termine (et sans nouveau commit prévu),
     // on pousse l'état actuel dans l'historique.
     pub pending_commit: bool,
+    /// La density map est à recalculer (la variance a bougé). Elle part avec
+    /// le debounce du filtre : sans cela, chaque pixel de glissement d'un
+    /// curseur lancerait un calcul de density map sur toute l'image.
+    pub density_pending: bool,
 
     // Mode d'affichage
     pub view_mode: ViewMode,
@@ -225,6 +230,7 @@ impl Default for App {
             future: Vec::new(),
             last_committed: None,
             pending_commit: false,
+            density_pending: false,
             view_mode: ViewMode::Compare,
             zoom: 1.0,
             zoom_fit: true,
