@@ -2,7 +2,9 @@ use anyhow::{Context, Result};
 use clap::{Parser, ValueEnum};
 use image::{ExtendedColorType, GenericImageView, ImageEncoder, ImageReader, RgbaImage};
 use log::LevelFilter;
-use pointimg::filter::{self, Algorithm, DotShape, FilterParams, HalftoneMode, Screening};
+use pointimg::filter::{
+    self, Algorithm, Dithering, DotShape, FilterParams, HalftoneMode, Screening,
+};
 use pointimg::frontend;
 use rayon::prelude::*;
 use std::path::PathBuf;
@@ -94,9 +96,13 @@ struct Args {
     #[arg(long)]
     gamma: bool,
 
-    /// Dithering Floyd-Steinberg sur la palette quantifiée (effet "offset print")
-    #[arg(long)]
-    dithering: bool,
+    /// Dithering sur la palette quantifiée. Sans valeur : Floyd-Steinberg
+    /// (effet « offset print »). Alternatives : riemersma, bayer4, bayer8, off.
+    ///
+    /// `Option` pour que l'absence de l'option soit acceptée : avec
+    /// `num_args = 0..=1`, un type simple rendrait l'argument obligatoire.
+    #[arg(long, value_name = "MODE", num_args = 0..=1, default_missing_value = "floyd-steinberg", value_enum)]
+    dithering: Option<Dithering>,
 
     /// Aperçu rapide : sous-échantillonne l'image à WxH max avant le pipeline
     /// (préserve l'aspect ratio). Format : `--preview 200x150`.
@@ -274,7 +280,7 @@ impl Args {
             dot_shape,
             transparent,
             gamma_correct: self.gamma,
-            dithering: self.dithering,
+            dithering: self.dithering.unwrap_or_default(),
             grid_angle_deg: self.grid_angle,
             halftone,
             screening,

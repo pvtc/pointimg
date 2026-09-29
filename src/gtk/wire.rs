@@ -738,9 +738,18 @@ pub(crate) fn wire(state: &St, widgets: &Wi, window: &adw::ApplicationWindow) {
         },
         None,
     );
-    on_switch(state, widgets, &widgets.dithering, |p, on| {
-        p.dithering = on;
-    });
+    {
+        let (s, w) = clone_state_widgets(state, widgets);
+        widgets.dithering.connect_selected_notify(move |row| {
+            if s.borrow().updating {
+                return;
+            }
+            s.borrow_mut().params.dithering = sections::dithering_from_index(row.selected());
+            files::mark_preset_custom(&s, &w);
+            files::update_preset_row(&s, &w);
+            actions::on_params_changed(&s, &w);
+        });
+    }
 
     // ── Rendu ───────────────────────────────────────────────────────────────
     {

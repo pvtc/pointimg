@@ -109,6 +109,52 @@ et ce projet adhère au [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
   vérifié avant/après), ~4 % de temps et ~128 Mo de pic mémoire en moins.
   (`src/filter/mod.rs`)
 
+### Dithering : quatre algorithmes au lieu d'un
+
+- `FilterParams::dithering` passe de `bool` à un enum `Dithering` : `Off`,
+  `FloydSteinberg`, `Riemersma`, `Bayer4`, `Bayer8`. L'interrupteur des deux
+  interfaces devient une liste déroulante, le preset « Calques transparents »
+  utilise explicitement Floyd-Steinberg.
+- **Riemersma** (nouveau) : diffusion de l'erreur à queue longue le long d'une
+  ligne, 16 prises, décroissance 0,7. La file est un décalage pur — chaque part
+  d'erreur n'est versée qu'une fois, donc la moyenne est conservée. Calibré sur
+  un dégradé de 160 px : l'écart moyen entre pixels voisins passe de 127 (prise
+  unique, donc « vers » marqués) à 66, pour un motif un peu plus fondu.
+- **Bayer 4×4 et 8×8** (nouveaux) : tramage ordonné, sans diffusion d'erreur.
+  Chaque pixel arbitre entre ses deux couleurs de palette les plus proches d'après
+  le seuil de la matrice, ce qui donne le rendu « pixel art » / trame. La
+  matrice est **générée** par la règle récursive de Bayer (1973)
+  (`M(2n) = 4·M(n) + [[0, 2], [3, 1]]`) : aucune table n'est recopiée. Avec une
+  palette de deux couleurs, le résultat est un bilevel strict.
+- **CLI** : `--dithering [<MODE>]` — sans valeur, l'option vaut Floyd-Steinberg
+  (les invocations existantes fonctionnent) ; `--dithering bayer4`, `riemersma`,
+  `bayer8` ou `off` choisissent explicitement. (`src/filter/dither.rs`,
+  `src/main.rs`)
+- **Compatibilité des presets** : les fichiers 0.1 écrivent `dithering = true`,
+  qui est toujours lu comme Floyd-Steinberg ; l'écriture passe à
+  `dithering = "floyd-steinberg"`. (`src/filter/params.rs`)
+
+### Taille de l'export, mesurée pour de vrai
+
+- La barre d'état affiche désormais `Export : PNG 1.4 Mo · WebP — · JPEG 792 Ko ·
+  TIFF 32.0 Mo · BMP 24.0 Mo`, et l'infobulle du bouton d'export rappelle le gain
+  par rapport à la source (`source 3.8 Mo · PNG −63 %`). Le bénéfice central de
+  `pointimg` — la même image, beaucoup plus légère — était invisible jusqu'au
+  premier enregistrement.
+- **Les chiffres sont exacts, pas estimés** : l'image est encodée pour de vrai,
+  dans le même chemin de code que l'export (`frontend::encode_rgba_image`,
+  désormais utilisé aussi bien par la sauvegarde que par la mesure), en parallèle
+  avec rayon. Une mesure est faite sur le résultat *définitif* uniquement,
+  invalidée dès que l'utilisateur recommence à régler, et publiée hors du thread
+  de rendu. (`src/export.rs`, `src/frontend.rs`, `src/gui/exports.rs`,
+  `src/gtk/exports.rs`)
+- **WebP non mesuré au-delà de 4 Mpx** : l'export WebP est *sans perte*
+  (c'est ce que produit `image`), dont l'encodage prend alors plusieurs
+  secondes. L'interface affiche « — » plutôt qu'un chiffre inventé.
+- `frontend::save_rgba_image` n'écrit plus l'image deux fois (encodage puis
+  écriture) : l'encodage se fait une fois en mémoire, puis le remplacement
+  atomique du fichier.
+
 ### Ajouté
 
 - **`filter::estimate_memory_bytes_for(w, h, params)`** : estimation tenant

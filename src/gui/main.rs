@@ -23,6 +23,7 @@
 mod app;
 mod compute;
 mod convert;
+mod exports;
 mod format;
 mod io;
 mod prefs;
@@ -93,6 +94,8 @@ pub(crate) struct App {
     // Image source convertie en RGB8 (mise en cache, recalculée si bg_color change)
     pub src_rgb: Option<RgbImage>,
     pub src_path: Option<PathBuf>,
+    /// Taille du fichier source en octets, pour comparer l'export à l'original.
+    pub source_size: Option<u64>,
     /// Dernier dossier d'enregistrement (proposé ensuite aux dialogues).
     pub last_dir: Option<PathBuf>,
     /// Images du dossier courant, pour la navigation `←`/`→`.
@@ -165,6 +168,15 @@ pub(crate) struct App {
     /// curseur lancerait un calcul de density map sur toute l'image.
     pub density_pending: bool,
 
+    // Taille d'export, mesurée par encodage réel dans un thread de travail
+    // (cf. `exports.rs`). `export_sizes_revision` est la révision du résultat
+    // pour laquelle la mesure affichée a été faite.
+    pub export_sizes: Option<pointimg::export::ExportSizes>,
+    pub export_sizes_revision: u64,
+    pub export_sizes_generation: Arc<AtomicU64>,
+    pub export_sizes_computing: Arc<std::sync::atomic::AtomicBool>,
+    pub export_sizes_slot: Arc<Mutex<Option<pointimg::export::ExportSizes>>>,
+
     // Mode d'affichage
     pub view_mode: ViewMode,
 
@@ -231,6 +243,12 @@ impl Default for App {
             last_committed: None,
             pending_commit: false,
             density_pending: false,
+            source_size: None,
+            export_sizes: None,
+            export_sizes_revision: 0,
+            export_sizes_generation: Arc::new(AtomicU64::new(0)),
+            export_sizes_computing: Arc::new(std::sync::atomic::AtomicBool::new(false)),
+            export_sizes_slot: Arc::new(Mutex::new(None)),
             view_mode: ViewMode::Compare,
             zoom: 1.0,
             zoom_fit: true,

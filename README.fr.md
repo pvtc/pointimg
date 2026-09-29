@@ -22,7 +22,7 @@ Filtre pointilliste qui transforme une image en une composition de points color�
 - **Traitement par lot** : glob/dossier en entrée, pattern par fichier (`{n}`, `{stem}`, `{name}`)
 - **Prévisualisation rapide** : sous-échantillonnage source via `--preview WxH`
 - **Presets** : charge/sauvegarde les paramètres dans un TOML versionné (les anciens presets plats restent lisibles)
-- **Dithering Floyd-Steinberg** sur la palette quantifiée (effet offset-print)
+- **Quatre algorithmes de dithering** sur la palette quantifiée : Floyd-Steinberg, Riemersma (queue longue, moins de « vers ») et les trames ordonnées de Bayer 4×4 / 8×8 pour le rendu « pixel art » — `--dithering [MODE]`
 - **Angle de trame halftone** : rotation de la grille via `--grid-angle`
 - **Rosette CMJN** & **halftone N couleurs dominantes** (`--halftone cmyk|dominant-N`) — mélange soustractif multiply, screening AM (grille rotationée) ou FM (blue noise stochastique)
 - **Formats de sortie** : PNG/JPEG/BMP/TIFF/WebP par défaut ; AVIF via `--features avif`
@@ -115,8 +115,11 @@ pointimg -i "photos/*.jpg" -o "out/{stem}_{n}.png" --algorithm grid --cols 50
 # Prévisualisation rapide (sous-échantillonnage source)
 pointimg -i big.jpg -o preview.png --preview 300x300
 
-# Palette + dithering Floyd-Steinberg
+# Palette + dithering Floyd-Steinberg (--dithering seul)
 pointimg -i photo.jpg -o result.png --palette 8 --dithering
+
+# Palette + trame de Bayer (rendu « pixel art »)
+pointimg -i photo.jpg -o result.png --palette 2 --dithering bayer8
 
 # Angle de trame halftone (Grille)
 pointimg -i photo.jpg -o result.png --algorithm grid --cols 60 --grid-angle 30
@@ -173,6 +176,13 @@ Les deux interfaces (egui et GTK4) offrent les mêmes capacités :
 - **Presets intégrés** : une liste de points de départ validés (pointillisme
   classique, stippling fin, aplats graphiques, rosette CMJN, trame FM, moiré,
   mosaïque, pastilles, calques transparents) en plus des fichiers TOML.
+- **Quatre algorithms de dithering** pour la palette réduite : Floyd-Steinberg,
+  Riemersma (queue longue, moins de « vers ») et les trames ordonnées de
+  Bayer 4×4 / 8×8 pour le rendu « pixel art ». Avec deux couleurs, Bayer
+  donne un bilevel strict.
+- **Taille de l'export mesurée** : la barre d'état annonce le poids réel de
+  chaque format (obtenu en encodant le rendu, pas par estimation) et le gain
+  par rapport au fichier source — `source 3,8 Mo · PNG −63 %`.
 - **Réglages en saisie directe** : chaque valeur est modifiable au clavier, avec
   les plages réelles acceptées par le moteur (jusqu'à 100 000 points, 8 192
   colonnes, 256 couleurs de palette), et doublée d'un curseur pour les plages

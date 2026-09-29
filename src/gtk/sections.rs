@@ -5,7 +5,7 @@ use std::rc::Rc;
 
 use adw::prelude::*;
 
-use pointimg::filter::{Algorithm, DotShape, FilterParams, HalftoneMode, Screening};
+use pointimg::filter::{Algorithm, Dithering, DotShape, FilterParams, HalftoneMode, Screening};
 use pointimg::frontend::{Quality, view_index};
 
 use crate::State;
@@ -28,6 +28,28 @@ pub(crate) fn algorithm_from_index(i: u32) -> Algorithm {
         2 => Algorithm::Voronoi,
         3 => Algorithm::Quadtree,
         _ => Algorithm::Halftone,
+    }
+}
+
+/// Position de l'algorithme de dithering dans la liste déroulante.
+pub(crate) fn dithering_index(dithering: Dithering) -> u32 {
+    match dithering {
+        Dithering::Off => 0,
+        Dithering::FloydSteinberg => 1,
+        Dithering::Riemersma => 2,
+        Dithering::Bayer4 => 3,
+        Dithering::Bayer8 => 4,
+    }
+}
+
+/// Algorithme correspondant à une position de liste déroulante.
+pub(crate) fn dithering_from_index(index: u32) -> Dithering {
+    match index {
+        1 => Dithering::FloydSteinberg,
+        2 => Dithering::Riemersma,
+        3 => Dithering::Bayer4,
+        4 => Dithering::Bayer8,
+        _ => Dithering::Off,
     }
 }
 
@@ -159,7 +181,7 @@ pub(crate) fn sync_widgets(state: &Rc<RefCell<State>>, widgets: &Rc<Widgets>) {
     if let Some(n) = p.palette_size {
         widgets.palette_size.adjustment().set_value(n as f64);
     }
-    widgets.dithering.set_active(p.dithering);
+    widgets.dithering.set_selected(dithering_index(p.dithering));
     widgets.use_seed.set_active(p.rng_seed.is_some());
     if let Some(seed) = p.rng_seed {
         widgets.seed.set_value(seed as f64);

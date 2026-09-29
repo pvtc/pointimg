@@ -20,6 +20,7 @@
 mod actions;
 mod compare;
 mod controls;
+mod exports;
 mod files;
 mod preview;
 mod sections;
@@ -38,6 +39,7 @@ use gtk::glib;
 use gtk::prelude::*;
 
 use image::{DynamicImage, GrayImage, RgbImage, RgbaImage};
+use pointimg::export::ExportSizes;
 use pointimg::filter::{Dot, FilterParams};
 use pointimg::frontend::{Quality, ViewMode};
 
@@ -73,6 +75,11 @@ pub(crate) enum Msg {
         /// Échelle de l'image utilisée (la density map en dépend).
         scale: f32,
     },
+    /// Tailles d'export mesurées (encodage réel, hors thread principal).
+    ExportSizes {
+        generation: u64,
+        sizes: ExportSizes,
+    },
 }
 
 /// État applicatif partagé entre les modules.
@@ -94,6 +101,16 @@ pub(crate) struct State {
 
     pub result: Option<RgbaImage>,
     pub last_dots: Option<Vec<Dot>>,
+    /// Taille du fichier source en octets (référence de la taille d'export).
+    pub source_size: Option<u64>,
+    /// Taille d'export mesurée par encodage réel, et son état de calcul.
+    /// (cf. `exports.rs`)
+    pub export_sizes: Option<ExportSizes>,
+    /// Révision du résultat : la mesure d'export est refaite quand elle change.
+    pub result_revision: u64,
+    pub export_sizes_revision: u64,
+    pub export_sizes_generation: Arc<AtomicU64>,
+    pub export_sizes_computing: Arc<AtomicBool>,
     pub density_image: Option<GrayImage>,
     pub density_data: Option<Arc<Vec<f32>>>,
     /// Échelle à laquelle `density_data` a été calculée : la density map
@@ -151,6 +168,12 @@ impl State {
             src_dynamic: None,
             src_rgb: None,
             src_path: None,
+            source_size: None,
+            export_sizes: None,
+            result_revision: 0,
+            export_sizes_revision: 0,
+            export_sizes_generation: Arc::new(AtomicU64::new(0)),
+            export_sizes_computing: Arc::new(AtomicBool::new(false)),
             last_dir: None,
             folder_images: Vec::new(),
             folder_index: None,

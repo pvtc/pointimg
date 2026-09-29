@@ -66,11 +66,11 @@ pub(crate) fn render(src: &RgbImage, dots: &[Dot], params: &FilterParams) -> Rgb
     let mut dst = RgbImage::from_pixel(w, h, Rgb(bg_rgb));
 
     // Si palette + dithering, on garde les couleurs moyennes originales des dots
-    // et on post-quantifie l'image rendue via Floyd-Steinberg.
+    // et on post-quantifie l'image rendue avec l'algorithme choisi.
     let quantized: Vec<Dot>;
     let palette_centers: Vec<[u8; 3]>;
     let (dots_to_draw, dither_palette): (&[Dot], &[[u8; 3]]) = match params.palette_size {
-        Some(n_colors) if params.dithering => {
+        Some(n_colors) if params.dithering.is_on() => {
             let n = n_colors.max(2);
             palette_centers = quantize_palette_centers(dots, n);
             (dots, &palette_centers[..])
@@ -89,7 +89,7 @@ pub(crate) fn render(src: &RgbImage, dots: &[Dot], params: &FilterParams) -> Rgb
     draw_sorted_bands_rgb(&mut dst, &sorted, params.dot_shape);
 
     if !dither_palette.is_empty() {
-        crate::filter::dither::floyd_steinberg(&mut dst, dither_palette);
+        crate::filter::dither::apply(&mut dst, dither_palette, params.dithering);
     }
     dst
 }
@@ -462,7 +462,7 @@ pub fn render_rgba(src: &RgbImage, dots: &[Dot], params: &FilterParams) -> RgbaI
     let quantized: Vec<Dot>;
     let palette_centers: Vec<[u8; 3]>;
     let (dots_to_draw, dither_palette): (&[Dot], &[[u8; 3]]) = match params.palette_size {
-        Some(n_colors) if params.dithering => {
+        Some(n_colors) if params.dithering.is_on() => {
             palette_centers = quantize_palette_centers(dots, n_colors.max(2));
             (dots, &palette_centers)
         }
@@ -479,12 +479,12 @@ pub fn render_rgba(src: &RgbImage, dots: &[Dot], params: &FilterParams) -> RgbaI
     draw_sorted_bands_rgba(&mut dst, &sorted, params.dot_shape);
 
     if !dither_palette.is_empty() {
-        // Floyd-Steinberg travaille sur RGB ; l'alpha déjà calculé est conservé.
+        // Le dithering travaille sur RGB ; l'alpha déjà calculé est conservé.
         let mut rgb = RgbImage::from_fn(w, h, |x, y| {
             let p = dst.get_pixel(x, y);
             Rgb([p[0], p[1], p[2]])
         });
-        crate::filter::dither::floyd_steinberg(&mut rgb, dither_palette);
+        crate::filter::dither::apply(&mut rgb, dither_palette, params.dithering);
         for (x, y, pixel) in rgb.enumerate_pixels() {
             if dst.get_pixel(x, y)[3] != 0 {
                 let out = dst.get_pixel_mut(x, y);

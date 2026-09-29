@@ -106,7 +106,7 @@ fn bench_rgba_palette_dither(c: &mut Criterion) {
         algorithm: Algorithm::Grid,
         cols: 60,
         palette_size: Some(8),
-        dithering: true,
+        dithering: pointimg::filter::Dithering::FloydSteinberg,
         transparent: true,
         ..FilterParams::default()
     };

@@ -135,6 +135,10 @@ impl App {
                 self.src_dynamic = Some(img);
                 self.src_rgb = Some(rgb);
                 self.src_path = Some(path.clone());
+                // Taille du fichier d'origine : c'est la référence contre
+                // laquelle la taille de l'export est comparée.
+                self.source_size = std::fs::metadata(&path).ok().map(|meta| meta.len());
+                self.export_sizes = None;
                 self.src_texture = None;
                 self.result_texture = None;
                 *self.result.lock().unwrap_or_else(|e| e.into_inner()) = None;

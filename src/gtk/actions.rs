@@ -220,6 +220,9 @@ pub(crate) fn load_image(path: PathBuf, state: &Rc<RefCell<State>>, widgets: &Rc
                 st.src_dynamic = Some(img);
                 st.src_rgb = Some(rgb);
                 st.src_path = Some(path.clone());
+                // Taille du fichier d'origine : référence de la taille d'export.
+                st.source_size = std::fs::metadata(&path).ok().map(|meta| meta.len());
+                st.export_sizes = None;
                 st.src_texture = None;
                 st.result = None;
                 st.result_texture = None;
@@ -612,6 +615,7 @@ pub(crate) fn handle_message(msg: Msg, state: &Rc<RefCell<State>>, widgets: &Rc<
                 st.result_is_final = full_resolution;
                 st.final_pass = false;
                 st.last_compute_ms = Some(elapsed_ms);
+                st.result_revision += 1;
                 st.status = if full_resolution {
                     "Calcul terminé.".to_string()
                 } else {
@@ -626,6 +630,10 @@ pub(crate) fn handle_message(msg: Msg, state: &Rc<RefCell<State>>, widgets: &Rc<
             preview::apply_zoom(state, widgets);
             preview::refresh_compare(state, widgets);
             preview::refresh_actions(state, widgets);
+            // Taille d'export : uniquement sur le rendu définitif. Le worker
+            // publiera son résultat par le canal.
+            let tx = state.borrow().tx.clone();
+            crate::exports::refresh(state, &tx);
             preview::update_status_labels(state, widgets);
             maybe_restart(state, widgets);
             if !full_resolution {
@@ -679,6 +687,22 @@ pub(crate) fn handle_message(msg: Msg, state: &Rc<RefCell<State>>, widgets: &Rc<
             }
             preview::refresh_density_texture(state, widgets);
             preview::apply_zoom(state, widgets);
+        }
+        Msg::ExportSizes { generation, sizes } => {
+            if state
+                .borrow()
+                .export_sizes_generation
+                .load(Ordering::Acquire)
+                != generation
+            {
+                return;
+            }
+            {
+                let mut st = state.borrow_mut();
+                st.export_sizes = Some(sizes);
+                st.export_sizes_computing.store(false, Ordering::Release);
+            }
+            preview::update_status_labels(state, widgets);
         }
     }
 }

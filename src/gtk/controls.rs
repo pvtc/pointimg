@@ -253,7 +253,7 @@ pub(crate) struct Widgets {
     pub polygon_sides: adw::SpinRow,
     pub use_palette: adw::SwitchRow,
     pub palette_size: adw::SpinRow,
-    pub dithering: adw::SwitchRow,
+    pub dithering: adw::ComboRow,
 
     // ── Rendu ────────────────────────────────────────────────────────────────
     pub bg_button: gtk::ColorDialogButton,
@@ -277,6 +277,7 @@ pub(crate) struct Widgets {
     pub zoom_one: gtk::ToggleButton,
     pub zoom_fit: gtk::ToggleButton,
     pub busy: gtk::Spinner,
+    pub export_sizes: gtk::Label,
     pub busy_label: gtk::Label,
     pub quality_badge: gtk::Label,
 
@@ -524,9 +525,18 @@ pub(crate) fn build() -> (adw::ToastOverlay, Rc<Widgets>) {
         1.0,
         0,
     );
-    let dithering = switch_row(
-        "Dithering Floyd-Steinberg",
-        "Diffusion d'erreur sur la palette : conserve les dégradés",
+    // Le dithering est devenu un choix d'algorithme : l'interrupteur ne
+    // suffisait plus à distinguer Floyd-Steinberg, Riemersma et Bayer.
+    let dithering = combo_row(
+        "Dithering",
+        &[
+            "Aucun",
+            "Floyd-Steinberg",
+            "Riemersma",
+            "Bayer 4×4",
+            "Bayer 8×8",
+        ],
+        Some("Tramage de la palette quantifiée"),
     );
 
     let color_dialog = gtk::ColorDialog::builder()
@@ -597,6 +607,7 @@ pub(crate) fn build() -> (adw::ToastOverlay, Rc<Widgets>) {
 
     let empty_page = adw::StatusPage::new();
     let memory = gtk::Label::new(None);
+    let export_sizes = gtk::Label::new(None);
     let timing = gtk::Label::new(None);
     let status = gtk::Label::new(None);
 
@@ -860,7 +871,7 @@ pub(crate) fn build() -> (adw::ToastOverlay, Rc<Widgets>) {
     status_bar.set_margin_bottom(6);
     status_bar.set_margin_start(12);
     status_bar.set_margin_end(12);
-    for label in [&memory, &timing] {
+    for label in [&memory, &export_sizes, &timing] {
         label.set_xalign(0.0);
         label.add_css_class("dim-label");
         status_bar.append(label);
@@ -952,6 +963,7 @@ pub(crate) fn build() -> (adw::ToastOverlay, Rc<Widgets>) {
         zoom_one,
         zoom_fit,
         busy,
+        export_sizes,
         busy_label,
         quality_badge,
         src_pane,

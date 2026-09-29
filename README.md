@@ -22,7 +22,7 @@ A pointillist filter that transforms images into compositions of colored dots of
 - **Batch processing**: glob/directory input, per-file output pattern (`{n}`, `{stem}`, `{name}`)
 - **Fast preview**: downscale source before pipeline via `--preview WxH`
 - **Presets**: load/save versioned `FilterParams` as TOML (legacy flat presets remain readable)
-- **Floyd-Steinberg dithering** on quantized palette (offset-print look)
+- **Four dithering algorithms** on the quantized palette: Floyd-Steinberg, Riemersma (long tail, fewer worms) and ordered Bayer 4×4 / 8×8 screens for the pixel-art look — `--dithering [MODE]`
 - **Halftone screen angle**: rotate the Grid lattice via `--grid-angle`
 - **CMYK rosette** & **N-colors dominant** halftone (`--halftone cmyk|dominant-N`) — true ink-over-ink multiply compositing, AM rotating-screen or FM stochastic-blue-noise screening
 - **Output formats**: PNG/JPEG/BMP/TIFF/WebP by default; AVIF via `--features avif`
@@ -111,8 +111,11 @@ pointimg -i "photos/*.jpg" -o "out/{stem}_{n}.png" --algorithm grid --cols 50
 # Fast preview (downscale source first)
 pointimg -i big.jpg -o preview.png --preview 300x300
 
-# Palette + Floyd-Steinberg dithering
+# Palette + Floyd-Steinberg dithering (--dithering alone)
 pointimg -i photo.jpg -o result.png --palette 8 --dithering
+
+# Palette + ordered Bayer screen (pixel-art look)
+pointimg -i photo.jpg -o result.png --palette 2 --dithering bayer8
 
 # Halftone screen angle (Grid)
 pointimg -i photo.jpg -o result.png --algorithm grid --cols 60 --grid-angle 30
@@ -169,6 +172,9 @@ Both front-ends (egui and GTK4) offer the same capabilities:
 - **Built-in presets**: a list of validated starting points (classic
   pointillism, fine stippling, flat graphic colors, CMYK rosette, FM screen,
   moiré, mosaic, dots, transparent overlays) on top of TOML files.
+- **Measured export size**: the status bar reports the real weight of every
+  format (obtained by encoding the render, not estimated) and the gain over the
+  source file — `source 3.8 MB · PNG −63 %`.
 - **Typed values**: every setting can be typed, with the ranges the engine
   actually accepts (up to 100,000 points, 8,192 columns, 256 palette colors), and
   the wide ones also have a slider (point count, radii — including a “min / max”

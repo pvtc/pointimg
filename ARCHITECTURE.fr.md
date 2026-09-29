@@ -649,6 +649,11 @@ réappliqué dès la première frame.
   plage. egui choisit sinon une précision selon la distance du pointeur au bord
   de l'écran, et réécrivait la saisie à la perte de focus quand elle était plus
   grossière.
+- **Taille d'export** (`src/gui/exports.rs`) : la mesure encode réellement
+  l'image (cf. `export`), donc elle part dans un thread et revient par un
+  emplacement partagé (`export_sizes_slot`), invalidé par un compteur de
+  génération. Elle ne se déclenche que sur le résultat *définitif* — une taille
+  d'aperçu ne voudrait rien dire.
 - **Curseurs** (`src/gui/sliders.rs`) : `slider_row` délègue à `egui::Slider`
   (logarithme pour les plages larges), `range_slider` dessine un curseur à deux
   poignées pour les paires de bornes, avec deux zones de saisie disjointes
@@ -690,13 +695,57 @@ State (Rc<RefCell<..>>) + Widgets    filter::apply_with_progress(…, publish)
   d'un `AdwActionRow` n'est pas extensible : la rangée de curseur est donc une
   `ActionRow` sans titre, à droite de laquelle le curseur s'aligne — et c'est
   elle qu'il faut masquer quand le réglage doublé disparaît, pas le curseur seul.
+- **Taille d'export** (`exports.rs`) : le worker encode le rendu et publie
+  `Msg::ExportSizes` sur le canal existant — seule la boucle GTK touche un
+  widget, et l'étiquette est rafraîchie depuis le handler. GTK n'a pas d'endroit
+  où sonder un mutex.
 - **`commit_value_change`** (`wire.rs`) est le point de sortie commun des
   `SpinRow` et des curseurs : il compare `params` avant/après avant de
   planifier un recalcul (GTK réémet `value-changed` au retrait du focus, avec la
   valeur ré-analysée du champ) et resynchronise les widgets quand la valeur
   venait d'un curseur.
 
-## 11. Export SVG
+## 10.4 Dithering (`src/filter/dither.rs`)
+
+Quatre algorithmes de quantification de palette, choisis par
+`FilterParams::dithering` :
+
+- `Off` : couleur la plus proche, sans motif.
+- `FloydSteinberg` : diffusion de l'erreur vers quatre voisins — la méthode
+  historique, et la seule qui propagait l'erreur avant cette section.
+- `Riemersma` : file de `taps` pixels le long de la ligne, poids géométriques de
+  somme 1. Chaque part n'est versée **qu'une fois** (décalage pur, pas de
+  réinjection de l'erreur en attente) : la moyenne est donc conservée exactement.
+  `RIEMERSMA_DECAY` est calibré sur un dégradé de 160 px de large — à 0,7,
+  l'écart moyen entre pixels voisins passe de 127 à 66, ce qui est le compromis
+  habituel de Riemersma.
+- `Bayer4` / `Bayer8` : tramage ordonné, sans diffusion. Le pixel arbitre entre
+  ses deux couleurs de palette les plus proches d'après le seuil de la matrice à
+  sa position, projeté sur le segment qui les relie. La matrice est **générée**
+  par `M(2n) = 4·M(n) + [[0, 2], [3, 1]]` (Bayer, 1973), jamais recopiée.
+
+Sérialisation : `dithering = "bayer4"`. Les presets 0.1 écrivent
+`dithering = true` ; `deserialize_dithering` accepte booléen *et* nom, donc
+aucun fichier existant ne devient illisible. Côté CLI, `--dithering` sans
+valeur vaut Floyd-Steinberg (`Option<Dithering>` + `default_missing_value` :
+avec `num_args = 0..=1`, un type simple rendrait l'argument obligatoire).
+
+## 11. Taille de l'export (`src/export.rs`)
+
+Aucune formule ne donne la taille d'un PNG ou d'un WebP de façon fiable : elle
+dépend de l'entropie du rendu. `measure_export_sizes` encode donc réellement
+l'image, par format et en parallèle (rayon), via le **même** chemin que
+l'export — `frontend::encode_rgba_extension`, utilisé aussi bien par
+`save_rgba_image` que par la mesure. Un test vérifie que la taille annoncée est
+celle du fichier réellement écrit.
+
+Deux garde-fous : la mesure ne porte que sur le résultat définitif (invalidée
+par génération quand l'utilisateur recommence à régler), et le WebP — *sans
+perte*, donc lent à encoder — n'est pas mesuré au-delà de
+`export::WEBP_MEASURE_LIMIT` (4 Mpx) ; l'interface affiche alors « — » plutôt
+qu'un chiffre inventé.
+
+## 12. Export SVG
 
 `render_svg_from_dots(w, h, dots, params) -> Result<String>`
 
@@ -720,7 +769,7 @@ pub fn render_svg_dynamic(src: &DynamicImage, params: &FilterParams) -> Result<S
 
 ---
 
-## 12. Outils de qualité
+## 13. Outils de qualité
 
 ### Disponibles immédiatement
 

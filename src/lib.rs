@@ -40,5 +40,6 @@
 #![warn(missing_docs)]
 
 pub mod color;
+pub mod export;
 pub mod filter;
 pub mod frontend;

@@ -269,7 +269,7 @@ fn rgba_palette_dithering_matches_rgb_when_background_is_opaque() {
         algorithm: Algorithm::Grid,
         cols: 8,
         palette_size: Some(4),
-        dithering: true,
+        dithering: pointimg::filter::Dithering::FloydSteinberg,
         transparent: false,
         ..FilterParams::default()
     };
@@ -319,7 +319,7 @@ fn filter_params_toml_round_trip_preserves_fields() {
         dot_shape: pointimg::filter::DotShape::RegularPolygon { sides: 5 },
         transparent: true,
         gamma_correct: true,
-        dithering: false,
+        dithering: pointimg::filter::Dithering::Off,
         grid_angle_deg: 0.0,
         halftone: pointimg::filter::HalftoneMode::Off,
         screening: pointimg::filter::Screening::Am,

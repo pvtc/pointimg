@@ -806,6 +806,10 @@ to egui's `ThemePreference::System`, which is reapplied on the first frame.
   `DragValue` to the number of decimals of its value and its range. egui
   otherwise picks a precision from the pointer's distance to the screen edge,
   and rewrote the text on focus loss whenever that was coarser.
+- **Export size** (`src/gui/exports.rs`): the measurement encodes the real
+  image (see `export`), so it runs in a thread and comes back through a shared
+  slot (`export_sizes_slot`), invalidated by a generation counter. It only runs
+  on the *final* result — the size of a preview would mean nothing.
 - **Sliders** (`src/gui/sliders.rs`): `slider_row` delegates to `egui::Slider`
   (logarithmic on wide ranges), `range_slider` draws a two-handle slider for
   bound pairs, with two disjoint interaction zones split halfway between the
@@ -849,8 +853,49 @@ State (Rc<RefCell<..>>) + Widgets     filter::apply_with_progress(…, publish)
   and sliders: it compares `params` before/after before scheduling a recompute
   (GTK re-emits `value-changed` on focus loss, with the re-parsed entry value)
   and re-syncs the widgets when the value came from a slider.
+- **Export size** (`exports.rs`): the worker encodes the render and publishes
+  `Msg::ExportSizes` on the existing channel — only the GTK loop ever touches a
+  widget, and the label is refreshed from the handler. GTK has no place to poll a
+  mutex from.
 
-## 11. SVG Export
+## 10.4 Dithering (`src/filter/dither.rs`)
+
+Four palette-quantization algorithms, selected by `FilterParams::dithering`:
+
+- `Off`: nearest color, no pattern.
+- `FloydSteinberg`: error diffusion to four neighbours — the historical method,
+  and the only one that propagated error before this section.
+- `Riemersma`: a `taps`-pixel queue along the scanline with geometric weights
+  summing to 1. Each share is paid out **once** (a pure shift, no re-injection of
+  the error still queued), so the mean is preserved exactly. `RIEMERSMA_DECAY` is
+  calibrated on a 160 px wide gradient — at 0.7, the mean jump between adjacent
+  pixels drops from 127 to 66, the usual Riemersma trade-off.
+- `Bayer4` / `Bayer8`: ordered dithering, no diffusion. Each pixel picks between
+  its two nearest palette colors from the matrix threshold at its position,
+  projected on the segment joining them. The matrix is **generated** with
+  `M(2n) = 4·M(n) + [[0, 2], [3, 1]]` (Bayer, 1973), never copied.
+
+Serialization: `dithering = "bayer4"`. 0.1 presets wrote `dithering = true`, so
+`deserialize_dithering` accepts both a boolean and a name — no existing file
+becomes unreadable. On the CLI, `--dithering` with no value means
+Floyd-Steinberg (`Option<Dithering>` + `default_missing_value`: with
+`num_args = 0..=1`, a plain type would make the argument mandatory).
+
+## 11. Export Size (`src/export.rs`)
+
+No formula gives the size of a PNG or WebP reliably: it depends on the entropy
+of the render. `measure_export_sizes` therefore encodes the real image, per
+format and in parallel (rayon), through the **same** path as the export —
+`frontend::encode_rgba_extension`, used by both `save_rgba_image` and the
+measurement. A test checks that the announced size is the one of the file
+actually written.
+
+Two safeguards: the measurement only ever runs on the final result (invalidated
+by generation as soon as the user touches a setting again), and WebP — *lossless*,
+hence slow to encode — is not measured above `export::WEBP_MEASURE_LIMIT`
+(4 Mpx); the interface then shows “—” instead of an invented number.
+
+## 12. SVG Export
 
 `render_svg_from_dots(w, h, dots, params) -> Result<String>`
 
@@ -874,7 +919,7 @@ pub fn render_svg_dynamic(src: &DynamicImage, params: &FilterParams) -> Result<S
 
 ---
 
-## 12. Quality Tools
+## 13. Quality Tools
 
 ### Available immediately
 

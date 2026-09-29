@@ -501,6 +501,26 @@ pub(crate) fn update_status_labels(state: &Rc<RefCell<State>>, widgets: &Rc<Widg
     widgets
         .memory
         .set_tooltip_text(Some("Pic mémoire estimé pour le calcul en cours."));
+    // Taille d'export : mesurée par encodage réel du rendu définitif.
+    let sizes = crate::exports::sizes_label(state);
+    widgets.export_sizes.set_text(&sizes);
+    if let Some(comparison) = crate::exports::comparison(state) {
+        widgets.export_sizes.set_tooltip_text(Some(&format!(
+            "{comparison}\nTailles obtenues en encodant réellement le rendu dans \
+             chaque format.\n« — » : format non mesuré (image trop grande pour un WebP \
+             sans perte)."
+        )));
+    } else {
+        widgets.export_sizes.set_tooltip_text(None);
+    }
+    // L'infobulle du menu d'export annonce la taille avant même de l'ouvrir.
+    if let Some(comparison) = crate::exports::comparison(state) {
+        widgets
+            .export
+            .set_tooltip_text(Some(&format!("Exporter le rendu.\n{comparison}")));
+    } else {
+        widgets.export.set_tooltip_text(None);
+    }
     widgets.timing.set_text(timing.as_deref().unwrap_or(""));
     widgets.status.set_text(&status);
 }

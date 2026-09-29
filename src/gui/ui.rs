@@ -11,10 +11,11 @@ use std::sync::atomic::Ordering;
 use std::time::{Duration, Instant};
 
 use pointimg::filter;
-use pointimg::filter::{Algorithm, DotShape, HalftoneMode, Screening};
+use pointimg::filter::{Algorithm, Dithering, DotShape, HalftoneMode, Screening};
 
 use super::App;
 use super::convert::{gray_to_color_image, rgb_to_color_image, rgba_to_color_image_checker};
+use super::exports;
 use super::format::format_duration;
 use super::sliders::{display_decimals, int_slider_row, range_slider, slider_row};
 use pointimg::frontend::{Curve, Quality, ViewMode, sample_image, view_from_index, view_index};
@@ -124,6 +125,9 @@ impl eframe::App for App {
 
         let computing = self.computing.load(Ordering::Relaxed);
         self.finish_pending_compute(computing);
+        // Taille d'export : relancée à chaque résultat définitif, invalidée
+        // dès que l'utilisateur revient à régler l'image.
+        self.refresh_export_sizes(&ctx);
         self.sync_window_title(&ctx);
 
         // L'ordre compte : le panneau du bas doit être réservé avant le
@@ -407,6 +411,16 @@ impl App {
             .unwrap_or_else(|e| e.into_inner())
             .is_some()
             || self.src_rgb.is_some();
+        // L'infobulle du bouton d'export annonce la taille obtenue, pour éviter
+        // d'ouvrir le dialogue juste pour la découvrir.
+        let export_hint = match self
+            .poll_export_sizes()
+            .as_ref()
+            .and_then(exports::export_comparison)
+        {
+            Some(comparison) => format!("Exporter l'image (Ctrl+S)\n{comparison}"),
+            None => "Exporter l'image (Ctrl+S)".to_string(),
+        };
 
         egui::Panel::top("view_bar").show(ui, |ui| {
             ui.add_space(4.0);
@@ -465,7 +479,7 @@ impl App {
                 ui.separator();
                 if ui
                     .add_enabled(has_final, egui::Button::new("Exporter l'image…"))
-                    .on_hover_text("Exporter l'image (Ctrl+S)")
+                    .on_hover_text(export_hint)
                     .clicked()
                 {
                     self.choose_export();
@@ -791,12 +805,7 @@ impl App {
             if number_row(ui, "Couleurs", &mut value, 2.0..=256.0).changed() {
                 *size = value.round().max(2.0) as usize;
             }
-            ui.checkbox(
-                &mut self.params.dithering,
-                egui::RichText::new("Dithering Floyd-Steinberg").size(13.0),
-            )
-            .on_hover_text("Diffusion d'erreur sur la palette : conserve les dégradés")
-            .changed();
+            show_dithering_selector(ui, &mut self.params.dithering);
         }
     }
 
@@ -1379,6 +1388,14 @@ impl App {
         let quick = !self.quality.is_full() && self.src_rgb.is_some();
         let quick_stale = stale;
         let status = self.status.clone();
+        // Taille d'export : mesurée sur le résultat définitif, encodage réel.
+        let sizes = self.poll_export_sizes();
+        let sizes_label = sizes
+            .as_ref()
+            .map(exports::export_sizes_line)
+            .unwrap_or_default();
+        let sizes_comparison = sizes.as_ref().and_then(exports::export_comparison);
+        let sizes_measuring = self.export_sizes_computing.load(Ordering::Relaxed);
         egui::Panel::bottom("status_bar").show(ui, |ui| {
             ui.horizontal_wrapped(|ui| {
                 if computing {
@@ -1396,6 +1413,20 @@ impl App {
                     ui.label(&status);
                 }
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                    if !sizes_label.is_empty() {
+                        let label = ui.small(format!("Export : {sizes_label}"));
+                        if let Some(comparison) = &sizes_comparison {
+                            label.on_hover_text(format!(
+                                "{comparison}\n\
+                                 Tailles obtenues en encodant réellement le rendu dans \
+                                 chaque format.\n\
+                                 « — » : format non mesuré (image trop grande pour un \
+                                 WebP sans perte)."
+                            ));
+                        }
+                    } else if sizes_measuring {
+                        ui.small("Export : mesure…");
+                    }
                     if quick && quick_stale {
                         ui.small("pleine résolution…");
                     } else if quick {
@@ -1534,6 +1565,50 @@ fn number_row_with_hint(
         .on_hover_text(tooltip)
     })
     .inner
+}
+
+/// Sélecteur d'algorithme de dithering, avec l'aide correspondant à chacun.
+fn show_dithering_selector(ui: &mut egui::Ui, dithering: &mut Dithering) {
+    const CHOICES: [(Dithering, &str, &str); 5] = [
+        (Dithering::Off, "Aucun", "Palette franche, sans motif"),
+        (
+            Dithering::FloydSteinberg,
+            "Floyd-Steinberg",
+            "Diffusion de l'erreur : dégradés préservés, motif légèrement « verreux »",
+        ),
+        (
+            Dithering::Riemersma,
+            "Riemersma",
+            "Diffusion à queue longue : moins de vers, motif plus lisse",
+        ),
+        (
+            Dithering::Bayer4,
+            "Bayer 4×4",
+            "Tramage ordonné : rendu « pixel art », sans diffusion d'erreur",
+        ),
+        (
+            Dithering::Bayer8,
+            "Bayer 8×8",
+            "Tramage ordonné plus fin : motif de trame 8×8",
+        ),
+    ];
+    let (label, hint) = CHOICES
+        .iter()
+        .find(|(mode, _, _)| mode == dithering)
+        .map(|(_, label, hint)| (*label, *hint))
+        .unwrap_or(("Inconnu", ""));
+    ui.horizontal(|ui| {
+        ui.label(egui::RichText::new("Dithering").size(13.0));
+        let response = egui::ComboBox::from_id_salt("dithering_combo")
+            .selected_text(label)
+            .show_ui(ui, |ui| {
+                for (mode, name, help) in CHOICES {
+                    ui.selectable_value(dithering, mode, name)
+                        .on_hover_text(help);
+                }
+            });
+        response.response.on_hover_text(hint);
+    });
 }
 
 /// Ligne « libellé + saisie directe + curseur » pour un réglage entier : la

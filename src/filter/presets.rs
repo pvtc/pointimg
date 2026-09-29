@@ -6,6 +6,7 @@
 //! quelles valeurs donnent un rendu agréable. Ces presets sont des points de
 //! départ validés, exposés à la CLI comme aux deux interfaces.
 
+use super::dither::Dithering;
 use super::halftone::{HalftoneMode, Screening};
 use super::params::{Algorithm, DotShape, FilterParams};
 
@@ -74,7 +75,7 @@ pub fn builtin_presets() -> Vec<BuiltinPreset> {
                 min_radius_ratio: 0.006,
                 max_radius_ratio: 0.09,
                 palette_size: Some(8),
-                dithering: true,
+                dithering: Dithering::FloydSteinberg,
                 ..FilterParams::default()
             },
         ),

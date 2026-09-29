@@ -33,6 +33,7 @@ mod util;
 pub use density::{
     compute_density_image, compute_density_map, compute_density_map_cpu, density_to_image,
 };
+pub use dither::Dithering;
 pub use halftone::{HalftoneMode, Screening};
 
 /// Erreur retournée quand le calcul a été interrompu via le token `cancel`.

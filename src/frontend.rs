@@ -10,6 +10,7 @@
 
 use crate::filter::FilterParams;
 use image::{RgbImage, RgbaImage};
+use std::io::Cursor;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
 
@@ -208,6 +209,25 @@ pub fn format_memory(bytes: u64) -> String {
     }
 }
 
+/// Formate une taille de fichier avec la précision utile : « 381 Ko »,
+/// « 2,1 Mo ». [`format_memory`] reste en unités entières pour les estimations
+/// de mémoire, où le chiffre est de toute façon approximatif.
+pub fn format_bytes(bytes: u64) -> String {
+    const KO: f64 = 1024.0;
+    const MO: f64 = 1024.0 * 1024.0;
+    const GO: f64 = 1024.0 * 1024.0 * 1024.0;
+    let value = bytes as f64;
+    if value >= GO {
+        format!("{:.1} Go", value / GO)
+    } else if value >= MO {
+        format!("{:.1} Mo", value / MO)
+    } else if value >= KO {
+        format!("{:.0} Ko", value / KO)
+    } else {
+        format!("{bytes} o")
+    }
+}
+
 /// Vrai si la génération de worker attendue est toujours la génération courante.
 pub fn generation_is_current(generation: &AtomicU64, expected: u64) -> bool {
     generation.load(Ordering::Acquire) == expected
@@ -375,6 +395,20 @@ where
     Ok(())
 }
 
+/// Écrit des octets via un fichier temporaire puis un remplacement atomique.
+pub fn atomic_bytes_write(path: &Path, bytes: &[u8]) -> image::ImageResult<()> {
+    let tmp = temporary_path(path);
+    if let Err(error) = std::fs::write(&tmp, bytes) {
+        let _ = std::fs::remove_file(&tmp);
+        return Err(image::ImageError::IoError(error));
+    }
+    if let Err(error) = replace_file(&tmp, path) {
+        let _ = std::fs::remove_file(&tmp);
+        return Err(image::ImageError::IoError(error));
+    }
+    Ok(())
+}
+
 /// Écrit du texte via un fichier temporaire puis un remplacement atomique.
 pub fn atomic_text_write(path: &Path, contents: &str) -> std::io::Result<()> {
     let tmp = temporary_path(path);
@@ -400,17 +434,78 @@ pub fn save_rgba_image(
     transparent: bool,
     bg: [u8; 3],
 ) -> image::ImageResult<()> {
-    atomic_image_save(path, |tmp| {
-        if extension_preserves_alpha(path) {
-            img.save(tmp)
-        } else if transparent {
-            flatten_rgba_on_bg(img, bg).save(tmp)
-        } else {
-            image::DynamicImage::ImageRgba8(img.clone())
-                .to_rgb8()
-                .save(tmp)
-        }
-    })
+    // L'export passe par l'encodage en mémoire : c'est le même code que
+    // [`measure_export_sizes`], donc la taille annoncée est celle du fichier
+    // réellement écrit.
+    let bytes = encode_rgba_image(path, img, transparent, bg)?;
+    atomic_bytes_write(path, &bytes)
+}
+
+/// Encode un résultat RGBA dans le format désigné par l'extension de `path`,
+/// en mémoire.
+///
+/// Formats sans alpha (JPEG, BMP) : composition sur `bg` quand le rendu est
+/// transparent, simple conversion en RGB sinon. Formats avec alpha (PNG, WebP,
+/// TIFF) : image conservée telle quelle.
+pub fn encode_rgba_image(
+    path: &Path,
+    img: &RgbaImage,
+    transparent: bool,
+    bg: [u8; 3],
+) -> image::ImageResult<Vec<u8>> {
+    let extension = path
+        .extension()
+        .and_then(|e| e.to_str())
+        .unwrap_or_default();
+    encode_rgba_extension(extension, img, transparent, bg)
+}
+
+/// Idem, à partir de la seule extension (sans le point) : c'est ce dont la
+/// mesure des tailles a besoin, puisqu'aucun chemin n'est encore choisi.
+pub fn encode_rgba_extension(
+    extension: &str,
+    img: &RgbaImage,
+    transparent: bool,
+    bg: [u8; 3],
+) -> image::ImageResult<Vec<u8>> {
+    let format = image_format(extension)?;
+    let alpha = format_preserves_alpha(extension);
+    let mut buffer = Vec::new();
+    let mut cursor = Cursor::new(&mut buffer);
+    if alpha {
+        img.write_to(&mut cursor, format)?;
+    } else if transparent {
+        flatten_rgba_on_bg(img, bg).write_to(&mut cursor, format)?;
+    } else {
+        image::DynamicImage::ImageRgba8(img.clone())
+            .to_rgb8()
+            .write_to(&mut cursor, format)?;
+    }
+    Ok(buffer)
+}
+
+/// Format `image` correspondant à une extension (sans le point).
+fn image_format(extension: &str) -> image::ImageResult<image::ImageFormat> {
+    match extension.to_ascii_lowercase().as_str() {
+        "png" => Ok(image::ImageFormat::Png),
+        "jpg" | "jpeg" => Ok(image::ImageFormat::Jpeg),
+        "webp" => Ok(image::ImageFormat::WebP),
+        "bmp" => Ok(image::ImageFormat::Bmp),
+        "tif" | "tiff" => Ok(image::ImageFormat::Tiff),
+        _ => Err(image::ImageError::IoError(std::io::Error::new(
+            std::io::ErrorKind::InvalidInput,
+            format!("format d'export non pris en charge : {extension}"),
+        ))),
+    }
+}
+
+/// Vrai si une extension (sans le point) désigne un format qui préserve l'alpha.
+pub fn extension_preserves_alpha_name(extension: &str) -> bool {
+    format_preserves_alpha(&extension.to_ascii_lowercase())
+}
+
+fn format_preserves_alpha(extension: &str) -> bool {
+    matches!(extension, "png" | "webp" | "tif" | "tiff")
 }
 
 /// Sérialise `params` en TOML et l'écrit de façon atomique.

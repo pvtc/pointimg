@@ -1,6 +1,8 @@
 use anyhow::{Result, anyhow};
 use clap::ValueEnum;
-use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Deserializer, Serialize};
+
+use super::dither::Dithering;
 
 use crate::filter::halftone::{HalftoneConfig, HalftoneMode, Screening};
 
@@ -14,6 +16,50 @@ pub const MAX_IMAGE_PIXELS: u64 = 8 * 1024 * 1024;
 struct PresetDocument {
     preset_version: u32,
     params: FilterParams,
+}
+
+/// Lit `dithering` en acceptant les deux écritures historiques.
+///
+/// `dithering = true` (presets 0.1) vaut [`Dithering::FloydSteinberg`], et
+/// `false` comme l'absence de la clé valent [`Dithering::Off`] ; les noms
+/// d'algorithme sont acceptés tels qu'ils s'écrivent dans un preset.
+fn deserialize_dithering<'de, D>(deserializer: D) -> Result<Dithering, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    /// Visiteur acceptant un booléen ou une chaîne.
+    struct Visitor;
+
+    impl serde::de::Visitor<'_> for Visitor {
+        type Value = Dithering;
+
+        fn expecting(&self, formatter: &mut std::fmt::Formatter) -> std::fmt::Result {
+            formatter.write_str("un algorithme de dithering (ou l'ancien booléen)")
+        }
+
+        fn visit_bool<E: serde::de::Error>(self, value: bool) -> Result<Dithering, E> {
+            Ok(if value {
+                Dithering::FloydSteinberg
+            } else {
+                Dithering::Off
+            })
+        }
+
+        fn visit_str<E: serde::de::Error>(self, value: &str) -> Result<Dithering, E> {
+            match value {
+                "off" | "Off" => Ok(Dithering::Off),
+                "floyd-steinberg" | "FloydSteinberg" | "floyd_steinberg" => {
+                    Ok(Dithering::FloydSteinberg)
+                }
+                "riemersma" | "Riemersma" => Ok(Dithering::Riemersma),
+                "bayer4" | "Bayer4" => Ok(Dithering::Bayer4),
+                "bayer8" | "Bayer8" => Ok(Dithering::Bayer8),
+                other => Err(E::unknown_variant(other, &["dithering"])),
+            }
+        }
+    }
+
+    deserializer.deserialize_any(Visitor)
 }
 
 /// Algorithme de placement des points.
@@ -94,11 +140,15 @@ pub struct FilterParams {
     /// ce qui évite le biais "trop sombre" des zones contrastées (ex: bord de
     /// dégradé). Coût : 2 passes de l'image (line´arisation source + ré-encodage dst).
     pub gamma_correct: bool,
-    /// Dithering Floyd-Steinberg lors de la quantification de palette. Quand
-    /// vrai (et `palette_size` est Some(n)), l'image rendue finale est
-    /// post-quantifiée en propageant l'erreur par pixel — effet "offset print".
-    /// Ignoré si `palette_size` est None.
-    pub dithering: bool,
+    /// Algorithme de dithering lors de la quantification de palette. Quand il
+    /// est actif (et `palette_size` est `Some(n)`), l'image rendue finale est
+    /// post-quantifiée avec le tramage choisi — effet « offset print » ou
+    /// « pixel art ». Ignoré si `palette_size` est `None`.
+    ///
+    /// Les anciens presets écrivent `dithering = true` : c'est lu comme
+    /// [`Dithering::FloydSteinberg`] (cf. `deserialize_dithering`).
+    #[serde(default, deserialize_with = "deserialize_dithering")]
+    pub dithering: Dithering,
     /// Angle de rotation de la grille (degrés), appliqué à l'algorithme Grid
     /// uniquement. Les dots sont placés sur une grille pivotée autour du centre
     /// de l'image — effet "halftone screen" expérimental. La couleur reste la
@@ -198,7 +248,7 @@ impl Default for FilterParams {
             dot_shape: DotShape::Circle,
             transparent: false,
             gamma_correct: false,
-            dithering: false,
+            dithering: Dithering::Off,
             grid_angle_deg: 0.0,
             halftone: HalftoneMode::Off,
             screening: Screening::Am,
@@ -407,4 +457,64 @@ pub fn validate_image_dimensions(w: u32, h: u32) -> Result<()> {
         ));
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Un preset complet dont la ligne `dithering` est remplacée (ou retirée
+    /// si `line` est vide).
+    fn preset_with_dithering(line: &str) -> String {
+        let base = FilterParams::default().to_toml_string().unwrap();
+        base.lines()
+            .filter(|current| !current.starts_with("dithering"))
+            .map(|current| {
+                if current == "[params]" && !line.is_empty() {
+                    format!("{current}\n{line}")
+                } else {
+                    current.to_string()
+                }
+            })
+            .collect::<Vec<_>>()
+            .join("\n")
+    }
+
+    /// Les presets 0.1 écrivaient `dithering = true` : ils doivent continuer de
+    /// produire du Floyd-Steinberg, pas échouer à la lecture.
+    #[test]
+    fn legacy_boolean_dithering_is_still_read() {
+        let legacy = preset_with_dithering("dithering = true");
+        let params = FilterParams::from_toml_str(&legacy).expect("preset 0.1");
+        assert_eq!(params.dithering, Dithering::FloydSteinberg);
+    }
+
+    #[test]
+    fn dithering_names_round_trip() {
+        for (name, expected) in [
+            ("off", Dithering::Off),
+            ("floyd-steinberg", Dithering::FloydSteinberg),
+            ("riemersma", Dithering::Riemersma),
+            ("bayer4", Dithering::Bayer4),
+            ("bayer8", Dithering::Bayer8),
+        ] {
+            let text = preset_with_dithering(&format!("dithering = \"{name}\""));
+            let params = FilterParams::from_toml_str(&text)
+                .unwrap_or_else(|e| panic!("dithering = {name} : {e}"));
+            assert_eq!(params.dithering, expected, "{name}");
+            // Et l'écriture doit rester lisible.
+            let written = params.to_toml_string().unwrap();
+            assert!(
+                written.contains(&format!("dithering = \"{name}\"")),
+                "écriture : {written}"
+            );
+        }
+    }
+
+    #[test]
+    fn missing_dithering_defaults_to_off() {
+        let text = preset_with_dithering("");
+        let params = FilterParams::from_toml_str(&text).expect("preset sans dithering");
+        assert_eq!(params.dithering, Dithering::Off);
+    }
 }
