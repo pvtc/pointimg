@@ -31,6 +31,27 @@ pub(crate) fn algorithm_from_index(i: u32) -> Algorithm {
     }
 }
 
+/// Sous-titre du sélecteur de dithering quand aucun algorithme n'est signalé.
+pub(crate) const DITHERING_SUBTITLE: &str = "Tramage de la palette quantifiée";
+
+/// Avertissement de poids de l'algorithme de dithering choisi.
+///
+/// Le sous-titre porte la version courte, visible sans survol comme la ligne
+/// d'avertissement d'egui ; l'infobulle porte la version longue. Les textes
+/// viennent de `Dithering::size_caveat`, donc les deux interfaces disent la
+/// même chose.
+///
+/// Appelé à la fois par `sync_widgets` (undo, préréglages) et par le gestionnaire
+/// du sélecteur : `sync_widgets` n'est pas rejoué après un changement proposé
+/// par l'utilisateur, puisqu'il sert à resynchroniser les widgets *après* une
+/// modification programmatique.
+pub(crate) fn sync_dithering_note(dithering: Dithering, widgets: &Widgets) {
+    widgets
+        .dithering
+        .set_subtitle(dithering.size_caveat_short().unwrap_or(DITHERING_SUBTITLE));
+    widgets.dithering.set_tooltip_text(dithering.size_caveat());
+}
+
 /// Position de l'algorithme de dithering dans la liste déroulante.
 pub(crate) fn dithering_index(dithering: Dithering) -> u32 {
     match dithering {
@@ -182,6 +203,11 @@ pub(crate) fn sync_widgets(state: &Rc<RefCell<State>>, widgets: &Rc<Widgets>) {
         widgets.palette_size.adjustment().set_value(n as f64);
     }
     widgets.dithering.set_selected(dithering_index(p.dithering));
+    // Avertissement de poids, même texte que dans l'interface egui (source
+    // commune : `Dithering::size_caveat`), pour qu'il ne diverge pas.
+    widgets
+        .dithering
+        .set_tooltip_text(p.dithering.size_caveat());
     widgets.use_seed.set_active(p.rng_seed.is_some());
     if let Some(seed) = p.rng_seed {
         widgets.seed.set_value(seed as f64);

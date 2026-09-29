@@ -1607,8 +1607,29 @@ fn show_dithering_selector(ui: &mut egui::Ui, dithering: &mut Dithering) {
                         .on_hover_text(help);
                 }
             });
-        response.response.on_hover_text(hint);
+        // L'aide de l'algorithme choisi, puis son avertissement de poids s'il
+        // y en a un (texte commun aux deux interfaces, cf. `size_caveat`).
+        let text = match dithering.size_caveat() {
+            Some(caveat) => format!("{hint}\n\n{caveat}"),
+            None => hint.to_string(),
+        };
+        response.response.on_hover_text(text);
     });
+    // L'avertissement est aussi visible sans survol : c'est une information
+    // sur le poids du fichier, pas un détail d'interface. Version courte, le
+    // détail restant dans l'infobulle.
+    if let Some(short) = dithering.size_caveat_short() {
+        ui.add_space(2.0);
+        ui.add(
+            egui::Label::new(
+                egui::RichText::new(short)
+                    .size(11.0)
+                    .color(ui.visuals().warn_fg_color),
+            )
+            .wrap(),
+        )
+        .on_hover_text(dithering.size_caveat().unwrap_or(short));
+    }
 }
 
 /// Ligne « libellé + saisie directe + curseur » pour un réglage entier : la

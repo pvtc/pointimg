@@ -62,6 +62,40 @@ impl Dithering {
     pub fn is_on(self) -> bool {
         self != Dithering::Off
     }
+
+    /// Avertissement sur le poids du fichier exporté, s'il y a lieu.
+    ///
+    /// Le tramage ordonné est à haute fréquence : ni deflate (PNG, TIFF) ni
+    /// VP8L (WebP) n'ont de prise sur un motif qui change à chaque pixel. Le
+    /// rendu est donc plus lourd *à palette égale* — mesuré sur une photo
+    /// 3546×2364, 3,0 Mo en Bayer 4×4 contre 162 Ko en Floyd-Steinberg avec
+    /// deux couleurs, soit dix-neuf fois plus. Le phénomène ne dépend pas de la
+    /// largeur de la palette : Bayer 4×4 reste autour de 5 Mo de 8 à 32
+    /// couleurs. C'est la contrepartie de l'esthétique « pixel art ».
+    ///
+    /// Les deux interfaces reprennent ce texte tel quel, pour que l'avertissement
+    /// ne diverge pas d'un front-end à l'autre.
+    pub fn size_caveat(self) -> Option<&'static str> {
+        match self {
+            Dithering::Bayer4 | Dithering::Bayer8 => Some(
+                "Motif à haute fréquence : la compression ne peut pas le réduire. \
+                 L'export pèsera nettement plus qu'avec une diffusion d'erreur, \
+                 à palette égale (mesuré : 3,0 Mo contre 162 Ko avec 2 couleurs).",
+            ),
+            Dithering::Off | Dithering::FloydSteinberg | Dithering::Riemersma => None,
+        }
+    }
+
+    /// Version courte de [`Dithering::size_caveat`] : tient sur une ligne, le
+    /// détail et les chiffres restant dans l'infobulle.
+    pub fn size_caveat_short(self) -> Option<&'static str> {
+        match self {
+            Dithering::Bayer4 | Dithering::Bayer8 => {
+                Some("Export nettement plus lourd : motif que la compression ne réduit pas.")
+            }
+            Dithering::Off | Dithering::FloydSteinberg | Dithering::Riemersma => None,
+        }
+    }
 }
 
 /// Longueur de la queue de Riemersma (en pixels).
@@ -534,5 +568,62 @@ mod tests {
         let mut img = solid(10, 7, [128, 128, 128]);
         floyd_steinberg(&mut img, &[[0, 0, 0], [255, 255, 255]]);
         assert_eq!(img.dimensions(), (10, 7));
+    }
+}
+
+#[cfg(test)]
+mod caveat {
+    // Le glob importe les variantes ; le type lui-même n'est pas nommé ici.
+    use super::Dithering::*;
+
+    /// L'avertissement ne concerne que les algorithmes ordonnés : une
+    /// diffusion d'erreur ne détruit pas la compressibilité.
+    #[test]
+    fn only_ordered_screens_warn() {
+        for mode in [FloydSteinberg, Riemersma, Off] {
+            assert!(
+                mode.size_caveat().is_none(),
+                "{mode:?} ne devrait pas être signalé"
+            );
+        }
+        for mode in [Bayer4, Bayer8] {
+            assert!(
+                mode.size_caveat().is_some(),
+                "{mode:?} devrait être signalé : son motif est incompressible"
+            );
+        }
+    }
+
+    /// Un algorithme hors tramage ne se voit pas non plus : l'avertissement ne
+    /// doit apparaître que si un tramage est réellement appliqué.
+    #[test]
+    fn caveat_never_appears_without_dithering() {
+        for mode in [Off, FloydSteinberg, Riemersma, Bayer4, Bayer8] {
+            if !mode.is_on() {
+                assert!(mode.size_caveat().is_none());
+            }
+        }
+    }
+
+    /// Les deux variantes du texte doivent rester affichables : la version
+    /// courte tient sur une ligne de l'interface, la longue dans une infobulle.
+    #[test]
+    fn caveat_stays_readable() {
+        for mode in [Bayer4, Bayer8] {
+            let long = mode.size_caveat().unwrap();
+            let short = mode.size_caveat_short().unwrap();
+            assert!(
+                long.len() < 220,
+                "version longue : {} caractères",
+                long.len()
+            );
+            assert!(
+                short.len() < 80,
+                "version courte : {} caractères",
+                short.len()
+            );
+            // La version courte doit rester une phrase, pas un fragment.
+            assert!(short.ends_with('.'), "phrase incomplète : {short}");
+        }
     }
 }

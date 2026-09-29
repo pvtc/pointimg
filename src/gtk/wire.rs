@@ -744,7 +744,9 @@ pub(crate) fn wire(state: &St, widgets: &Wi, window: &adw::ApplicationWindow) {
             if s.borrow().updating {
                 return;
             }
-            s.borrow_mut().params.dithering = sections::dithering_from_index(row.selected());
+            let mode = sections::dithering_from_index(row.selected());
+            s.borrow_mut().params.dithering = mode;
+            sections::sync_dithering_note(mode, &w);
             files::mark_preset_custom(&s, &w);
             files::update_preset_row(&s, &w);
             actions::on_params_changed(&s, &w);
