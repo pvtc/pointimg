@@ -99,7 +99,7 @@ pub(crate) struct State {
     /// Taille d'origine avant le sous-échantillonnage éventuel, pour l'info-bulle.
     pub source_was_resized: bool,
 
-    pub result: Option<RgbaImage>,
+    pub result: Option<Arc<RgbaImage>>,
     pub last_dots: Option<Vec<Dot>>,
     /// Taille du fichier source en octets (référence de la taille d'export).
     pub source_size: Option<u64>,

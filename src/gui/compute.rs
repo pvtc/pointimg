@@ -14,7 +14,7 @@ use pointimg::filter::{self, Algorithm, FilterParams};
 /// Ensemble des canaux de communication partagés entre le thread GUI et un
 /// worker de calcul (fige les `Arc::clone` de `start_compute`).
 struct ComputeChannels {
-    result: Arc<Mutex<Option<image::RgbaImage>>>,
+    result: Arc<Mutex<Option<Arc<image::RgbaImage>>>>,
     result_revision: Arc<std::sync::atomic::AtomicU64>,
     last_dots: Arc<Mutex<Option<Vec<filter::Dot>>>>,
     progress: Arc<Mutex<(usize, usize)>>,
@@ -154,7 +154,7 @@ fn run_compute_worker(
                 if generation_is_current(&compute_generation, generation) {
                     // Publier au moins une fois pour que la GUI voie une preview.
                     *progress.lock().unwrap_or_else(|e| e.into_inner()) = (1, 1);
-                    *result.lock().unwrap_or_else(|e| e.into_inner()) = Some(dst_rgba);
+                    *result.lock().unwrap_or_else(|e| e.into_inner()) = Some(Arc::new(dst_rgba));
                     result_revision.fetch_add(1, Ordering::Release);
                     *last_dots.lock().unwrap_or_else(|e| e.into_inner()) = Some(dots);
                     result_is_final.store(full_resolution, Ordering::Release);
@@ -177,7 +177,7 @@ fn run_compute_worker(
     let publish_preview = |iter: usize,
                            total: usize,
                            preview: &RgbImage,
-                           result: &Arc<Mutex<Option<image::RgbaImage>>>,
+                           result: &Arc<Mutex<Option<Arc<image::RgbaImage>>>>,
                            result_revision: &Arc<std::sync::atomic::AtomicU64>,
                            last_preview: &mut Instant,
                            ctx: &egui::Context| {
@@ -188,7 +188,8 @@ fn run_compute_worker(
         let now = Instant::now();
         // Always clone on last iteration, throttle intermediate previews
         if iter == total || now.duration_since(*last_preview) >= preview_interval {
-            *result.lock().unwrap_or_else(|e| e.into_inner()) = Some(rgb_to_rgba_opaque(preview));
+            *result.lock().unwrap_or_else(|e| e.into_inner()) =
+                Some(Arc::new(rgb_to_rgba_opaque(preview)));
             result_revision.fetch_add(1, Ordering::Release);
             *last_preview = now;
             ctx.request_repaint();
@@ -233,7 +234,8 @@ fn run_compute_worker(
     match res {
         Ok((dst, dots)) => {
             if generation_is_current(&compute_generation, generation) {
-                *result.lock().unwrap_or_else(|e| e.into_inner()) = Some(rgb_to_rgba_opaque(&dst));
+                *result.lock().unwrap_or_else(|e| e.into_inner()) =
+                    Some(Arc::new(rgb_to_rgba_opaque(&dst)));
                 result_revision.fetch_add(1, Ordering::Release);
                 *progress.lock().unwrap_or_else(|e| e.into_inner()) = (iters, iters);
                 *last_dots.lock().unwrap_or_else(|e| e.into_inner()) = Some(dots);

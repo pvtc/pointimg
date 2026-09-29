@@ -103,7 +103,7 @@ pub(crate) fn refresh_result_texture(state: &Rc<RefCell<State>>, widgets: &Rc<Wi
         .borrow()
         .result
         .as_ref()
-        .map(texture_from_rgba_checker);
+        .map(|img| texture_from_rgba_checker(img));
     match texture {
         Some(texture) => {
             widgets.dst_pane.image.set_paintable(Some(&texture));
@@ -669,7 +669,7 @@ pub(crate) fn refresh_compare(state: &Rc<RefCell<State>>, widgets: &Rc<Widgets>)
     compare::refresh(
         &widgets.compare_pane,
         source.as_ref(),
-        result.as_ref(),
+        result.as_deref(),
         has_image,
         stale,
     );

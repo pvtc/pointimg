@@ -105,7 +105,10 @@ pub(crate) struct App {
 
     // Résultat du filtre (mis à jour à chaque preview intermédiaire aussi).
     // Stocké en RGBA pour supporter le mode transparent (canal alpha préservé).
-    pub result: Arc<Mutex<Option<RgbaImage>>>,
+    // L'`Arc` intérieur permet à la mesure de taille d'export d'emprunter
+    // l'image sans la copier (elle pèse jusqu'à ~33 Mo) — c'est le même motif
+    // que `density_data`.
+    pub result: Arc<Mutex<Option<Arc<RgbaImage>>>>,
     pub result_texture: Option<egui::TextureHandle>,
     pub result_revision: Arc<AtomicU64>,
     pub result_texture_revision: u64,

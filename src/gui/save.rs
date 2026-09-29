@@ -108,7 +108,7 @@ impl App {
     pub(crate) fn copy_to_clipboard(&mut self, ctx: &egui::Context) {
         let image = {
             let guard = self.result.lock().unwrap_or_else(|e| e.into_inner());
-            guard.as_ref().map(rgba_to_color_image_checker)
+            guard.as_ref().map(|img| rgba_to_color_image_checker(img))
         };
         let Some(image) = image else {
             self.status = "Aucun résultat à copier.".to_string();

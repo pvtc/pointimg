@@ -35,12 +35,14 @@ impl App {
         let Some(source_size) = self.source_size else {
             return;
         };
+        // On partage l'image (`Arc`) au lieu de la copier : sur 8 Mpx, un
+        // `cloned()` coûtait ~33 Mo recopiés à chaque mesure.
         let Some(img) = self
             .result
             .lock()
             .unwrap_or_else(|e| e.into_inner())
             .as_ref()
-            .cloned()
+            .map(Arc::clone)
         else {
             return;
         };

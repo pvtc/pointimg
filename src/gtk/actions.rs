@@ -590,7 +590,7 @@ pub(crate) fn handle_message(msg: Msg, state: &Rc<RefCell<State>>, widgets: &Rc<
             if !is_current(state, generation) {
                 return;
             }
-            state.borrow_mut().result = Some(image);
+            state.borrow_mut().result = Some(Arc::new(image));
             state.borrow_mut().result_is_final = false;
             preview::refresh_result_texture(state, widgets);
             preview::apply_zoom(state, widgets);
@@ -608,7 +608,7 @@ pub(crate) fn handle_message(msg: Msg, state: &Rc<RefCell<State>>, widgets: &Rc<
             }
             {
                 let mut st = state.borrow_mut();
-                st.result = Some(image);
+                st.result = Some(Arc::new(image));
                 st.last_dots = Some(dots);
                 st.computing = false;
                 st.compute_start = None;
