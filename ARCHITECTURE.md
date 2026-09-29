@@ -870,6 +870,15 @@ Four palette-quantization algorithms, selected by `FilterParams::dithering`:
   the error still queued), so the mean is preserved exactly. `RIEMERSMA_DECAY` is
   calibrated on a 160 px wide gradient — at 0.7, the mean jump between adjacent
   pixels drops from 127 to 66, the usual Riemersma trade-off.
+
+  **Known trap, found by mutation**: the queue is reset at the end of each row (so
+  the render does not depend on the image height), and the discarded residual is
+  exactly what rebalances the mean. A "mean luminance is preserved" test therefore
+  **cannot** detect faulty weight normalization — drop the division by the total
+  and the test still passes. The invariant is checked separately on the weight
+  construction (`riemersma_weights`) by
+  `proprietes::les_poids_de_la_queue_soment_a_un`. Any end-to-end property should
+  be confronted to a mutation before being trusted.
 - `Bayer4` / `Bayer8`: ordered dithering, no diffusion. Each pixel picks between
   its two nearest palette colors from the matrix threshold at its position,
   projected on the segment joining them. The matrix is **generated** with

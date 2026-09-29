@@ -134,6 +134,26 @@ et ce projet adhère au [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
   qui est toujours lu comme Floyd-Steinberg ; l'écriture passe à
   `dithering = "floyd-steinberg"`. (`src/filter/params.rs`)
 
+### Tests de propriétés sur le dithering, et un piège qu'ils révèlent
+
+- Sept tests de propriétés encadrent les quatre algorithmes : conservation de la
+  luminance moyenne sur des images à tonalité variée (six images, cinq largeurs de
+  palette, quatre algorithmes) et sur des mélanges de couleurs sans gris dans la
+  palette ; proportion de pixels clairs d'une trame ordonnée à la granularité de
+  sa matrice ; reproductibilité ; aplat d'une couleur de palette inchangé.
+- **Une limite est épinglée volontairement** : une source grise ne peut pas être
+  reproduite par une palette devoidée de gris. La sélection du plus proche voisin
+  se fait en distance RGB, donc elle ignore la luminance — avec {noir, rouge,
+  vert, bleu} l'écart atteint 57 à 73. Le test qui l'atteste échouera le jour où la
+  limitation sera corrigée, ce qui est le but.
+- **Un piège mesuré en mutation**, consigné dans l'architecture : la file de
+  Riemersma est remise à zéro en fin de ligne, et le résidu ainsi jeté est
+  exactement ce qui rééquilibre la moyenne. Un test « la luminance moyenne est
+  conservée » ne détecte donc **pas** une normalisation fautive des poids. Ces
+  poids sont maintenant calculés par `riemersma_weights`, dont l'invariant de
+  somme est testé directement. Règle retenue : aucune propriété de bout en bout
+  n'est considérée comme probante sans avoir été confrontée à une mutation.
+
 ### Taille de l'export, mesurée pour de vrai
 
 - La barre d'état affiche désormais `Export : PNG 1.4 Mo · WebP — · JPEG 792 Ko ·

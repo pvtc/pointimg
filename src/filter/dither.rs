@@ -251,13 +251,34 @@ fn ordered(dst: &mut RgbImage, palette: &[[u8; 3]], matrix: &[Vec<u32>]) {
     }
 }
 
+/// Poids de la file de Riemersma : `decay^k` normalisé pour sommer à 1.
+///
+/// Chaque part d'erreur doit être versée en totalité, sinon la luminance
+/// dérive. C'est l'invariant le plus important de l'algorithme, et le plus
+/// difficile à voir à l'œil sur une image : voir
+/// `proprietes::la_moyenne_survit_a_la_quantification` pour le piège
+/// correspondant.
+fn riemersma_weights(taps: usize, decay: f64) -> Vec<f64> {
+    let mut weights: Vec<f64> = (0..taps).map(|k| decay.powi(k as i32)).collect();
+    let total: f64 = weights.iter().sum();
+    if total > 0.0 {
+        for weight in &mut weights {
+            *weight /= total;
+        }
+    }
+    weights
+}
+
 /// Diffusion de l'erreur à queue longue (Riemersma, 1995).
 ///
-/// L'erreur est versée dans une ligne de retard de `taps` pixels : le pixel
-/// suivant en reçoit la première part, les suivants des parts décroissantes
-/// géométriquement, et l'erreur déjà en attente est atténuée à chaque pas. La
-/// queue longue supprime les « vers » et le moiré directionnel du
-/// Floyd-Steinberg ; l'algorithme reste séquentiel le long de chaque ligne.
+/// L'erreur est versée dans une file de `taps` pixels : le suivant en reçoit la
+/// part `w(0)`, le suivant encore `w(1)`, et ainsi de suite jusqu'à `w(taps-1)`,
+/// les poids formant une suite géométrique décroissante de somme 1. Chaque part
+/// n'est versée qu'une fois — c'est un décalage pur, pas une réinjection de
+/// l'erreur encore en attente — donc l'erreur est intégralement redistribuée et
+/// la moyenne conservée. La queue longue supprime les « vers » et le moiré
+/// directionnel du Floyd-Steinberg ; l'algorithme reste séquentiel le long d'une
+/// ligne.
 fn riemersma(dst: &mut RgbImage, palette: &[[u8; 3]], taps: usize, decay: f64) {
     let (w, h) = dst.dimensions();
     if taps == 0 {
@@ -265,17 +286,7 @@ fn riemersma(dst: &mut RgbImage, palette: &[[u8; 3]], taps: usize, decay: f64) {
         return;
     }
     let palette_f = palette_f32(palette);
-    // Poids normalisés à 1 : chaque erreur est versée en totalité, donc la
-    // moyenne est conservée exactement (hors troncature de fin de ligne).
-    let mut weights = vec![0.0f64; taps];
-    let mut total = 0.0f64;
-    for (k, weight) in weights.iter_mut().enumerate() {
-        *weight = decay.powi(k as i32);
-        total += *weight;
-    }
-    for weight in &mut weights {
-        *weight /= total;
-    }
+    let weights = riemersma_weights(taps, decay);
 
     let line_len = w as usize;
     let mut line = vec![[0.0f64; 3]; line_len];
@@ -624,6 +635,290 @@ mod caveat {
             );
             // La version courte doit rester une phrase, pas un fragment.
             assert!(short.ends_with('.'), "phrase incomplète : {short}");
+        }
+    }
+}
+
+// ─── Propriétés ───────────────────────────────────────────────────────────────
+
+#[cfg(test)]
+mod proprietes {
+    use super::Dithering;
+    use super::Dithering::*;
+    use super::*;
+    use image::Rgb;
+
+    /// Générateur congruentiel déterministe : les tests de propriétés doivent
+    /// être reproductibles, donc aucune dépendance à une graineuntime.
+    fn lcg(seed: &mut u64) -> u64 {
+        *seed = seed
+            .wrapping_mul(6_364_136_223_846_793_005)
+            .wrapping_add(1_442_695_040_888_963_407);
+        *seed >> 33
+    }
+
+    fn luma(p: Rgb<u8>) -> f64 {
+        0.2126 * f64::from(p[0]) + 0.7152 * f64::from(p[1]) + 0.0722 * f64::from(p[2])
+    }
+
+    fn mean_luma(img: &RgbImage) -> f64 {
+        img.pixels().map(|p| luma(*p)).sum::<f64>() / img.pixels().count() as f64
+    }
+
+    /// Rampe de gris horizontale.
+    fn ramp(w: u32, h: u32) -> RgbImage {
+        RgbImage::from_fn(w, h, |x, _| {
+            let v = ((x as f64 / (w as f64 - 1.0).max(1.0)) * 255.0).round() as u8;
+            Rgb([v, v, v])
+        })
+    }
+
+    /// Rampe verticale : attrape une dérive qui ne dépendrait que de `x`.
+    fn ramp_v(w: u32, h: u32) -> RgbImage {
+        RgbImage::from_fn(w, h, |_, y| {
+            let v = ((y as f64 / (h as f64 - 1.0).max(1.0)) * 255.0).round() as u8;
+            Rgb([v, v, v])
+        })
+    }
+
+    /// Bruit de couleur déterministe : aucun motif régulier, donc aucune
+    /// résonance avec la matrice de Bayer.
+    fn noise(w: u32, h: u32, seed: u64) -> RgbImage {
+        let mut s = seed;
+        RgbImage::from_fn(w, h, |_, _| {
+            let v = [
+                (lcg(&mut s) % 256) as u8,
+                (lcg(&mut s) % 256) as u8,
+                (lcg(&mut s) % 256) as u8,
+            ];
+            Rgb(v)
+        })
+    }
+
+    /// Dégradé lisse en deux dimensions.
+    fn smooth2d(w: u32, h: u32) -> RgbImage {
+        RgbImage::from_fn(w, h, |x, y| {
+            let fx = x as f64 / (w as f64 - 1.0).max(1.0);
+            let fy = y as f64 / (h as f64 - 1.0).max(1.0);
+            Rgb([
+                (fx * 255.0).round() as u8,
+                (fy * 255.0).round() as u8,
+                ((fx + fy) * 0.5 * 255.0).round() as u8,
+            ])
+        })
+    }
+
+    /// Mélange progressif de deux couleurs : la source *est* un mélange de
+    /// couleurs de palette, ce qui est la situation où le tramage a un sens.
+    fn blend(a: [u8; 3], b: [u8; 3], w: u32, h: u32) -> RgbImage {
+        // La différence se calcule en `i32` : `b - a` peut être négatif, et une
+        // soustraction `u8` déborderait.
+        let lerp = |from: u8, to: u8, t: f64| -> u8 {
+            (f64::from(from) + f64::from(i32::from(to) - i32::from(from)) * t).round() as u8
+        };
+        RgbImage::from_fn(w, h, |x, _| {
+            let t = x as f64 / (w as f64 - 1.0).max(1.0);
+            Rgb([
+                lerp(a[0], b[0], t),
+                lerp(a[1], b[1], t),
+                lerp(a[2], b[2], t),
+            ])
+        })
+    }
+
+    fn grey_levels(n: usize) -> Vec<[u8; 3]> {
+        (0..n)
+            .map(|i| {
+                let v = (i as f64 / (n as f64 - 1.0) * 255.0).round() as u8;
+                [v, v, v]
+            })
+            .collect()
+    }
+
+    /// Les quatre algorithmes qui trament.
+    const MODES: [Dithering; 4] = [FloydSteinberg, Riemersma, Bayer4, Bayer8];
+
+    /// Images à tonalité variée : c'est la condition pour que la conservation de
+    /// la moyenne ait un sens (voir `une_source_grise_...` plus bas).
+    fn images_tonales() -> Vec<(&'static str, RgbImage)> {
+        vec![
+            ("rampe 256x16", ramp(256, 16)),
+            ("rampe 512x8", ramp(512, 8)),
+            ("rampe verticale 16x256", ramp_v(16, 256)),
+            ("bruit 128x128", noise(128, 128, 7)),
+            ("bruit 256x64", noise(256, 64, 11)),
+            ("dégradé 2D 128x128", smooth2d(128, 128)),
+        ]
+    }
+
+    /// **La propriété qui définit un tramage** : sur une image à tonalité
+    /// variée, la luminance moyenne doit survivre à la quantification.
+    ///
+    /// Tolérance 6,0 sur 255, soit 2,4 %. Elle est calibrée, pas arbitraire :
+    /// l'écart le plus grand constaté sur les images ci-dessus avec une palette
+    /// de gris est 1,7 (Bayer 8×8 sur un dégradé 2D, palette de deux tons).
+    ///
+    /// **Ce que ce test ne voit pas**, mesuré en mutation : supprimer la
+    /// normalisation des poids de Riemersma ne le fait pas échouer. La file est
+    /// remise à zéro en fin de ligne, et le résidu ainsi jeté est exactement ce
+    /// qui rééquilibre la moyenne. L'invariant « les poids somment à 1 » est donc
+    /// vérifié séparément, par
+    /// `les_poids_de_la_queue_soment_a_un`, là où il porte réellement.
+    #[test]
+    fn la_moyenne_survit_a_la_quantification() {
+        for (name, source) in images_tonales() {
+            let reference = mean_luma(&source);
+            for n in [2usize, 3, 4, 8, 16] {
+                let palette = grey_levels(n);
+                for mode in MODES {
+                    let mut out = source.clone();
+                    apply(&mut out, &palette, mode);
+                    let delta = (mean_luma(&out) - reference).abs();
+                    assert!(
+                        delta < 6.0,
+                        "{name}, {n} tons, {mode:?} : luminance déplacée de {delta:.2} \
+                         (source {reference:.2}, sortie {:.2})",
+                        mean_luma(&out)
+                    );
+                }
+            }
+        }
+    }
+
+    /// L'invariant que la conservation de la moyenne ne peut pas voir (voir la
+    /// note du test précédent) : la file de Riemersma doit distribuer chaque
+    /// erreur en totalité, donc ses poids somment à 1. C'est vérifié sur la
+    /// construction des poids, pas à travers l'image — une somme fausse se
+    /// compenserait d'une ligne à l'autre.
+    #[test]
+    fn les_poids_de_la_queue_soment_a_un() {
+        for taps in [1usize, 2, 4, 8, 16, 32] {
+            for decay in [0.5f64, 0.7, 0.9, 0.99] {
+                let weights = riemersma_weights(taps, decay);
+                assert_eq!(weights.len(), taps, "{taps} prises, décroissance {decay}");
+                let total: f64 = weights.iter().sum();
+                assert!(
+                    (total - 1.0).abs() < 1e-12,
+                    "{taps} prises, décroissance {decay} : les poids somment à {total}"
+                );
+                // Et la suite doit être décroissante : la queue longue repose sur
+                // des parts de plus en plus petites.
+                for pair in weights.windows(2) {
+                    assert!(pair[1] <= pair[0], "poids non décroissants : {weights:?}");
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn la_moyenne_survit_sans_gris_dans_la_palette() {
+        for (a, b) in [
+            ([255u8, 0, 0], [0u8, 255, 0]),
+            ([255, 0, 0], [0, 0, 0]),
+            ([255, 255, 0], [0, 0, 255]),
+        ] {
+            let source = blend(a, b, 256, 16);
+            let reference = mean_luma(&source);
+            for mode in MODES {
+                let mut out = source.clone();
+                apply(&mut out, &[a, b], mode);
+                let delta = (mean_luma(&out) - reference).abs();
+                assert!(
+                    delta < 2.0,
+                    "mélange {a:?}/{b:?}, {mode:?} : luminance déplacée de {delta:.2}"
+                );
+            }
+        }
+    }
+
+    /// Le tramage ordonné doit placer la bonne *proportion* de pixels clairs,
+    /// à la granularité de sa matrice. C'est le contrat précis de Bayer, et il
+    /// tient même sur une image uniforme — là où la conservation de la moyenne
+    /// n'a pas de sens (voir le test suivant).
+    #[test]
+    fn la_trame_ordonnee_verse_la_bonne_proportion() {
+        for (mode, side) in [(Bayer4, 4usize), (Bayer8, 8)] {
+            for tone in [0.1f64, 0.25, 0.5, 0.75, 0.9] {
+                let grey = (tone * 255.0).round() as u8;
+                let mut img = RgbImage::from_pixel(64, 64, Rgb([grey; 3]));
+                apply(&mut img, &[[0, 0, 0], [255, 255, 255]], mode);
+                let white = img.pixels().filter(|p| p[0] > 127).count();
+                let fraction = white as f64 / img.pixels().count() as f64;
+                // Une cellule de la matrice vaut 1/side² de tonte surface.
+                let cell = 1.0 / (side * side) as f64;
+                assert!(
+                    (fraction - tone).abs() <= cell,
+                    "{mode:?}, ton {tone} : {fraction:.3} de pixels clairs \
+                     (attendu {tone} à ±{cell:.4})"
+                );
+            }
+        }
+    }
+
+    /// **Limite connue, épinglée volontairement.** Une source grise n'est pas un
+    /// mélange atteignable si la palette ne contient aucun gris : la sélection du
+    /// plus proche voisin se fait en distance RGB, donc elle ignore la
+    /// luminance. Avec la palette {noir, rouge, vert, bleu} — de lumas 0, 0, 18,
+    /// 54 et 182 — l'écart atteint 57 à 73, très loin de la tolérance de 6,0
+    /// appliquée plus haut.
+    ///
+    /// Ce test ne vérifie donc pas un comportement satisfaisant, mais que
+    /// l'exclusion est intentionnelle. S'il échoue, c'est bon signe : la
+    /// limitation a été corrigée, et les tolerances des tests précédents peuvent
+    /// être resserrées.
+    #[test]
+    fn une_source_grise_ne_se_reproduit_pas_sans_gris_dans_la_palette() {
+        let palette: Vec<[u8; 3]> = vec![[0, 0, 0], [255, 0, 0], [0, 255, 0], [0, 0, 255]];
+        let source = ramp(256, 16);
+        let reference = mean_luma(&source);
+        for mode in MODES {
+            let mut out = source.clone();
+            apply(&mut out, &palette, mode);
+            let delta = (mean_luma(&out) - reference).abs();
+            assert!(
+                delta > 6.0,
+                "{mode:?} : l'écart n'est plus que de {delta:.2} — la limite \\
+                 documentée a disparu, les tolerances peuvent être resserrées"
+            );
+        }
+    }
+
+    /// Le rendu doit être reproductible : la suite du dépôt s'appuie dessus.
+    #[test]
+    fn le_tramage_est_deterministe() {
+        for mode in MODES {
+            for n in [2usize, 5, 16] {
+                let palette = grey_levels(n);
+                let source = smooth2d(64, 48);
+                let mut first = source.clone();
+                let mut second = source.clone();
+                apply(&mut first, &palette, mode);
+                apply(&mut second, &palette, mode);
+                assert_eq!(
+                    first.as_raw(),
+                    second.as_raw(),
+                    "{mode:?} avec {n} tons n'est pas reproductible"
+                );
+            }
+        }
+    }
+
+    /// Le tramage ne doit rien changer aux pixels déjà exactement dans la
+    /// palette : un aplat d'une couleur de palette doit rester un aplat. C'est ce
+    /// qui évite qu'un rendu « propre » soit sali par le post-traitement.
+    #[test]
+    fn un_aplat_dune_couleur_de_palette_ne_bouge_pas() {
+        let palette = grey_levels(8);
+        for colour in &palette {
+            let source = RgbImage::from_pixel(16, 16, Rgb(*colour));
+            for mode in MODES {
+                let mut out = source.clone();
+                apply(&mut out, &palette, mode);
+                assert!(
+                    out.pixels().all(|p| p[0] == colour[0]),
+                    "{mode:?} a modifié un aplat déjà dans la palette ({colour:?})"
+                );
+            }
         }
     }
 }

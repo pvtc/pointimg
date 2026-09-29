@@ -719,6 +719,16 @@ Quatre algorithmes de quantification de palette, choisis par
   `RIEMERSMA_DECAY` est calibré sur un dégradé de 160 px de large — à 0,7,
   l'écart moyen entre pixels voisins passe de 127 à 66, ce qui est le compromis
   habituel de Riemersma.
+
+  **Piège connu, mesuré en mutation** : la file est remise à zéro en fin de ligne
+  (pour que le rendu ne dépende pas de la hauteur de l'image), et le résidu ainsi
+  jeté est précisément ce qui rééquilibre la moyenne. Conséquence : un test de
+  « la luminance moyenne est conservée » **ne détecte pas** une normalisation
+  fautive des poids — supprimez la division par le total, le test passe quand
+  même. L'invariant est donc vérifié séparément sur la construction des poids
+  (`riemersma_weights`), via `proprietes::les_poids_de_la_queue_soment_a_un`.
+  Toute propriété de bout en bout doit être confrontée à une mutation avant
+  d'être considérée comme probante.
 - `Bayer4` / `Bayer8` : tramage ordonné, sans diffusion. Le pixel arbitre entre
   ses deux couleurs de palette les plus proches d'après le seuil de la matrice à
   sa position, projeté sur le segment qui les relie. La matrice est **générée**
