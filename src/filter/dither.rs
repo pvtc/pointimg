@@ -49,7 +49,7 @@ pub enum Dithering {
     Off,
     /// Diffusion de l'erreur vers les quatre voisins futurs.
     FloydSteinberg,
-    /// Diffusion à queue longue (16 pixels, décroissance 0,9).
+    /// Diffusion à queue longue : 16 pixels, poids décroissants de 0,7.
     Riemersma,
     /// Tramage ordonné de Bayer 4×4.
     Bayer4,
