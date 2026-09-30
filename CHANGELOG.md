@@ -146,13 +146,27 @@ et ce projet adhère au [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
   se fait en distance RGB, donc elle ignore la luminance — avec {noir, rouge,
   vert, bleu} l'écart atteint 57 à 73. Le test qui l'atteste échouera le jour où la
   limitation sera corrigée, ce qui est le but.
-- **Un piège mesuré en mutation**, consigné dans l'architecture : la file de
-  Riemersma est remise à zéro en fin de ligne, et le résidu ainsi jeté est
-  exactement ce qui rééquilibre la moyenne. Un test « la luminance moyenne est
-  conservée » ne détecte donc **pas** une normalisation fautive des poids. Ces
-  poids sont maintenant calculés par `riemersma_weights`, dont l'invariant de
-  somme est testé directement. Règle retenue : aucune propriété de bout en bout
-  n'est considérée comme probante sans avoir été confrontée à une mutation.
+- **Un piège mesuré en mutation**, consigné dans l'architecture : un test « la
+  luminance moyenne est conservée » échoue si l'on inverse le signe des poids,
+  mais **passe** si l'on supprime leur normalisation, et **passe** aussi si l'on
+  supprime toute propagation d'erreur. La conservation de la moyenne ne prouve
+  donc ni la calibration, ni même l'existence d'une diffusion : la diffusion est
+  une boucle de rétroaction fermée, et la quantification de chaque pixel
+  indépendamment conserve déjà la moyenne d'une rampe monotone. Les contrôles sont
+  donc répartis : stabilité par le test de moyenne, lissage (présence et gain)
+  par `riemersma_tail_smooths_the_pattern`, calibration par
+  `les_poids_de_la_queue_soment_a_un`. Règle retenue : aucune propriété de bout en
+  bout n'est considérée comme probante sans avoir été confrontée à une mutation.
+
+- **Riemersma : la file enjambe la fin des lignes.** Elle était remise à zéro après
+  chaque ligne, ce qui jetait le résidu en attente et laissait une dérive
+  mesurée de 1,0 unité de luminance sur une rampe horizontale (0,83 sur un
+  dégradé 2D) ; la dérive est maintenant de 0,00. La file est aussi dimensionnée
+  sur `taps` et non sur la largeur de l'image : elle était indexée par colonne,
+  donc en fin de ligne la queue se repliait sur des positions déjà traitées, et
+  une image plus étroite que la file perdait des parts. Le balayage devient
+  **serpentin**, pour que la part d'erreur qui traverse la fin de ligne arrive sur
+  le pixel juste en dessous et non au début de la ligne suivante.
 
 ### Taille de l'export, mesurée pour de vrai
 

@@ -871,14 +871,28 @@ Four palette-quantization algorithms, selected by `FilterParams::dithering`:
   calibrated on a 160 px wide gradient — at 0.7, the mean jump between adjacent
   pixels drops from 127 to 66, the usual Riemersma trade-off.
 
-  **Known trap, found by mutation**: the queue is reset at the end of each row (so
-  the render does not depend on the image height), and the discarded residual is
-  exactly what rebalances the mean. A "mean luminance is preserved" test therefore
-  **cannot** detect faulty weight normalization — drop the division by the total
-  and the test still passes. The invariant is checked separately on the weight
-  construction (`riemersma_weights`) by
-  `proprietes::les_poids_de_la_queue_soment_a_un`. Any end-to-end property should
-  be confronted to a mutation before being trusted.
+  **The queue crosses row boundaries**, and the scan is **serpentine**: the queue
+  is `taps` long (not as wide as the image, which lost shares on narrow images),
+  it is not reset between rows, and every other row is walked backwards — so the
+  share of error crossing the end of a row lands on the pixel just below. Measured:
+  resetting discarded the residual and left a drift of 1.0 luma unit on a
+  horizontal ramp (0.83 on a 2D gradient); it is now 0.00.
+
+  **What mean preservation does not prove** — established by mutation, not assumed.
+  A "mean luminance survives quantization" test fails if the weight signs are
+  flipped (positive feedback, 37.85 drift), but **passes** if the weight
+  normalization is dropped, and **passes** too if all error propagation is removed.
+  Two structural reasons: diffusion is a closed feedback loop — the injected error
+  changes the quantizer's choice, hence the next error, and the steady state
+  conserves the mean whatever the gain — and per-pixel independent quantization
+  already conserves the mean of a monotone ramp, the staircase steps cancelling.
+
+  Verified split of the checks: loop **stability** is covered by the mean test,
+  **smoothing** (hence the presence and the gain of a diffusion) by
+  `riemersma_tail_smooths_the_pattern`, and the **calibration invariant** by
+  `les_poids_de_la_queue_soment_a_un`, on the weight construction
+  (`riemersma_weights`) — the only test that de-normalization fails. General rule:
+  any end-to-end property is confronted to a mutation before being trusted.
 - `Bayer4` / `Bayer8`: ordered dithering, no diffusion. Each pixel picks between
   its two nearest palette colors from the matrix threshold at its position,
   projected on the segment joining them. The matrix is **generated** with

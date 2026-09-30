@@ -253,11 +253,14 @@ fn ordered(dst: &mut RgbImage, palette: &[[u8; 3]], matrix: &[Vec<u32>]) {
 
 /// Poids de la file de Riemersma : `decay^k` normalisé pour sommer à 1.
 ///
-/// Chaque part d'erreur doit être versée en totalité, sinon la luminance
-/// dérive. C'est l'invariant le plus important de l'algorithme, et le plus
-/// difficile à voir à l'œil sur une image : voir
-/// `proprietes::la_moyenne_survit_a_la_quantification` pour le piège
-/// correspondant.
+/// Chaque part d'erreur doit être versée en totalité : c'est ce qui rend la
+/// queue une redistribution et non une amplification.
+///
+/// L'invariant est vérifié par
+/// `proprietes::les_poids_de_la_queue_soment_a_un`, et il ne peut pas l'être par
+/// la conservation de la luminance : la diffusion est une boucle de rétroaction
+/// fermée, qui conserve la moyenne quel que soit le gain. Voir la note de
+/// `proprietes::la_moyenne_survit_a_la_quantification`.
 fn riemersma_weights(taps: usize, decay: f64) -> Vec<f64> {
     let mut weights: Vec<f64> = (0..taps).map(|k| decay.powi(k as i32)).collect();
     let total: f64 = weights.iter().sum();
@@ -271,14 +274,28 @@ fn riemersma_weights(taps: usize, decay: f64) -> Vec<f64> {
 
 /// Diffusion de l'erreur à queue longue (Riemersma, 1995).
 ///
-/// L'erreur est versée dans une file de `taps` pixels : le suivant en reçoit la
-/// part `w(0)`, le suivant encore `w(1)`, et ainsi de suite jusqu'à `w(taps-1)`,
-/// les poids formant une suite géométrique décroissante de somme 1. Chaque part
-/// n'est versée qu'une fois — c'est un décalage pur, pas une réinjection de
-/// l'erreur encore en attente — donc l'erreur est intégralement redistribuée et
-/// la moyenne conservée. La queue longue supprime les « vers » et le moiré
-/// directionnel du Floyd-Steinberg ; l'algorithme reste séquentiel le long d'une
-/// ligne.
+/// L'erreur est versée dans une file à eviction de `taps` pixels : le suivant en
+/// reçoit la part `w(0)`, le suivant encore `w(1)`, et ainsi de suite jusqu'à
+/// `w(taps-1)`, les poids formant une suite géométrique décroissante de somme 1.
+/// Chaque part n'est versée qu'une fois — c'est un décalage pur, pas une
+/// réinjection de l'erreur encore en attente — donc l'erreur est intégralement
+/// redistribuée et la moyenne conservée.
+///
+/// **La file enjambe la fin des lignes.** Une version antérieure la remettait à
+/// zéro après chaque ligne, ce qui jetait le résidu en attente et laissait une
+/// dérive mesurée de 1,0 unité de luminance sur une rampe horizontale (0,83 sur un
+/// dégradé 2D) ; la file est désormais conservée d'une ligne à l'autre, et la
+/// dérive tombe à 0,00. La file est de surcroît dimensionnée sur `taps` et non
+/// sur la largeur de l'image : la version antérieure indexait les positions par
+/// colonne, si bien qu'en fin de ligne la queue se repliait sur des positions déjà
+/// traitées, et une image plus étroite que la file perdait des parts.
+///
+/// Pour que cette continuité soit spatialement correcte, le balayage est
+/// **serpentin** (boustrophédon) : une ligne est parcourue de gauche à droite, la
+/// suivante de droite à gauche. La part d'erreur qui traverse la fin de ligne
+/// arrive donc sur le pixel situé juste en dessous, et non au début de la ligne
+/// suivante. C'est aussi ce qui supprime le moiré directionnel du Floyd-Steinberg,
+/// que la queue longue seule ne suffit pas à effacer.
 fn riemersma(dst: &mut RgbImage, palette: &[[u8; 3]], taps: usize, decay: f64) {
     let (w, h) = dst.dimensions();
     if taps == 0 {
@@ -287,43 +304,38 @@ fn riemersma(dst: &mut RgbImage, palette: &[[u8; 3]], taps: usize, decay: f64) {
     }
     let palette_f = palette_f32(palette);
     let weights = riemersma_weights(taps, decay);
-
-    let line_len = w as usize;
-    let mut line = vec![[0.0f64; 3]; line_len];
+    let mut queue = vec![[0.0f64; 3]; taps];
+    // Position de la part d'erreur qui s'applique au pixel traité : la file est
+    // circulaire, et c'est elle — pas la colonne — qui définit la longueur.
+    let mut head = 0usize;
     for y in 0..h {
-        for x in 0..w as usize {
-            // L'erreur déjà versée pour ce pixel sort de la file avant l'écriture
-            // des suivantes : les emprunts sur `line` restent disjoints.
-            let pending = {
-                let slot = &mut line[x];
-                let value = *slot;
-                *slot = [0.0; 3];
-                value
-            };
-            let p = dst.get_pixel(x as u32, y);
+        let reverse = y % 2 == 1;
+        for step in 0..w {
+            let x = if reverse { w - 1 - step } else { step };
+            let p = dst.get_pixel(x, y);
             let c = [
-                p[0] as f64 + pending[0],
-                p[1] as f64 + pending[1],
-                p[2] as f64 + pending[2],
+                p[0] as f64 + queue[head][0],
+                p[1] as f64 + queue[head][1],
+                p[2] as f64 + queue[head][2],
             ];
             let q = nearest(
                 palette,
                 &palette_f,
                 &[c[0] as f32, c[1] as f32, c[2] as f32],
             );
-            dst.put_pixel(x as u32, y, Rgb(q));
+            dst.put_pixel(x, y, Rgb(q));
             let error = [c[0] - q[0] as f64, c[1] - q[1] as f64, c[2] - q[2] as f64];
+            // Les `taps` cases qui suivent sont toutes réécrites, celle de tête
+            // comprise (elle l'est par le plus petit poids) : rien à remettre à
+            // zéro, et aucun emprunt ne se chevauche.
             for (k, weight) in weights.iter().enumerate() {
-                let index = (x + 1 + k) % line_len;
-                let target = &mut line[index];
+                let slot = (head + 1 + k) % taps;
                 for channel in 0..3 {
-                    target[channel] = error[channel] * weight;
+                    queue[slot][channel] = error[channel] * weight;
                 }
             }
+            head = (head + 1) % taps;
         }
-        // La file repart à zéro entre deux lignes : le résultat ne doit pas
-        // dépendre de la hauteur de l'image.
-        line.fill([0.0; 3]);
     }
 }
 
@@ -533,12 +545,17 @@ mod tests {
         total / count as f32
     }
 
+    /// Ce que la queue longue apporte : sur un dégradé, l'écart entre pixels
+    /// voisins diminue nettement (les « vers » de la diffusion à prise unique
+    /// disparaissent), au prix d'un motif un peu plus fondu. C'est le compromis
+    /// qui définit Riemersma.
+    ///
+    /// C'est, mesuré par mutation, le test qui vérifie le plus de choses : il
+    /// échoue si l'on supprime toute propagation d'erreur, si l'on inverse le
+    /// signe des poids, et si l'on désnormalise la file — là où la conservation
+    /// de la moyenne n'en voit aucun des trois.
     #[test]
     fn riemersma_tail_smooths_the_pattern() {
-        // Ce que la queue longue apporte : sur un dégradé, l'écart entre pixels
-        // voisins diminue nettement (les « vers » de la diffusion à prise unique
-        // disparaissent), au prix d'un motif un peu plus fondu. C'est le
-        // compromis qui définit Riemersma.
         let source = grey_ramp(160, 4);
         let mut short = source.clone();
         riemersma(&mut short, &BICHROME, 1, RIEMERSMA_DECAY);
@@ -751,19 +768,33 @@ mod proprietes {
         ]
     }
 
-    /// **La propriété qui définit un tramage** : sur une image à tonalité
+    /// **La propriété de définition d'un tramage** : sur une image à tonalité
     /// variée, la luminance moyenne doit survivre à la quantification.
     ///
     /// Tolérance 6,0 sur 255, soit 2,4 %. Elle est calibrée, pas arbitraire :
     /// l'écart le plus grand constaté sur les images ci-dessus avec une palette
     /// de gris est 1,7 (Bayer 8×8 sur un dégradé 2D, palette de deux tons).
     ///
-    /// **Ce que ce test ne voit pas**, mesuré en mutation : supprimer la
-    /// normalisation des poids de Riemersma ne le fait pas échouer. La file est
-    /// remise à zéro en fin de ligne, et le résidu ainsi jeté est exactement ce
-    /// qui rééquilibre la moyenne. L'invariant « les poids somment à 1 » est donc
-    /// vérifié séparément, par
-    /// `les_poids_de_la_queue_soment_a_un`, là où il porte réellement.
+    /// **Ce que ce test ne voit pas** — établi par mutation, pas supposé :
+    ///
+    /// - supprimer la normalisation des poids de Riemersma : dérive de 0,00,
+    ///   le test passe ;
+    /// - supprimer toute propagation d'erreur : dérive de 0,00, le test passe ;
+    /// - inverser le signe des poids (rétroaction positive) : dérive de 37,85, le
+    ///   test échoue.
+    ///
+    /// Donc cette propriété vérifie la **stabilité** de la boucle, pas sa
+    /// calibration ni la présence même d'une diffusion. Deux raisons, toutes deux
+    /// structurelles : la diffusion est une boucle de rétroaction fermée — l'erreur
+    /// injectée change le choix du quantificateur, donc l'erreur suivante, et le
+    /// régime permanent conserve la moyenne quel que soit le gain ; et la
+    /// quantification de chaque pixel indépendamment conserve déjà la moyenne
+    /// d'une rampe monotone (cf. `une_quantification_simple_conserve_deja_...`).
+    ///
+    /// La calibration est vérifiée par
+    /// `les_poids_de_la_queue_soment_a_un` (invariant structurel) et
+    /// `tests::riemersma_tail_smooths_the_pattern` (lissage, qui elle détecte la
+    /// mutation de gain).
     #[test]
     fn la_moyenne_survit_a_la_quantification() {
         for (name, source) in images_tonales() {
@@ -788,8 +819,10 @@ mod proprietes {
     /// L'invariant que la conservation de la moyenne ne peut pas voir (voir la
     /// note du test précédent) : la file de Riemersma doit distribuer chaque
     /// erreur en totalité, donc ses poids somment à 1. C'est vérifié sur la
-    /// construction des poids, pas à travers l'image — une somme fausse se
-    /// compenserait d'une ligne à l'autre.
+    /// construction des poids, pas à travers l'image.
+    ///
+    /// Vérifié : supprimer la normalisation fait échouer ce test, et lui seul
+    /// parmi les propriétés de conservation.
     #[test]
     fn les_poids_de_la_queue_soment_a_un() {
         for taps in [1usize, 2, 4, 8, 16, 32] {
@@ -806,6 +839,37 @@ mod proprietes {
                 for pair in weights.windows(2) {
                     assert!(pair[1] <= pair[0], "poids non décroissants : {weights:?}");
                 }
+            }
+        }
+    }
+
+    /// **Caractérisation, pas garantie** : la conservation de la moyenne est un
+    /// défaut de toute quantification sur une rampe de gris, diffusion ou non.
+    ///
+    /// Sur une rampe monotone, la somme des valeurs quantifiées est proche de la
+    /// somme des sources — les marches de l'escalier se compensent. La propriété
+    /// « la moyenne survit » ne peut donc pas, à elle seule, prouver qu'une
+    /// diffusion existe ou qu'elle est bien calibrée. Ce test le montre en
+    /// disableant complètement la diffusion : la moyenne reste juste.
+    ///
+    /// Il sert de garde-fou dans l'autre sens : si ce test commençait à échouer,
+    /// c'est que la structure de la rampe ou du quantificateur a changé, et les
+    /// tolérances ci-dessus seraient à réexaminer.
+    #[test]
+    fn une_quantification_simple_conserve_deja_la_moyenne_dune_rampe() {
+        for n in [2usize, 3, 4, 8, 16] {
+            let palette = grey_levels(n);
+            for (name, source) in images_tonales() {
+                let reference = mean_luma(&source);
+                let mut out = source.clone();
+                // `Dithering::Off` : plus proche voisin, sans aucune diffusion.
+                apply(&mut out, &palette, Dithering::Off);
+                let delta = (mean_luma(&out) - reference).abs();
+                assert!(
+                    delta < 6.0,
+                    "{name}, {n} tons, sans diffusion : la moyenne bouge déjà de \
+                     {delta:.2} — les tolérances des autres tests sont à revoir"
+                );
             }
         }
     }

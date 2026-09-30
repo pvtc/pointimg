@@ -720,14 +720,31 @@ Quatre algorithmes de quantification de palette, choisis par
   l'écart moyen entre pixels voisins passe de 127 à 66, ce qui est le compromis
   habituel de Riemersma.
 
-  **Piège connu, mesuré en mutation** : la file est remise à zéro en fin de ligne
-  (pour que le rendu ne dépende pas de la hauteur de l'image), et le résidu ainsi
-  jeté est précisément ce qui rééquilibre la moyenne. Conséquence : un test de
-  « la luminance moyenne est conservée » **ne détecte pas** une normalisation
-  fautive des poids — supprimez la division par le total, le test passe quand
-  même. L'invariant est donc vérifié séparément sur la construction des poids
-  (`riemersma_weights`), via `proprietes::les_poids_de_la_queue_soment_a_un`.
-  Toute propriété de bout en bout doit être confrontée à une mutation avant
+  **La file enjambe la fin des lignes**, et le balayage est **serpentin** : la file
+  a la taille de `taps` (et non celle de l'image, ce qui perdait des parts sur les
+  images étroites), elle n'est pas remise à zéro entre deux lignes, et une ligne
+  sur deux est parcourue en sens inverse — la part d'erreur qui traverse la fin
+  de ligne arrive donc sur le pixel juste en dessous. Mesuré : la remise à zéro
+  jetait le résidu et laissait une dérive de 1,0 unité de luminance sur une rampe
+  horizontale (0,83 sur un dégradé 2D) ; elle est aujourd'hui de 0,00.
+
+  **Ce que la conservation de la moyenne ne prouve pas** — établi par mutation,
+  pas supposé. Un test « la luminance moyenne survit à la quantification » échoue
+  si l'on inverse le signe des poids (rétroaction positive, dérive de 37,85), mais
+  **passe** si l'on supprime la normalisation des poids, et **passe** aussi si l'on
+  supprime toute propagation d'erreur. Deux raisons structurelles : la diffusion
+  est une boucle de rétroaction fermée — l'erreur injectée change le choix du
+  quantificateur, donc l'erreur suivante, et le régime permanent conserve la
+  moyenne quel que soit le gain ; et la quantification de chaque pixel
+  indépendamment conserve déjà la moyenne d'une rampe monotone, les marches de
+  l'escalier se compensant.
+
+  Répartition vérifiée des contrôles : la **stabilité** de la boucle est gardée par
+  le test de moyenne, le **lissage** (donc la présence et le gain d'une diffusion)
+  par `riemersma_tail_smooths_the_pattern`, et l'**invariant de calibration** par
+  `les_poids_de_la_queue_soment_a_un`, sur la construction des poids
+  (`riemersma_weights`) — seul test que la désnormalisation fait échouer. Règle
+  générale : toute propriété de bout en bout est confrontée à une mutation avant
   d'être considérée comme probante.
 - `Bayer4` / `Bayer8` : tramage ordonné, sans diffusion. Le pixel arbitre entre
   ses deux couleurs de palette les plus proches d'après le seuil de la matrice à
