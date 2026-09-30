@@ -695,6 +695,12 @@ State (Rc<RefCell<..>>) + Widgets    filter::apply_with_progress(…, publish)
   d'un `AdwActionRow` n'est pas extensible : la rangée de curseur est donc une
   `ActionRow` sans titre, à droite de laquelle le curseur s'aligne — et c'est
   elle qu'il faut masquer quand le réglage doublé disparaît, pas le curseur seul.
+- **Parité de rendu** : ni l'un ni l'autre front-end ne module l'opacité du
+  résultat pendant un calcul. Le voile que GTK appliquait (55 % sur le résultat,
+  70 % sur la comparaison) rendait l'image terne sans raison — le caractère
+  provisoire du rendu est déjà porté par le texte de la barre d'état. Toute
+  divergence visuelle entre les deux doit être justifiable par une ligne de code
+  présente des deux côtés.
 - **Taille d'export** (`exports.rs`) : le worker encode le rendu et publie
   `Msg::ExportSizes` sur le canal existant — seule la boucle GTK touche un
   widget, et l'étiquette est rafraîchie depuis le handler. GTK n'a pas d'endroit

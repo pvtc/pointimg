@@ -853,6 +853,11 @@ State (Rc<RefCell<..>>) + Widgets     filter::apply_with_progress(…, publish)
   and sliders: it compares `params` before/after before scheduling a recompute
   (GTK re-emits `value-changed` on focus loss, with the re-parsed entry value)
   and re-syncs the widgets when the value came from a slider.
+- **Render parity**: neither front-end modulates the result opacity while
+  computing. The veil GTK used to apply (55% on the result, 70% on the comparison)
+  dulled the image for no reason — the provisional nature of the render is
+  already carried by the status bar text. Any visual divergence between the two
+  must be justifiable by a line of code present on both sides.
 - **Export size** (`exports.rs`): the worker encodes the render and publishes
   `Msg::ExportSizes` on the existing channel — only the GTK loop ever touches a
   widget, and the label is refreshed from the handler. GTK has no place to poll a

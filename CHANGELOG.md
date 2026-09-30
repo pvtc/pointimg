@@ -134,6 +134,17 @@ et ce projet adhère au [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
   qui est toujours lu comme Floyd-Steinberg ; l'écriture passe à
   `dithering = "floyd-steinberg"`. (`src/filter/params.rs`)
 
+### Parité : le rendu GTK n'est plus voilé pendant le calcul
+
+- Le panneau résultat était composé à **55 % d'opacité** et le panneau de
+  comparaison à 70 %, dès que le rendu affiché n'était plus final — donc pendant
+  tout calcul. Sur fond clair, l'image paraissait visiblement terne pendant
+  plusieurs secondes. L'interface egui ne module pas l'opacité, alors que les
+  deux calculent `result_is_stale()` à l'identique : l'écart de rendu venait de
+  là, et rien ne le documentait. Le voile est retiré ; le caractère provisoire du
+  rendu reste signalé par le texte de la barre d'état dans les deux interfaces.
+  (`src/gtk/preview.rs`)
+
 ### Tests de propriétés sur le dithering, et un piège qu'ils révèlent
 
 - Sept tests de propriétés encadrent les quatre algorithmes : conservation de la
