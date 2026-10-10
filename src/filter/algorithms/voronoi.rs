@@ -4,6 +4,7 @@ use crate::filter::sampling::{build_dots_from_seeds, importance_sample, make_rng
 use crate::filter::seedgrid::SeedGrid;
 use anyhow::Result;
 
+use crate::filter::Previews;
 use crate::filter::cancelled;
 use image::RgbImage;
 use rayon::prelude::*;
@@ -96,19 +97,27 @@ pub(crate) fn dots_voronoi_progressive<F>(
     density: &[f32],
     params: &FilterParams,
     cancel: &AtomicBool,
+    previews: Previews,
     on_progress: &mut F,
 ) -> Result<(RgbImage, Vec<Dot>)>
 where
-    F: FnMut(usize, usize, &RgbImage),
+    F: FnMut(usize, usize, Option<&RgbImage>),
 {
     let iters = params.iterations;
 
     // Keep the last iteration's result to avoid recomputing it.
     let mut last: Option<(RgbImage, Vec<Dot>)> = None;
     let seeds = run_lloyd(src, density, params, cancel, |iter, seeds| {
+        if previews == Previews::None {
+            // Pas de rendu, mais la progression reste annoncée : la CLI s'en
+            // sert pour afficher « Iteration n/total » sur stderr. `last` vide
+            // reportera le rendu après la boucle, et une seule fois.
+            on_progress(iter + 1, iters, None);
+            return;
+        }
         let dots = build_dots_from_seeds(src, density, seeds, params);
         let preview = render(src, &dots, params);
-        on_progress(iter + 1, iters, &preview);
+        on_progress(iter + 1, iters, Some(&preview));
         last = Some((preview, dots));
     })?;
 

@@ -6,6 +6,7 @@ use crate::filter::seedgrid::SeedGrid;
 use crate::filter::util::luminance;
 use anyhow::Result;
 
+use crate::filter::Previews;
 use crate::filter::cancelled;
 use image::RgbImage;
 use rayon::prelude::*;
@@ -183,10 +184,11 @@ pub(crate) fn dots_kmeans_progressive<F>(
     density: &[f32],
     params: &FilterParams,
     cancel: &AtomicBool,
+    previews: Previews,
     on_progress: &mut F,
 ) -> Result<(RgbImage, Vec<Dot>)>
 where
-    F: FnMut(usize, usize, &RgbImage),
+    F: FnMut(usize, usize, Option<&RgbImage>),
 {
     let (width, height) = src.dimensions();
     let img_min = width.min(height) as f32;
@@ -194,10 +196,15 @@ where
 
     let mut last: Option<(RgbImage, Vec<Dot>)> = None;
     let centers = run_kmeans(src, density, params, cancel, |iter, centers| {
+        if previews == Previews::None {
+            // Même choix qu'en Voronoï : la progression sans image.
+            on_progress(iter + 1, iters, None);
+            return;
+        }
         // Preview + dots après chaque itération effective.
         let dots = dots_from_kmeans_centers(centers, density, width, height, img_min, params);
         let preview = render(src, &dots, params);
-        on_progress(iter + 1, iters, &preview);
+        on_progress(iter + 1, iters, Some(&preview));
         last = Some((preview, dots));
     })?;
 

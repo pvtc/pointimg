@@ -112,15 +112,34 @@ fn dots_to_srgb(dots: &[Dot]) -> Vec<Dot> {
 
 // ── Versions « inner » : le pipeline historique, sans correction gamma.
 
+/// Faut-il rendre un aperçu à chaque itération de Lloyd ?
+///
+/// [`Previews::Each`] alimente l'affichage progressif d'une interface ;
+/// [`Previews::None`] ne calcule que les points, et laisse le rendu final se
+/// faire une seule fois. La différence n'est pas cosmétique : un rendu sur 8,4 Mpx
+/// coûte un passage plein-pixel plus ~25 Mo d'image, et il y en avait un par
+/// itération.
+///
+/// La *progression* reste annoncée dans les deux cas : seule l'image disparaît.
+/// Le contrat interne est donc `Option<&RgbImage>`, `None` signifiant « pas
+/// d'aperçu », et l'entrée publique qui promet une image la reconstruit à partir
+/// de ce `Option` (avec [`Previews::Each`] elle est toujours présente).
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub(crate) enum Previews {
+    Each,
+    None,
+}
+
 fn apply_with_progress_inner<F>(
     src: &RgbImage,
     params: &FilterParams,
     cancel: &std::sync::atomic::AtomicBool,
     cached_density: Option<&[f32]>,
+    previews: Previews,
     mut on_progress: F,
 ) -> Result<(RgbImage, Vec<Dot>)>
 where
-    F: FnMut(usize, usize, &RgbImage),
+    F: FnMut(usize, usize, Option<&RgbImage>),
 {
     use std::sync::atomic::Ordering;
     let (w, h) = src.dimensions();
@@ -141,10 +160,10 @@ where
 
     match params.algorithm {
         Algorithm::Voronoi => {
-            dots_voronoi_progressive(src, density, params, cancel, &mut on_progress)
+            dots_voronoi_progressive(src, density, params, cancel, previews, &mut on_progress)
         }
         Algorithm::Kmeans => {
-            dots_kmeans_progressive(src, density, params, cancel, &mut on_progress)
+            dots_kmeans_progressive(src, density, params, cancel, previews, &mut on_progress)
         }
         _ => {
             if cancel.load(Ordering::Relaxed) {
@@ -156,7 +175,7 @@ where
                 _ => unreachable!(),
             };
             let result = render(src, &dots, params);
-            on_progress(1, 1, &result);
+            on_progress(1, 1, Some(&result));
             Ok((result, dots))
         }
     }
@@ -309,19 +328,103 @@ where
         let lin = gamma::srgb_to_linear_image(src);
         let params_lin = linearized_clone(params);
         // Wrapper de callback : réencode chaque preview linéaire vers sRGB pour la GUI.
-        let mut wrapped = |iter, total, preview_lin: &RgbImage| {
+        // L'image est garantie par `Previews::Each`, passé une ligne plus bas.
+        let mut wrapped = |iter, total, preview_lin: Option<&RgbImage>| {
+            let preview_lin = preview_lin.expect("Previews::Each produit une image");
             let preview_srgb = gamma::linear_to_srgb_image(preview_lin);
             on_progress(iter, total, &preview_srgb);
         };
-        let (dst_lin, dots_lin) =
-            apply_with_progress_inner(&lin, &params_lin, cancel, None, &mut wrapped)?;
+        let (dst_lin, dots_lin) = apply_with_progress_inner(
+            &lin,
+            &params_lin,
+            cancel,
+            None,
+            Previews::Each,
+            &mut wrapped,
+        )?;
         Ok((
             gamma::linear_to_srgb_image(&dst_lin),
             dots_to_srgb(&dots_lin),
         ))
     } else {
-        apply_with_progress_inner(src, params, cancel, None, on_progress)
+        // `Previews::Each` : l'image est toujours là, l'adaptateur ne peut pas
+        // perdre l'aperçu en route.
+        apply_with_progress_inner(
+            src,
+            params,
+            cancel,
+            None,
+            Previews::Each,
+            &mut |iter, total, preview: Option<&RgbImage>| {
+                on_progress(
+                    iter,
+                    total,
+                    preview.expect("Previews::Each produit une image"),
+                )
+            },
+        )
     }
+}
+
+/// Variante de [`apply_with_progress`] qui ne rend aucun aperçu intermédiaire.
+///
+/// Le callback ne reçoit que `(itération, total)`. C'est le chemin de la CLI :
+/// son callback annonçait une progression sur stderr en jetant l'image, alors
+/// que chaque itération de Lloyd lui coûtait un `build_dots_from_seeds` (une
+/// passe plein-pixel) plus un `render` (25 Mo d'image à 8,4 Mpx) — le poste
+/// dominant d'un traitement Voronoï. Les points sont calculés une fois puis
+/// rendus une seule fois, comme le chemin direct `apply`.
+///
+/// Une interface qui *affiche* les aperçus garde [`apply_with_progress`].
+pub fn apply_with_iteration_counts<F>(
+    src: &RgbImage,
+    params: &FilterParams,
+    cancel: &std::sync::atomic::AtomicBool,
+    mut on_iter: F,
+) -> Result<(RgbImage, Vec<Dot>)>
+where
+    F: FnMut(usize, usize),
+{
+    // Le halftone actif n'a pas de boucle de Lloyd : une seule passe, comme dans
+    // `apply_with_progress`. La garde est hors de la branche gamma, sinon un
+    // halftone sans gamma tombait sur l'`unreachable!()` du chemin pointilliste.
+    if params.algorithm == Algorithm::Halftone && params.halftone != HalftoneMode::Off {
+        let (rgba, dots) = apply_rgba(src, params)?;
+        let rgb = image::DynamicImage::ImageRgba8(rgba).to_rgb8();
+        on_iter(1, 1);
+        return Ok((rgb, dots));
+    }
+    if params.gamma_correct {
+        let lin = gamma::srgb_to_linear_image(src);
+        let params_lin = linearized_clone(params);
+        let total = params.iterations.max(1);
+        // Le callback d'itération est le seul qui reste : l'image n'est plus
+        // produite, donc rien à ré-encoder pour elle.
+        let mut wrapped = |iter, _total, _preview: Option<&RgbImage>| {
+            on_iter(iter, total);
+        };
+        let (dst_lin, dots_lin) = apply_with_progress_inner(
+            &lin,
+            &params_lin,
+            cancel,
+            None,
+            Previews::None,
+            &mut wrapped,
+        )?;
+        return Ok((
+            gamma::linear_to_srgb_image(&dst_lin),
+            dots_to_srgb(&dots_lin),
+        ));
+    }
+    let total = params.iterations.max(1);
+    apply_with_progress_inner(
+        src,
+        params,
+        cancel,
+        None,
+        Previews::None,
+        &mut |iter, _total, _preview: Option<&RgbImage>| on_iter(iter, total),
+    )
 }
 
 /// Variante de `apply_with_progress` utilisant une density map deja calculee.
@@ -330,7 +433,7 @@ pub fn apply_with_progress_cached<F>(
     params: &FilterParams,
     cancel: &std::sync::atomic::AtomicBool,
     density: &[f32],
-    on_progress: F,
+    mut on_progress: F,
 ) -> Result<(RgbImage, Vec<Dot>)>
 where
     F: FnMut(usize, usize, &RgbImage),
@@ -353,7 +456,21 @@ where
         // `unreachable!()` dans `apply_with_progress_inner`.
         return apply_with_progress(src, params, cancel, on_progress);
     }
-    apply_with_progress_inner(src, params, cancel, Some(density), on_progress)
+    apply_with_progress_inner(
+        src,
+        params,
+        cancel,
+        Some(density),
+        Previews::Each,
+        // `on_progress` reçoit une image; le chemin `Each` en garantit toujours.
+        &mut |iter, total, preview: Option<&RgbImage>| {
+            (on_progress)(
+                iter,
+                total,
+                preview.expect("Previews::Each produit une image"),
+            )
+        },
+    )
 }
 
 /// Applique le filtre à une `RgbImage` et rend le résultat.
@@ -378,6 +495,7 @@ pub fn apply(src: &RgbImage, params: &FilterParams) -> Result<RgbImage> {
             &params_lin,
             &std::sync::atomic::AtomicBool::new(false),
             None,
+            Previews::None,
             |_, _, _| {},
         )?;
         Ok(gamma::linear_to_srgb_image(&dst_lin))

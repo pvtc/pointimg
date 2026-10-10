@@ -47,8 +47,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let presets = filter::builtin_presets();
     for (index, preset) in presets.iter().enumerate() {
         let rendu = filtre(&source, &preset.params)?;
-        let chemin: PathBuf =
-            sortie.join(format!("{:02}-{}.png", index, fichier_sur(&preset.name)));
+        let chemin: PathBuf = sortie.join(format!("{:02}-{}.png", index, fichier_sur(preset.name)));
         rendu.save(&chemin)?;
         println!(
             "{:<22} {} ({}×{})",
