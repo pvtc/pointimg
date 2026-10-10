@@ -49,7 +49,7 @@ impl App {
     /// Charge la première image d'un dossier et active la navigation `←`/`→`.
     pub(crate) fn open_folder(&mut self, path: PathBuf, ctx: &egui::Context) {
         let Ok(entries) = std::fs::read_dir(&path) else {
-            self.status = format!("Dossier illisible : {}", path.display());
+            self.notify_error(format!("Dossier illisible : {}", path.display()));
             return;
         };
         let mut images: Vec<PathBuf> = entries
@@ -59,7 +59,7 @@ impl App {
             .collect();
         images.sort();
         if images.is_empty() {
-            self.status = format!("Aucune image dans {}", path.display());
+            self.notify_error(format!("Aucune image dans {}", path.display()));
             return;
         }
         self.last_dir = Some(path);
@@ -107,17 +107,17 @@ impl App {
             Ok(reader) => match reader.into_dimensions() {
                 Ok(dimensions) => dimensions,
                 Err(e) => {
-                    self.status = format!("Erreur lecture dimensions : {e}");
+                    self.notify_error(format!("Erreur lecture dimensions : {e}"));
                     return;
                 }
             },
             Err(e) => {
-                self.status = format!("Erreur lecture dimensions : {e}");
+                self.notify_error(format!("Erreur lecture dimensions : {e}"));
                 return;
             }
         };
         if dimensions.0 == 0 || dimensions.1 == 0 {
-            self.status = format!("Image vide ({}x{})", dimensions.0, dimensions.1);
+            self.notify_error(format!("Image vide ({}x{})", dimensions.0, dimensions.1));
             return;
         }
         match pointimg::color::decode_to_srgb(&path, "auto") {
@@ -135,6 +135,12 @@ impl App {
                 self.src_dynamic = Some(img);
                 self.src_rgb = Some(rgb);
                 self.src_path = Some(path.clone());
+                // Image récente : l'état d'accueil la propose au lancement
+                // suivant. GTK lit la même information dans le gestionnaire du
+                // bureau ; egui n'a pas d'équivalent et tient sa propre liste.
+                if let Some(prefs) = self.prefs.as_mut() {
+                    prefs.push_recent(&path);
+                }
                 // Taille du fichier d'origine : c'est la référence contre
                 // laquelle la taille de l'export est comparée.
                 self.source_size = std::fs::metadata(&path).ok().map(|meta| meta.len());
@@ -164,7 +170,7 @@ impl App {
                 self.start_compute(ctx);
             }
             Err(e) => {
-                self.status = format!("Erreur chargement : {e}");
+                self.notify_error(format!("Erreur chargement : {e}"));
             }
         }
     }
@@ -196,7 +202,7 @@ impl App {
         self.commit_history();
         self.refresh_src_rgb(ctx);
         self.on_params_changed(ctx);
-        self.status = format!("Preset « {} » appliqué.", preset.name);
+        self.notify(format!("Preset « {} » appliqué.", preset.name));
     }
 
     /// Index du preset correspondant exactement aux réglages courants.
@@ -239,21 +245,21 @@ impl App {
                 self.params = params;
                 self.refresh_src_rgb(ctx);
                 self.on_params_changed(ctx);
-                self.status = format!("Preset chargé : {}", path.display());
+                self.notify(format!("Preset chargé : {}", path.display()));
             }
-            Err(e) => self.status = format!("Erreur chargement preset : {e}"),
+            Err(e) => self.notify_error(format!("Erreur chargement preset : {e}")),
         }
     }
 
     pub(crate) fn save_preset(&mut self, path: PathBuf) {
         let path = frontend::ensure_toml_extension(path);
         if !io::confirm_overwrite(&path) {
-            self.status = "Sauvegarde annulée.".to_string();
+            self.notify("Sauvegarde annulée.");
             return;
         }
         match frontend::save_preset(&path, &self.params) {
-            Ok(()) => self.status = format!("Preset sauvegardé : {}", path.display()),
-            Err(e) => self.status = format!("Erreur sauvegarde preset : {e}"),
+            Ok(()) => self.notify(format!("Preset sauvegardé : {}", path.display())),
+            Err(e) => self.notify_error(format!("Erreur sauvegarde preset : {e}")),
         }
     }
 
@@ -288,7 +294,7 @@ impl App {
             self.pending_commit = false;
         }
         let Some(prev) = self.history.pop() else {
-            self.status = "Rien à annuler.".to_string();
+            self.notify("Rien à annuler.");
             return;
         };
         if let Some(prev_committed) = self.last_committed.take() {
@@ -303,14 +309,14 @@ impl App {
             self.cancel.store(true, Ordering::Relaxed);
         }
         self.last_param_change = Some(Instant::now());
-        self.status = "Annulé.".to_string();
+        self.notify("Annulé.");
         ctx.request_repaint();
     }
 
     /// `Ctrl+Y` (ou `Ctrl+Shift+Z`) : restore l'état suivant.
     pub(crate) fn redo(&mut self, ctx: &egui::Context) {
         let Some(next) = self.future.pop() else {
-            self.status = "Rien à rétablir.".to_string();
+            self.notify("Rien à rétablir.");
             return;
         };
         if let Some(prev_committed) = self.last_committed.take() {
@@ -325,7 +331,7 @@ impl App {
             self.cancel.store(true, Ordering::Relaxed);
         }
         self.last_param_change = Some(Instant::now());
-        self.status = "Rétabli.".to_string();
+        self.notify("Rétabli.");
         ctx.request_repaint();
     }
 
@@ -333,7 +339,7 @@ impl App {
     /// annulable (`Ctrl+Z`).
     pub(crate) fn reset_params(&mut self, ctx: &egui::Context) {
         if self.params == FilterParams::default() {
-            self.status = "Réglages déjà par défaut.".to_string();
+            self.notify("Réglages déjà par défaut.");
             return;
         }
         self.params = FilterParams::default();
@@ -341,7 +347,7 @@ impl App {
         // `bg_color` change : la source aplatie doit être reconstruite.
         self.refresh_src_rgb(ctx);
         self.on_params_changed(ctx);
-        self.status = "Réglages réinitialisés.".to_string();
+        self.notify("Réglages réinitialisés.");
     }
 
     // ─── Zoom ────────────────────────────────────────────────────────────────

@@ -23,6 +23,9 @@ mod controls;
 mod exports;
 mod files;
 mod preview;
+#[cfg(test)]
+mod ranges;
+mod recent;
 mod sections;
 mod shortcuts;
 mod ui;
@@ -255,11 +258,32 @@ impl State {
 /// Formate une durée en millisecondes de façon lisible.
 pub(crate) use pointimg::frontend::{format_duration, format_memory};
 
+/// La fenêtre ouverte, accessible depuis le signal `open`.
+///
+/// `GApplication` n'a qu'une fenêtre : le signal `activate` la construit, le
+/// signal `open` (chemins reçus en argument ou d'un autre programme) charge
+/// ensuite les fichiers dedans. Ces poignées font le lien entre les deux.
+type WindowHandles = (Rc<RefCell<State>>, Rc<controls::Widgets>);
+
 fn main() -> glib::ExitCode {
     env_logger::init();
 
-    let app = adw::Application::builder().application_id(APP_ID).build();
+    let app = adw::Application::builder()
+        .application_id(APP_ID)
+        // `HANDLES_OPEN` : le chemin est transmis par le signal `open` plutôt
+        // que par `activate`. C'est ce qui permet à la fois
+        // `pointimg-gtk photo.jpg` et l'ouverture depuis le gestionnaire de
+        // fichiers (activation D-Bus), qui passe par le même chemin.
+        .flags(gtk::gio::ApplicationFlags::HANDLES_OPEN)
+        .build();
     let (tx, rx) = async_channel::unbounded::<Msg>();
+
+    // `activate` construit la fenêtre, `open` doit ensuite y charger des
+    // fichiers. Le pont entre les deux signaux : `activate` est émis de façon
+    // synchrone, donc le remplissage a lieu avant le retour de
+    // `app.activate()` ci-dessous.
+    let handles: Rc<RefCell<Option<WindowHandles>>> = Rc::new(RefCell::new(None));
+    let handles_for_activate = Rc::clone(&handles);
 
     app.connect_activate(move |app| {
         if app.active_window().is_some() {
@@ -267,6 +291,7 @@ fn main() -> glib::ExitCode {
         }
         let state = Rc::new(RefCell::new(State::new(tx.clone())));
         let (window, widgets) = ui::build_ui(app, Rc::clone(&state));
+        *handles_for_activate.borrow_mut() = Some((Rc::clone(&state), Rc::clone(&widgets)));
 
         let rx = rx.clone();
         let state_rx = Rc::clone(&state);
@@ -280,5 +305,27 @@ fn main() -> glib::ExitCode {
         window.present();
     });
 
-    app.run()
+    // Fichiers (et dossiers) passés en argument, ou choisis dans un autre
+    // programme. Le premier est ouvert dans la fenêtre, les suivants la
+    // remplissent à leur tour — même comportement qu'un glisser-déposer.
+    app.connect_open(move |app, files, _hint| {
+        app.activate();
+        let borrowed = handles.borrow();
+        let Some((state, widgets)) = borrowed.as_ref() else {
+            return;
+        };
+        let paths: Vec<PathBuf> = files.iter().filter_map(|file| file.path()).collect();
+        for path in paths {
+            if path.is_dir() {
+                actions::open_folder(path, state, widgets);
+            } else {
+                actions::load_image(path, state, widgets);
+            }
+        }
+    });
+
+    // `run_with_args_os` plutôt que `run()` : c'est lui qui transmettra les
+    // chemins de la ligne de commande au signal `open`.
+    let args: Vec<std::ffi::OsString> = std::env::args_os().collect();
+    app.run_with_args_os(&args)
 }

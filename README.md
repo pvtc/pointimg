@@ -13,7 +13,7 @@ A pointillist filter that transforms images into compositions of colored dots of
 - **4 dot shapes**: Circle, Square, Ellipse (aspect + rotation), Regular Polygon (3-12 sides)
 - **Density map**: automatic redistribution of dots based on local detail
 - **Export PNG and SVG** vector
-- **Interactive GUI** (egui/wgpu) with progressive preview and drag & drop
+- **Two interactive GUIs**: egui/wgpu (default) and GTK4/libadwaita, with progressive preview and drag & drop
 - **CLI** with all parameters accessible
 - **Reduced palette** option (color quantization)
 - **Customizable background**: white, black, any color `#rrggbb`, or `transparent` (RGBA output)
@@ -171,7 +171,11 @@ Both front-ends (egui and GTK4) offer the same capabilities:
   stays disabled until then.
 - **Built-in presets**: a list of validated starting points (classic
   pointillism, fine stippling, flat graphic colors, CMYK rosette, FM screen,
-  moiré, mosaic, dots, transparent overlays) on top of TOML files.
+  moiré, mosaic, dots, transparent overlays) on top of TOML files. Each one has a
+  **thumbnail rendered from it**, so presets are chosen by their result rather
+  than by their name — the images live in `assets/presets/` and are regenerated
+  with `cargo run --example preset_thumbnails`. Without them both front-ends
+  fall back to a plain list of names.
 - **Measured export size**: the status bar reports the real weight of every
   format (obtained by encoding the render, not estimated) and the gain over the
   source file — `source 3.8 MB · PNG −63 %`.
@@ -182,7 +186,16 @@ Both front-ends (egui and GTK4) offer the same capabilities:
   on the range).
 - **Folder navigation**: open a folder, then use `←`/`→` to move between images.
 - **Window title and status bar** naming the file, its dimensions and the
-  compute state; errors surface as notifications.
+  compute state; errors surface as notifications that last long enough to be
+  read, rather than a status line overwritten by the next frame.
+- **Open from the command line or the file manager**: `pointimg-gtk photo.jpg`
+  opens that image, a directory starts folder navigation. Desktop entries are
+  in `packaging/`.
+- **Recent images**: the GTK front-end lists them from `GtkRecentManager`, the
+  same list every GNOME application shows; egui keeps its own.
+- **A resizable settings panel**: fold it below 900 px (GTK) and bring it back
+  from the header. On egui the four sections fold individually and stay folded
+  across launches.
 - **Interface comfort** (egui): 85–160 % scale and automatic, light or dark
   theme from the settings panel — both settings are remembered across launches;
   below 640 px the side-by-side view stacks automatically.
@@ -193,6 +206,9 @@ Both front-ends (egui and GTK4) offer the same capabilities:
 pointimg-gui
 ```
 
+The settings panel is four collapsible sections, and `Ctrl+K` opens a command
+palette listing every action with its shortcut.
+
 ### GTK4 / libadwaita (optional)
 
 ```bash
@@ -201,7 +217,8 @@ cargo run --no-default-features --features gtk --bin pointimg-gtk
 
 The GTK front-end is built on `adw::PreferencesPage`: one row per setting,
 always-visible groups, actions in the header bar, `adw::Toast` notifications
-and a shortcuts window (`Ctrl+?`).
+and a shortcuts window (`Ctrl+?`). The application menu hangs off a hamburger
+button; the panel folds over the preview below 900 px.
 
 ### Keyboard shortcuts
 
@@ -215,14 +232,15 @@ and a shortcuts window (`Ctrl+?`).
 | `Ctrl+E`                            | Export next to the source (no dialog)     |
 | `Ctrl+C`                            | Copy the image to the clipboard           |
 | `Ctrl+P`                            | Next preset                               |
-| `Alt+Up` / `Alt+Down`               | Previous / next preset                    |
+| `Alt+Up` / `Alt+Down`               | Previous / next preset (GTK4)             |
 | `Ctrl+Z` / `Ctrl+Y`                 | Undo / Redo                               |
 | `Ctrl+R`                            | Reset all settings                        |
 | `Space`                             | Recalculate (at full resolution)          |
-| `Escape`                            | Cancel the running compute                |
-| `Tab`                               | Next view                                 |
+| `Escape`                            | Cancel the running compute (GTK4)         |
+| `Tab` / `Shift+Tab`                 | Next / previous view                      |
 | `+` / `-`                           | Zoom in / out                             |
 | `0` / `1`                           | Fit to window / 100 %                     |
+| `Ctrl+K`                            | Command palette (egui)                    |
 | `Ctrl+wheel`                        | Zoom (GTK4)                               |
 | `F11`                               | Fullscreen (GTK4)                         |
 | `Ctrl+?`                            | Shortcuts window (GTK4)                   |

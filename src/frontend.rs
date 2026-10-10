@@ -186,6 +186,60 @@ pub fn sample_image() -> Option<PathBuf> {
     None
 }
 
+/// Vignette du preset `index`, si elle est présente.
+///
+/// Les vignettes sont générées par `cargo run --example preset_thumbnails`, qui
+/// rend chaque preset intégré sur une image d'exemple. Elles sont optionnelles :
+/// une installation sans le dossier `assets/presets` affiche simplement les
+/// listes sans image.
+///
+/// Ce n'est qu'une *recherche de fichier* : chaque interface décide ensuite de
+/// ses propres widgets — une grille dans egui, des `ActionRow` dans GTK.
+pub fn preset_thumbnail(index: usize) -> Option<PathBuf> {
+    let prefix = format!("{index:02}-");
+    let dir = asset_dir("presets")?;
+    let entree = std::fs::read_dir(&dir).ok()?;
+    let mut trouvee: Option<PathBuf> = None;
+    for chemin in entree.flatten() {
+        let nom = chemin.file_name().to_string_lossy().into_owned();
+        if nom.starts_with(&prefix) && nom.ends_with(".png") {
+            // Un seul fichier par préfixe : le premier convient.
+            if trouvee.is_none() {
+                trouvee = Some(chemin.path());
+            }
+        }
+    }
+    trouvee
+}
+
+/// Cherche un dossier d'assets près du binaire puis du répertoire courant.
+///
+/// Même recherche que [`sample_image`] : une exécution depuis les sources
+/// trouve `assets/`, une installation trouve un dossier voisin du binaire.
+fn asset_dir(nom: &str) -> Option<PathBuf> {
+    let exe = std::env::current_exe().ok()?;
+    let mut roots: Vec<PathBuf> = Vec::new();
+    if let Some(dir) = exe.parent() {
+        roots.push(dir.to_path_buf());
+        let mut courant = dir.to_path_buf();
+        for _ in 0..3 {
+            let Some(parent) = courant.parent() else {
+                break;
+            };
+            courant = parent.to_path_buf();
+            roots.push(courant.clone());
+        }
+    }
+    roots.push(std::env::current_dir().unwrap_or_default());
+    for root in roots {
+        let candidat = root.join("assets").join(nom);
+        if candidat.is_dir() {
+            return Some(candidat);
+        }
+    }
+    None
+}
+
 // ─── Formatage ───────────────────────────────────────────────────────────────
 
 /// Formate une durée en millisecondes de façon lisible.

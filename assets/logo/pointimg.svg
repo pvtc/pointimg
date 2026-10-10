@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  pointimg — trois points primaires de tailles décroissantes.
+
+  Les trois primaires sont ceux de la tradition offset (cyan, magenta, jaune),
+  pas le rouge/jaune/bleu de l'école : ce sont les encres d'une rosette, et
+  l'outil sait les produire. La taille décroît du plus gros au plus petit,
+  comme la répartition des points du centre dense au détail.
+
+  Les rayons (112, 80, 56 sur 512) sont choisis pour survivre au rendu en
+  16 px : le plus petit y fait encore 3,5 px de diamètre, sous quoi il
+  disparaît. Les points sont légèrement séparés plutôt que tangents — un
+  contact dessinerait un bord commun qui s'épaissirait à cette taille.
+
+  Les couleurs sont en `sRGB` explicite et non en `currentColor` : une icône
+  d'application ne doit pas hériter de la couleur du texte du thème.
+-->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <title>pointimg</title>
+
+  <!-- Fond transparent, comme le veut une icône de bureau. -->
+  <circle cx="163" cy="169" r="112" fill="#00AEEF"/>
+  <circle cx="381" cy="265" r="80" fill="#EC008C"/>
+  <circle cx="209" cy="399" r="56" fill="#FFF200"/>
+</svg>

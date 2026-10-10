@@ -7,8 +7,114 @@ et ce projet adhère au [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+### Ajouté
+
+- **Vignettes de presets** : les neuf presets intégrés sont maintenant choisis
+  sur leur rendu et non sur leur nom. Chaque vignette est produite avec les
+  réglages du preset lui-même, par `cargo run --example preset_thumbnails`, sur
+  une image d'exemple — un portrait, seul exemple du dépôt où l'on voit ce
+  qu'un preset fait d'un sujet reconnaissable. egui les affiche en grille de trois
+  colonnes, GTK dans un `GtkFlowBox` ; la vignette courante est encadrée. Sans
+  le dossier `assets/presets/`, les deux interfaces retombent sur une liste de
+  noms. (`examples/preset_thumbnails.rs`, `src/frontend.rs`,
+  `tests/preset_thumbs.rs`)
+- **Images récentes dans egui** : l'état d'accueil propose les dernières images
+  ouvertes, conservées dans le fichier de préférences. GTK lit la même
+  information dans `GtkRecentManager`. (`src/gui/prefs.rs`, `src/gui/ui.rs`)
+- **Sections repliables dans egui** : le panneau de réglages était une colonne
+  de trente curseurs à parcourir en entier pour trouver une option. Quatre
+  sections (`Algorithme`, `Forme des points`, `Fond et rendu`, `Calcul`) se
+  replient, et l'état de repli est mémorisé d'un lancement à l'autre.
+  (`src/gui/ui.rs`)
+- **Palette de commandes** (`Ctrl+K`) dans egui : vingt actions avec leur
+  raccourci affiché, commandes indisponibles grisées mais visibles. L'interface
+  n'avait ni menu ni fenêtre de raccourcis — ses dix-sept raccourcis n'étaient
+  découvrables qu'au survol, et la carte de densité comme le plein écran
+  étaient inatteignables. (`src/gui/palette.rs`)
+- **Notifications dans egui** : erreurs et confirmations passent au-dessus de
+  l'aperçu (3 s, 8 s pour une erreur). Une erreur de calcul était invisible
+  pendant le calcul même, la ligne d'état étant remplacée par la progression.
+  (`src/gui/notify.rs`)
+- **Images récentes dans GTK** via `GtkRecentManager`, la liste du bureau, sous
+  les boutons de l'état d'accueil. (`src/gtk/recent.rs`)
+- **Ouverture par la ligne de commande** : `pointimg-gtk photo.jpg` et
+  `pointimg-gui photo.jpg`, ainsi qu'un dossier qui active la navigation. GTK
+  passe par `HANDLES_OPEN`, donc aussi par l'activation du gestionnaire de
+  fichiers. (`src/gtk/main.rs`, `src/gui/main.rs`)
+- **Entrées de bureau** (`%F`, donc l'ouverture depuis le gestionnaire de
+  fichiers) dans `packaging/`, avec le jeu d'icônes `hicolor`. (`packaging/`)
+- **Logo** : trois points primaires cyan, magenta et jaune de tailles
+  décroissantes. Le SVG est la source, `packaging/icons/regenerate.sh` en
+  dérive toutes les tailles ; le PNG 256 px est embarqué dans le binaire egui,
+  qui n'a pas de thème d'icônes. (`assets/logo/`)
+- **Tests de plages** : chaque interface déclare ses bornes et vérifie les deux
+  extrémités de chaque curseur contre `validate_params`, plus la valeur
+  juste au-delà. (`src/gui/ranges.rs`, `src/gtk/ranges.rs`)
+
+### Modifié
+
+- **Champ et curseur fusionnés dans egui** : six réglages (sensibilité variance,
+  boost, colonnes, nombre de points, itérations, fréquence de trame)
+  occupaient chacun deux lignes — un champ de saisie, puis un curseur sans
+  libellé. `egui::Slider` affiche sa valeur *dans* le rail et la garde
+  saisissable : une ligne par réglage, et le curseur orphelin disparaît. La
+  disposition `[libellé] [rail] [valeur]` est celle des champs de saisie, donc
+  le panneau n'affiche plus deux conventions côte à côte.
+- **Barre d'état GTK** : la liste des formats d'export est désormais élipsée au
+  lieu d'être coupée net dans une fenêtre étroite.
+- **« Mémoire estimée : 695 Mo » (GTK)** devient « Pleine résolution : ~695 Mo ».
+  Le chiffre seul alarmait sans dire ce qu'il annonce — ce n'est pas la mémoire
+  déjà employée, c'est celle que demandera la passe finale.
+- **Panneau de réglages redimensionnable (GTK)** : `adw::OverlaySplitView` au
+  lieu de `gtk::Paned`, avec `set_propagate_natural_width(false)` sur le
+  `ScrolledWindow`. Le `Paned` imposait la largeur naturelle de sa rangée la
+  plus large — 540 px — et ne pouvait pas se rétrécir : en fenêtre 820 px,
+  l'aperçu ne gardait que 280 px. Un `AdwBreakpoint` à 900 px replie désormais
+  le panneau au-dessus de l'aperçu, avec un bouton pour le rouvrir.
+  (`src/gtk/controls.rs`, `src/gtk/ui.rs`)
+- **Menu principal sous un bouton hamburger (GTK)** : il était accroché au bouton
+  « Exporter », alors qu'il ne contenait presque rien d'exportiel — ouvrir un
+  dossier, changer d'image, consulter les raccourcis n'avaient aucun autre
+  accès. Le bouton Exporter ne garde plus que les exports. (`src/gtk/wire.rs`)
+- **« Dossier… » quitte le groupe des presets (GTK)** : il s'agissait d'ouvrir
+  un dossier d'images, mais placé entre « Charger un preset » et « Sauver le
+  preset », il se lisait comme un dossier de presets. Il est passé dans
+  l'en-tête. (`src/gtk/controls.rs`)
+- **Réglages conditionnels masqués (GTK)** : « Couleurs de la palette »,
+  « Dithering » et « Graine » étaient visibles et insensibles hors de leur
+  interrupteur ; egui les masquait déjà. (`src/gtk/sections.rs`)
+- **Sous-titres des rangées de curseur retirés (GTK)** : ils affichaient
+  « curseur » sous un curseur, et « repère = autre borne » — des notes de
+  développement. L'échelle est passée dans l'infobulle.
+  (`src/gtk/controls.rs`)
+- **Courbes de curseur alignées** : `Itérations` est linéaire partout (le
+  logarithmique gaspillait 80 % de la course entre 1 et 10) ; le boost des
+  zones uniformes est logarithmique partout (c'est un multiplicateur).
+- **Poignée de comparaison contrastée (egui)** : disque blanc et contour gris
+  foncé étaient invisibles sur un rendu Voronoï à fond blanc. Halo sombre sous
+  un trait clair, comme dans l'interface GTK.
+- **Badge « obsolète » sur fond opaque (egui)** : le texte blanc nu était
+  illisible sur un ciel clair, et les deux interfaces divergeaient sur ce point.
+- **Barre de progression lisible (egui)** : le spinner traversait la barre, dont
+  la couleur par défaut disparaissait sur le fond sombre.
+- **`Maj+Tab` pour l'aperçu précédent (egui)** : seul `Tab` cyclait, alors que
+  la fenêtre de raccourcis GTK annonçait les deux sens. L'action
+  « Aperçu précédent » a aussi été ajoutée au menu GTK, et les deux fronts
+  sont couverts par un test vérifiant que le cycle boucle dans les deux sens.
+- **Liste de formats en français** : « Density map » devient « Carte de
+  densité » dans les deux interfaces.
+- **Documentation** : `ARCHITECTURE.md` décrit le point de rupture, la palette,
+  les notifications, les images récentes et l'ouverture par la ligne de
+  commande ; une sous-section explique ce que les deux interfaces ne
+  partagent pas, et pourquoi aucune description partagée des réglages n'existe.
+
 ### Corrigé
 
+- **Navigation dans un dossier qui plantait (GTK)** : `load_image` empruntait
+  `state` en lecture puis en écriture dans un même `if let` — le temporaire du
+  scrutinee vit jusqu'à la fin du bloc, et le second emprunt levait un
+  `RefCell already borrowed`. `←`/`→` dans un dossier ouvrait l'image, puis
+  interrompait l'application. (`src/gtk/actions.rs`)
 - **Recalcul sans changement de valeur** : les deux interfaces ne relancent plus
   un calcul que si les paramètres ont *réellement* changé. GTK réémet
   `value-changed` au retrait du focus d'une `SpinRow`, avec la valeur

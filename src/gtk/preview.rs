@@ -488,7 +488,10 @@ pub(crate) fn update_status_labels(state: &Rc<RefCell<State>>, widgets: &Rc<Widg
         let memory = st.src_rgb.as_ref().map(|src| {
             let estimate = filter::estimate_memory_bytes_for(src.width(), src.height(), &st.params);
             let warning = estimate > 1_500 * 1024 * 1024;
-            let text = format!("Mémoire estimée : {}", crate::format_memory(estimate));
+            // Le chiffre seul alarmait sans rien expliquer : on dit ce qu'il
+            // annonce, c'est-à-dire ce que la passe en pleine résolution
+            // demandera — ce n'est pas la mémoire déjà employée.
+            let text = format!("Pleine résolution : ~{}", crate::format_memory(estimate));
             if warning { format!("⚠ {text}") } else { text }
         });
         let timing = st

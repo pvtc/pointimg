@@ -71,7 +71,7 @@ pub(crate) fn slider_row(
 
 /// Arrondi à un nombre fixe de décimales, sans les flottants comme
 /// intermédiaires (`(0.1 + 0.2)` n'est pas représentable exactement).
-fn round_to(value: f32, decimals: usize) -> f32 {
+pub(crate) fn round_to(value: f32, decimals: usize) -> f32 {
     let factor = 10f64.powi(decimals as i32);
     ((f64::from(value) * factor).round() / factor) as f32
 }

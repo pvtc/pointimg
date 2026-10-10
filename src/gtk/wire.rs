@@ -26,42 +26,58 @@ fn clone_state_widgets(state: &St, widgets: &Wi) -> (St, Wi) {
 
 // ─── Menu et actions ─────────────────────────────────────────────────────────
 
-/// Modèle de menu du bouton « Exporter ».
-pub(crate) fn menu_model() -> gtk::gio::Menu {
+/// Éléments propres au bouton « Exporter ».
+pub(crate) fn export_menu_model() -> gtk::gio::Menu {
     let menu = gtk::gio::Menu::new();
-
-    let export = gtk::gio::Menu::new();
-    export.append(Some("Exporter l'image…"), Some("win.export"));
-    export.append(Some("Exporter en SVG…"), Some("win.export-svg"));
-    export.append(
+    menu.append(Some("Exporter l'image…"), Some("win.export"));
+    menu.append(Some("Exporter en SVG…"), Some("win.export-svg"));
+    menu.append(
         Some("Exporter à côté de la source"),
         Some("win.quick-export"),
     );
-    export.append(
+    menu.append(
         Some("Exporter le SVG à côté de la source"),
         Some("win.quick-export-svg"),
     );
-    export.append(Some("Copier dans le presse-papiers"), Some("win.copy"));
-    menu.append_section(None, &export);
+    menu.append(Some("Copier dans le presse-papiers"), Some("win.copy"));
+    menu
+}
 
-    let files_menu = gtk::gio::Menu::new();
-    files_menu.append(Some("Ouvrir un dossier d'images…"), Some("win.open-folder"));
-    files_menu.append(Some("Image précédente"), Some("win.prev-image"));
-    files_menu.append(Some("Image suivante"), Some("win.next-image"));
-    files_menu.append(Some("Charger un preset…"), Some("win.load-preset"));
-    files_menu.append(Some("Sauver le preset…"), Some("win.save-preset"));
-    menu.append_section(None, &files_menu);
+/// Menu principal de l'application, sous le bouton hamburger de l'en-tête.
+///
+/// Ce menu était jusqu'ici attaché au bouton « Exporter », alors qu'il ne
+/// contenait presque rien d'exportiel : ouvrir un dossier, changer d'image,
+/// changer l'affichage et consulter les raccourcis n'avaient aucun autre accès.
+/// Les séparateurs `_` des libellés fournissent les mnémoniques clavier.
+pub(crate) fn menu_model() -> gtk::gio::Menu {
+    let menu = gtk::gio::Menu::new();
+
+    menu.append(Some("_Ouvrir une image…"), Some("win.open"));
+    menu.append(
+        Some("Ouvrir un _dossier d'images…"),
+        Some("win.open-folder"),
+    );
+    let images = gtk::gio::Menu::new();
+    images.append(Some("_Image précédente"), Some("win.prev-image"));
+    images.append(Some("Image _suivante"), Some("win.next-image"));
+    menu.append_section(None, &images);
+
+    let presets = gtk::gio::Menu::new();
+    presets.append(Some("_Charger un preset…"), Some("win.load-preset"));
+    presets.append(Some("_Sauver le preset…"), Some("win.save-preset"));
+    menu.append_section(None, &presets);
 
     let view = gtk::gio::Menu::new();
-    view.append(Some("Aperçu suivant"), Some("win.view-next"));
-    view.append(Some("100 %"), Some("win.zoom-one"));
-    view.append(Some("Ajuster à la fenêtre"), Some("win.zoom-fit"));
-    view.append(Some("Plein écran"), Some("win.fullscreen"));
-    view.append(Some("Raccourcis clavier"), Some("win.shortcuts"));
+    view.append(Some("_Aperçu suivant"), Some("win.view-next"));
+    view.append(Some("Aperçu _précédent"), Some("win.view-prev"));
+    view.append(Some("Zoom _100 %"), Some("win.zoom-one"));
+    view.append(Some("_Ajuster à la fenêtre"), Some("win.zoom-fit"));
+    view.append(Some("Plein _écran"), Some("win.fullscreen"));
+    view.append(Some("Raccourcis _clavier"), Some("win.shortcuts"));
     menu.append_section(None, &view);
 
     let reset = gtk::gio::Menu::new();
-    reset.append(Some("Réinitialiser les réglages"), Some("win.reset"));
+    reset.append(Some("Réinitialiser les _réglages"), Some("win.reset"));
     menu.append_section(None, &reset);
     menu
 }
@@ -179,6 +195,12 @@ pub(crate) fn install_actions(state: &St, widgets: &Wi, window: &adw::Applicatio
         let (s, w) = (Rc::clone(&s), Rc::clone(&w));
         Rc::new(move || step_view(&s, &w, 1))
     });
+    // Pas d'accélérateur : `Maj+Tab` est traité par le `EventControllerKey`
+    // ci-dessous, qui fait la même chose et se déclenche dans les deux sens.
+    add("view-prev", &[], {
+        let (s, w) = (Rc::clone(&s), Rc::clone(&w));
+        Rc::new(move || step_view(&s, &w, -1))
+    });
     add("fullscreen", &["F11"], {
         let window = dialogs_window.clone();
         Rc::new(move || toggle_fullscreen(&window))
@@ -257,8 +279,40 @@ fn step_preset(state: &St, widgets: &Wi, delta: i32) {
     }
     state.borrow_mut().updating = true;
     widgets.preset_combo.set_selected(next);
+    sync_preset_thumbs(state, widgets, next);
     state.borrow_mut().updating = false;
     actions::apply_preset(next as usize - 1, state, widgets);
+}
+
+/// Aligne la grille de vignettes sur le preset courant.
+///
+/// `next` est la position dans la liste déroulable, où 0 vaut « Personnalisé »
+/// et `n + 1` le preset `n`. Un état « personnalisé » décoche toutes les cases
+/// — sans quoi une vignette resterait active alors qu'elle ne décrit plus les
+/// réglages.
+///
+/// `updating` encadre la manipulation : `set_active` émet `toggled`, dont le
+/// rappel réappliquerait le preset — une seconde fois, et pour le mauvais.
+pub(crate) fn sync_preset_thumbs(state: &St, widgets: &Wi, next: u32) {
+    state.borrow_mut().updating = true;
+    for (index, widget) in widgets.preset_thumbs.iter().enumerate() {
+        if let Ok(bouton) = widget.clone().downcast::<gtk::ToggleButton>() {
+            bouton.set_active(next == index as u32 + 1);
+        }
+    }
+    state.borrow_mut().updating = false;
+}
+
+/// Légende sous la grille de vignettes.
+///
+/// `texte` est celui que la liste déroulante affiche déjà — le même calcul, une
+/// seule source. Sans la grille, l'opération ne fait rien : c'est le
+/// sous-titre du `ComboRow` qui tient lieu de légende.
+pub(crate) fn update_preset_caption(_state: &St, widgets: &Wi, texte: &str) {
+    if widgets.preset_thumbs.is_empty() {
+        return;
+    }
+    widgets.preset_caption.set_text(texte);
 }
 
 // ─── Signaux des widgets ─────────────────────────────────────────────────────
@@ -430,6 +484,26 @@ pub(crate) fn wire(state: &St, widgets: &Wi, window: &adw::ApplicationWindow) {
             }
             files::update_preset_row(&s, &w);
             files::apply_selected_preset(&s, &w);
+        });
+    }
+    // Grille de vignettes : un clic applique le preset. La liste déroulante
+    // reste branchée en amont — la grille ne fait que la piloter — ce qui évite
+    // deux chemins d'application du même preset.
+    for (index, widget) in widgets.preset_thumbs.iter().enumerate() {
+        let Some(bouton) = widget.clone().downcast::<gtk::ToggleButton>().ok() else {
+            continue;
+        };
+        let (s, w) = clone_state_widgets(state, widgets);
+        bouton.connect_toggled(move |bouton| {
+            if !bouton.is_active() || s.borrow().updating {
+                return;
+            }
+            // `updating` empêche le rappel de la liste déroulante de
+            // réappliquer le preset une seconde fois.
+            s.borrow_mut().updating = true;
+            w.preset_combo.set_selected(index as u32 + 1);
+            s.borrow_mut().updating = false;
+            actions::apply_preset(index, &s, &w);
         });
     }
 

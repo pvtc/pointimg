@@ -1,0 +1,19 @@
+[Desktop Entry]
+Type=Application
+Version=1.5
+Name=pointimg
+GenericName=Pointillist filter
+Comment=Transform images into compositions of colored dots
+Exec=pointimg-gtk %F
+TryExec=pointimg-gtk
+Icon=pointimg
+Terminal=false
+Categories=Graphics;2DGraphics;RasterGraphics;
+MimeType=image/png;image/jpeg;image/webp;image/bmp;image/tiff;image/x-portable-anymap;image/x-portable-bitmap;
+StartupNotify=true
+SingleMainWindow=true
+Keywords=pointillism;dots;halftone;stipple;voronoi;dithering;art;filter;
+
+[Desktop Action open]
+Name=Open a folder of images
+Exec=pointimg-gtk %F

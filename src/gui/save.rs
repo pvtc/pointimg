@@ -22,7 +22,7 @@ impl App {
 
     pub(crate) fn choose_export(&mut self) {
         let Some(name) = self.default_name("png") else {
-            self.status = "Ouvrez d'abord une image.".to_string();
+            self.notify("Ouvrez d'abord une image.");
             return;
         };
         let mut dialog = rfd::FileDialog::new()
@@ -42,7 +42,7 @@ impl App {
 
     pub(crate) fn choose_svg_export(&mut self) {
         let Some(name) = self.default_name("svg") else {
-            self.status = "Ouvrez d'abord une image.".to_string();
+            self.notify("Ouvrez d'abord une image.");
             return;
         };
         let mut dialog = rfd::FileDialog::new()
@@ -98,7 +98,7 @@ impl App {
                 .unwrap_or("pointimg");
             path.with_file_name(format!("{stem}-pointimg.png"))
         }) else {
-            self.status = "Ouvrez d'abord une image.".to_string();
+            self.notify("Ouvrez d'abord une image.");
             return;
         };
         self.save_result(path);
@@ -111,11 +111,11 @@ impl App {
             guard.as_ref().map(|img| rgba_to_color_image_checker(img))
         };
         let Some(image) = image else {
-            self.status = "Aucun résultat à copier.".to_string();
+            self.notify("Aucun résultat à copier.");
             return;
         };
         ctx.copy_image(image);
-        self.status = "Image copiée dans le presse-papiers.".to_string();
+        self.notify("Image copiée dans le presse-papiers.");
     }
 
     pub(crate) fn save_result(&mut self, path: PathBuf) {
@@ -128,7 +128,7 @@ impl App {
         // Validate and normalize the selected extension.
         let path = frontend::ensure_image_extension(path, "png");
         if !io::confirm_overwrite(&path) {
-            self.status = "Sauvegarde annulée.".to_string();
+            self.notify("Sauvegarde annulée.");
             return;
         }
         // Le garde est relâché avant de muter `self` (voir `remember_dir`).
@@ -145,16 +145,16 @@ impl App {
         match result {
             Ok(_) => {
                 self.remember_dir(&path);
-                self.status = format!("Sauvegardé : {}", path.display());
+                self.notify(format!("Sauvegardé : {}", path.display()));
             }
-            Err(e) => self.status = format!("Erreur sauvegarde : {e}"),
+            Err(e) => self.notify_error(format!("Erreur sauvegarde : {e}")),
         }
     }
 
     pub(crate) fn save_svg(&mut self, path: PathBuf) {
         let path = frontend::ensure_svg_extension(path);
         if !io::confirm_overwrite(&path) {
-            self.status = "Sauvegarde annulée.".to_string();
+            self.notify("Sauvegarde annulée.");
             return;
         }
         // Utiliser render_svg_from_dots si on a les dots (archi 19)
@@ -184,11 +184,11 @@ impl App {
             Ok(svg) => match frontend::atomic_text_write(&path, &svg) {
                 Ok(_) => {
                     self.remember_dir(&path);
-                    self.status = format!("SVG sauvegardé : {}", path.display());
+                    self.notify(format!("SVG sauvegardé : {}", path.display()));
                 }
-                Err(e) => self.status = format!("Erreur écriture SVG : {e}"),
+                Err(e) => self.notify_error(format!("Erreur écriture SVG : {e}")),
             },
-            Err(e) => self.status = format!("Erreur rendu SVG : {e}"),
+            Err(e) => self.notify_error(format!("Erreur rendu SVG : {e}")),
         }
     }
 }

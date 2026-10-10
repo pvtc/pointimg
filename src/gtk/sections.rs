@@ -290,6 +290,15 @@ pub(crate) fn update_sections(widgets: &Widgets, p: &FilterParams) {
     widgets.max_radius.set_visible(!is_halftone);
     widgets.max_boost.set_visible(!is_halftone);
     widgets.halftone_group.set_visible(is_halftone);
+
+    // Réglages(conditionnels : masqués tant que la fonction qui les utilise n'est
+    // pas active. Grisés, ils se lisaient comme des réglages disponibles — et
+    // l'interface egui les masquait déjà (cf. `show_shape_and_palette_section`),
+    // ce qui faisait diverger les deux rendus pour rien.
+    let palette = p.palette_size.is_some();
+    widgets.palette_size.set_visible(palette);
+    widgets.dithering.set_visible(palette);
+    widgets.seed_row.set_visible(p.rng_seed.is_some());
     // Les curseurs vivent dans des `ActionRow` à part : leur visibilité suit
     // celle du réglage qu'ils doublent, sans quoi une rangée vide subsisterait
     // sous un réglage masqué.
@@ -319,11 +328,6 @@ pub(crate) fn update_sections(widgets: &Widgets, p: &FilterParams) {
         .polygon_box
         .set_visible(matches!(p.dot_shape, DotShape::RegularPolygon { .. }));
 
-    widgets.palette_size.set_sensitive(p.palette_size.is_some());
-    widgets.dithering.set_sensitive(p.palette_size.is_some());
-    widgets.seed.set_sensitive(p.rng_seed.is_some());
-    widgets.vary_seed.set_sensitive(p.rng_seed.is_some());
-
     widgets
         .dominant_box
         .set_visible(matches!(p.halftone, HalftoneMode::Dominant { .. }));
@@ -332,6 +336,7 @@ pub(crate) fn update_sections(widgets: &Widgets, p: &FilterParams) {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use pointimg::frontend::{VIEW_COUNT, ViewMode};
 
     #[test]
     fn algorithm_index_round_trips() {
@@ -358,5 +363,27 @@ mod tests {
             2
         );
         assert_eq!(shape_index(&DotShape::RegularPolygon { sides: 6 }), 3);
+    }
+
+    /// `step_view` est piloté par `Tab` et `Maj+Tab` (voir `wire.rs`). Le
+    /// calcul est ici refait sur `ViewMode` : un aller-retour doit revenir au
+    /// point de départ, et les deux sens doivent boucler.
+    #[test]
+    fn le_cycle_des_apercus_boucle_dans_les_deux_sens() {
+        let modes: Vec<ViewMode> = (0..VIEW_COUNT)
+            .map(pointimg::frontend::view_from_index)
+            .collect();
+        let pas = |index: u32, delta: i32| -> u32 {
+            (index as i32 + delta).rem_euclid(VIEW_COUNT as i32) as u32
+        };
+        for (index, mode) in modes.iter().enumerate() {
+            let index = index as u32;
+            assert_eq!(pas(pas(index, 1), -1), index, "aller-retour instable");
+            assert_eq!(*mode, pointimg::frontend::view_from_index(index));
+        }
+        // Le dernier reboucle sur le premier, et l'inverse.
+        assert_eq!(pas(0, -1), VIEW_COUNT - 1);
+        assert_eq!(pas(VIEW_COUNT - 1, 1), 0);
+        assert_eq!(modes[pas(0, -1) as usize], ViewMode::DensityMap);
     }
 }

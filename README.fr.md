@@ -13,7 +13,7 @@ Filtre pointilliste qui transforme une image en une composition de points color�
 - **4 formes de points** : Cercle, Carré, Ellipse (aspect + rotation), Polygone régulier (3-12 côtés)
 - **Density map** : redistribution automatique des points selon le détail local
 - **Export PNG et SVG** vectoriel
-- **GUI interactive** (egui/wgpu) avec preview progressive et drag & drop
+- **Deux interfaces interactives** : egui/wgpu (par défaut) et GTK4/libadwaita, avec aperçu progressif et glisser-déposer
 - **CLI** avec tous les paramètres accessibles
 - **Palette réduite** optionnelle (quantification des couleurs)
 - **Fond personnalisable** : blanc, noir, n'importe quelle couleur `#rrggbb`, ou `transparent` (sortie RGBA)
@@ -175,7 +175,11 @@ Les deux interfaces (egui et GTK4) offrent les mêmes capacités :
   reste bloqué tant qu'il ne l'est pas.
 - **Presets intégrés** : une liste de points de départ validés (pointillisme
   classique, stippling fin, aplats graphiques, rosette CMJN, trame FM, moiré,
-  mosaïque, pastilles, calques transparents) en plus des fichiers TOML.
+  mosaïque, pastilles, calques transparents) en plus des fichiers TOML. Chacun
+  est illustré par **une vignette rendue avec ses propres réglages** : on choisit
+  un preset sur son résultat, pas sur son nom. Les images sont dans
+  `assets/presets/`, régénérées par `cargo run --example preset_thumbnails` ;
+  sans elles, les deux interfaces retombent sur une simple liste de noms.
 - **Quatre algorithms de dithering** pour la palette réduite : Floyd-Steinberg,
   Riemersma (queue longue, moins de « vers ») et les trames ordonnées de
   Bayer 4×4 / 8×8 pour le rendu « pixel art ». Avec deux couleurs, Bayer
@@ -191,7 +195,16 @@ Les deux interfaces (egui et GTK4) offrent les mêmes capacités :
 - **Navigation dans un dossier** : ouvrir un dossier puis `←`/`→` pour passer
   d'une image à l'autre.
 - **Titre de fenêtre et barre d'état** nommant le fichier, ses dimensions et
-  l'état du calcul ; les erreurs passent par des notifications.
+  l'état du calcul ; les erreurs passent par des notifications, affichées assez
+  longtemps pour être lues au lieu d'être écrasées à la frame suivante.
+- **Ouverture depuis la ligne de commande ou le gestionnaire de fichiers** :
+  `pointimg-gtk photo.jpg` ouvre cette image, un dossier active la navigation.
+  Les entrées de bureau sont dans `packaging/`.
+- **Images récentes** : l'interface GTK les lit dans `GtkRecentManager`, la
+  liste que montre toute application GNOME ; egui tient la sienne.
+- **Panneau de réglages redimensionnable** : il se replie sous 900 px (GTK) et
+  revient depuis l'en-tête. Sur egui, les quatre sections se replient
+  individuellement et le choix est mémorisé d'un lancement à l'autre.
 - **Confort d'interface** (egui) : taille de 85 à 160 % et thème automatique,
   clair ou sombre depuis le panneau de réglages — les deux réglages sont
   mémorisés d'un lancement à l'autre ; sous 640 px, le côte-à-côte s'empile
@@ -203,6 +216,9 @@ Les deux interfaces (egui et GTK4) offrent les mêmes capacités :
 pointimg-gui
 ```
 
+Le panneau de réglages compte quatre sections repliables, et `Ctrl+K` ouvre
+une palette de commandes listant chaque action avec son raccourci.
+
 ### GTK4 / libadwaita (optionnelle)
 
 ```bash
@@ -211,7 +227,8 @@ cargo run --no-default-features --features gtk --bin pointimg-gtk
 
 L'interface GTK4 est construite sur `adw::PreferencesPage` : une ligne par
 réglage, sections toujours visibles, actions dans l'en-tête, notifications
-`adw::Toast`, fenêtre de raccourcis (`Ctrl+?`).
+`adw::Toast`, fenêtre de raccourcis (`Ctrl+?`). Le menu principal est sous un
+bouton hamburger ; le panneau se replie au-dessus de l'aperçu sous 900 px.
 
 ### Raccourcis clavier
 
@@ -225,14 +242,15 @@ réglage, sections toujours visibles, actions dans l'en-tête, notifications
 | `Ctrl+E`                             | Exporter à côté de la source (sans dialogue) |
 | `Ctrl+C`                             | Copier l'image dans le presse-papiers       |
 | `Ctrl+P`                             | Preset suivant                              |
-| `Alt+↑` / `Alt+↓`                    | Preset précédent / suivant                  |
+| `Alt+↑` / `Alt+↓`                    | Preset précédent / suivant (GTK4)           |
 | `Ctrl+Z` / `Ctrl+Y`                  | Annuler / Rétablir                          |
-| `Ctrl+R`                             | Rétablir tous les réglages                  |
+| `Ctrl+R`                             | Réinitialiser tous les réglages             |
 | `Espace`                             | Recalculer (en pleine résolution)           |
-| `Échap`                              | Annuler le calcul en cours                  |
-| `Tab`                                | Aperçu suivant                              |
+| `Échap`                              | Annuler le calcul en cours (GTK4)           |
+| `Tab` / `Maj+Tab`                    | Aperçu suivant / précédent                  |
 | `+` / `−`                            | Zoomer / Dézoomer                           |
 | `0` / `1`                            | Ajuster à la fenêtre / 100 %                |
+| `Ctrl+K`                             | Palette de commandes (egui)                 |
 | `Ctrl+molette`                       | Zoom (GTK4)                                 |
 | `F11`                                | Plein écran (GTK4)                          |
 | `Ctrl+?`                             | Fenêtre de raccourcis (GTK4)                |

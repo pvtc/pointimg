@@ -18,8 +18,14 @@ and variance.
 8. [Spatial Acceleration (`SeedGrid`)](#8-spatial-acceleration-seedgrid)
 9. [Rendering (draw order)](#9-rendering-draw-order)
 10. [GUI Architecture](#10-gui-architecture)
-11. [SVG Export](#11-svg-export)
-12. [Quality Tools](#12-quality-tools)
+    - [10.1 UI decisions](#101-ui-decisions-shared-by-both-front-ends)
+    - [10.1.1 What is *not* shared](#1011-what-is-not-shared-and-why)
+    - [10.2 egui](#102-egui-srcgui)
+    - [10.3 GTK4 / libadwaita](#103-gtk4--libadwaita-srcgtk)
+    - [10.4 Dithering](#104-dithering-srcfilterditherrs)
+11. [Export Size](#11-export-size)
+12. [SVG Export](#12-svg-export)
+13. [Quality Tools](#13-quality-tools)
 
 ---
 
@@ -62,23 +68,45 @@ pointimg/
 │   │       └── voronoi.rs  — dots_voronoi_progressive, compute_dots_voronoi
 │   ├── main.rs         — CLI binary (`pointimg`)
 │   ├── gui/            — egui/wgpu front-end (`pointimg-gui`, feature `gui`)
-│   │   ├── main.rs     — eframe entry point
+│   │   ├── main.rs     — eframe entry point, `argv`, window icon
 │   │   ├── app.rs      — application state and worker generations
 │   │   ├── compute.rs  — background compute/preview orchestration
 │   │   ├── ui.rs       — panels, controls, history
+│   │   ├── palette.rs  — command palette (`Ctrl+K`)
+│   │   ├── notify.rs   — toast stack (errors, confirmations)
+│   │   ├── ranges.rs   — test: UI bounds vs `validate_params`
+│   │   ├── sliders.rs  — slider widgets and display precision
+│   │   ├── prefs.rs    — interface scale and theme
 │   │   ├── io.rs       — open/load helpers
 │   │   ├── save.rs     — multi-format export
 │   │   ├── convert.rs  — texture conversion
 │   │   └── format.rs   — display formatting
 │   └── gtk/            — GTK4/libadwaita front-end (`pointimg-gtk`, feature `gtk`)
-│       ├── main.rs     — application bootstrap
+│       ├── main.rs     — application bootstrap, `HANDLES_OPEN` / `argv`
 │       ├── actions.rs  — GActions and keyboard shortcuts
 │       ├── controls.rs — parameter widgets
 │       ├── sections.rs — panel sections
 │       ├── preview.rs  — GDK texture preview + zoom
+│       ├── recent.rs   — `GtkRecentManager` integration
+│       ├── ranges.rs   — test: UI bounds vs `validate_params`
+│       ├── shortcuts.rs — keyboard shortcuts window
+│       ├── compare.rs  — before/after wipe
 │       ├── files.rs    — file dialogs and drag & drop
-│       ├── wire.rs     — async-channel wiring between worker and UI
-│       └── ui.rs       — window/UI composition
+│       ├── wire.rs     — actions, menu models, signal wiring
+│       └── ui.rs       — window composition, breakpoint, recent images
+├── assets/
+│   ├── logo/           — icon master (`pointimg.svg`) + the 256 px PNG
+│   │                     embedded in the egui binary
+│   ├── presets/        — one thumbnail per built-in preset, generated
+│   │                     (`cargo run --example preset_thumbnails`)
+│   └── examples/       — sample images referenced by the empty state
+├── examples/
+│   └── preset_thumbnails.rs — renders the preset thumbnails
+├── packaging/
+│   ├── pointimg-gui.desktop, pointimg-gtk.desktop — entries, `%F` so the
+│   │                     file manager can open an image in either front-end
+│   └── icons/          — `hicolor` icon tree, generated from the SVG by
+│                         `icons/regenerate.sh`
 ├── tests/              — integration tests (public API end-to-end)
 │   ├── pipeline.rs     — algorithm dimensions, progress, dots, flatten, density
 │   ├── svg.rs          — SVG header, shapes, bg color, empty-image error
@@ -741,7 +769,8 @@ writes, export and presets):
   result are drawn in the same area, on either side of a draggable handle.
   GTK: `gtk::DrawingArea` with cairo surfaces clipped at the handle
   (`src/gtk/compare.rs`). egui: two `Painter::image` calls with distinct
-  `clip_rect`s.
+  `clip_rect`s. Both draw the handle as a dark halo under a light stroke: a
+  light-on-light handle vanished on a Voronoi render with a white background.
 - **Fast preview + finalization**: `State.quality` ∈ {`Half`, `Quarter`,
   `Full`}. Below `Full`, the worker receives a downscaled image
   (`compute_source()`); after ~900 ms without a change, a `final_pass` at full
@@ -753,9 +782,33 @@ writes, export and presets):
 - **Built-in presets** live in the library (`filter::builtin_presets()`, tested:
   each one passes `validate_params` and a TOML round trip). Both front-ends
   offer the list on top of TOML files.
+- **Presets are picked by their result**: each one ships a thumbnail rendered
+  *with its own settings* on an example image, so the picker shows what a preset
+  does instead of naming it. `cargo run --example preset_thumbnails`
+  regenerates them from `builtin_presets()` — not from copied command-line
+  flags, so a modified preset cannot leave a stale thumbnail behind.
+  `frontend::preset_thumbnail` only *locates* the file; egui lays it out as a
+  three-column grid, GTK as a `GtkFlowBox`. `tests/preset_thumbs.rs` fails if a
+  preset has no thumbnail. The images are optional: an installation without
+  `assets/presets/` falls back to a list of names.
 - **Typed values**: GTK uses `adw::SpinRow` (slider *and* text entry) bounded by
   `validate_params`; egui uses `DragValue` with the same ranges. Sliders now
   stop exactly where the engine refuses to go.
+- **Conditional settings are hidden, not greyed out.** GTK once kept "Palette
+  colors", "Dithering" and "Seed" visible and insensitive; they read as
+  available settings and the two front-ends diverged for nothing (egui already
+  hid them).
+- **The settings panel is resizable and bounded.** GTK uses
+  `adw::OverlaySplitView` with a 360 px sidebar and an `adw::Breakpoint` at
+  900 px: below that the panel folds over the preview and a header button
+  brings it back. A `gtk::Paned` cannot do this, and it imposed the natural
+  width of its widest row — 540 px, leaving 280 px of preview in an 820 px
+  window.
+- **Errors and confirmations are notifications**, not status-bar text. The
+  status bar describes the current state; during a compute it shows progress,
+  which erased any message a few frames after it was set. GTK uses
+  `adw::Toast` (`src/gtk/preview.rs`); egui has an equivalent of its own
+  (`src/gui/notify.rs`, 3 s for a confirmation, 8 s for an error).
 - **Wheel inside the settings panel** (GTK): an `EventControllerScroll` in the
   *capture* phase forwards the wheel to the parent `ScrolledWindow` (Ctrl/Shift
   still adjusts the setting). Without it, scrolling the panel silently changed
@@ -768,6 +821,32 @@ writes, export and presets):
 - **Empty state**: `adw::StatusPage` / centered egui panel with "Open an
   image", "Open a folder" and "Use a sample" (when `assets/examples/` sits next
   to the binary).
+- **A path on the command line opens it**: `pointimg-gtk photo.jpg` and
+  `pointimg-gui photo.jpg`, and a directory activates folder navigation. GTK
+  sets `HANDLES_OPEN` and reads `run_with_args_os`, so the file manager reaches
+  the application through the same path; egui parses `argv` and defers the load
+  to the first frame (`App::pending_open`), since the window does not exist yet
+  when `main` runs.
+
+### 10.1.1 What is *not* shared, and why
+
+The two front-ends share the library, not a UI description. There is
+deliberately **no `ParamSpec`**, no shared action table, no generated widget
+tree: a single declarative description of the settings would force both fronts
+to pick the same widgets, and each would lose what its toolkit does well
+(`adw::SpinRow` with an embedded adjustment, `adw::ShortcutsWindow`,
+`AdwOverlaySplitView` on one side; a `Slider` with the value in the rail,
+`CollapsingHeader`, an immediate command palette on the other).
+
+The duplication that remains is deliberate, and each copy declares its own
+range, curve and scale. What *is* enforced is that no front-end offers a value
+the engine refuses: `src/gui/ranges.rs` and `src/gtk/ranges.rs` each declare
+their bounds and check both ends of every control against
+`filter::validate_params`, plus the value just past it. A bound that drifts out
+of contract then fails in the front-end that declared it, not at export time.
+
+`src/frontend.rs` stays shared because it holds logic rather than presentation:
+formatting, `Curve`, `ViewMode`, `Quality`, atomic writes, presets, export.
 
 ### 10.2 egui (`src/gui/`)
 
@@ -815,6 +894,26 @@ to egui's `ThemePreference::System`, which is reapplied on the first frame.
   bound pairs, with two disjoint interaction zones split halfway between the
   handles — so no state has to be kept across frames. The mapping comes from
   `frontend::Curve`, shared with GTK.
+- **Collapsible sections** (`section` in `ui.rs`): the settings panel is four
+  `CollapsingHeader`s. A thirty-control single column had to be scrolled in
+  full to find one option. The open state is a `CollapsingState`, stored in
+  egui's memory, which eframe persists — the sections open at launch are the
+  ones left open last time. Folding is presentation only; nothing is hidden
+  from the engine, and GTK keeps its own `PreferencesGroup`s.
+- **Command palette** (`src/gui/palette.rs`, `Ctrl+K`): twenty commands with
+  their shortcut printed next to them. egui had no menu and no shortcuts
+  window — its seventeen shortcuts were only discoverable on hover, and the
+  density map and full screen were unreachable except by cycling `Tab`. It is
+  an `egui::Window`, not a port of GTK's `GMenu`: same intent, own
+  implementation. Unavailable commands are shown greyed rather than hidden, so
+  they are discoverable.
+- **Notifications** (`src/gui/notify.rs`): a stack of toasts over the preview.
+  Expiry needs an explicit `request_repaint_after` — egui has no clock, so
+  without it a message would stay until the user touched something.
+- **Window icon**: egui has no icon theme, so the 256 px PNG is embedded with
+  `include_bytes!` and decoded at startup (`window_icon()` in `main.rs`).
+  `assets/logo/pointimg.svg` is the master; `packaging/icons/regenerate.sh`
+  derives every size from it.
 
 ### 10.3 GTK4 / libadwaita (`src/gtk/`)
 
@@ -862,8 +961,30 @@ State (Rc<RefCell<..>>) + Widgets     filter::apply_with_progress(…, publish)
   `Msg::ExportSizes` on the existing channel — only the GTK loop ever touches a
   widget, and the label is refreshed from the handler. GTK has no place to poll a
   mutex from.
+- **Resizable panel** (`controls.rs`, `ui.rs`): `adw::OverlaySplitView`, sidebar
+  pinned at 360 px, plus `set_propagate_natural_width(false)` on the
+  `ScrolledWindow`. That last call is the one that matters: without it the
+  sidebar reports the natural width of its widest row as its minimum, which is
+  what made the panel 540 px wide regardless of the window. An
+  `adw::Breakpoint` (`max-width: 900px`) collapses the sidebar over the
+  preview and reveals a header button; the condition is evaluated by GTK on
+  every resize, so there is no width handler to maintain.
+- **Main menu** (`wire.rs`): the application menu — open, folder, previous /
+  next, presets, view, full screen, shortcuts — sits under a hamburger button.
+  It used to hang off the "Export" split button, which had nothing to do with
+  opening a folder or reading the shortcuts. Labels carry `_` mnemonics. The
+  export button keeps an export-only menu (`export_menu_model`).
+- **Recent images** (`recent.rs`): `GtkRecentManager`, the desktop's own
+  mechanism — the same list that shows up in every GNOME application's menu.
+  Entries are filtered to supported images that still exist. egui has no such
+  mechanism and keeps its own list in `prefs.rs`; the intent is shared, the
+  storage is each toolkit's.
+- **`if let` and `RefCell`**: in `load_image`, `state.borrow()` inside the
+  scrutinee lives until the end of the block, so the `borrow_mut()` that
+  followed it panicked. Folder navigation with `←`/`→` aborted the application.
+  The read borrow is now scoped in a block of its own.
 
-## 10.4 Dithering (`src/filter/dither.rs`)
+### 10.4 Dithering (`src/filter/dither.rs`)
 
 Four palette-quantization algorithms, selected by `FilterParams::dithering`:
 

@@ -193,12 +193,18 @@ pub(crate) fn start_density(state: &Rc<RefCell<State>>) {
 /// Charge une image depuis le disque.
 pub(crate) fn load_image(path: PathBuf, state: &Rc<RefCell<State>>, widgets: &Rc<Widgets>) {
     // Si l'image appartient au dossier en cours, on se place dessus.
-    if let Some(index) = state
-        .borrow()
-        .folder_images
-        .iter()
-        .position(|candidate| candidate == &path)
-    {
+    //
+    // L'emprunt de lecture est explicitement clos avant l'écriture : dans
+    // un `if let`, le temporaire du scrutinee reste vivant jusqu'à la fin du
+    // bloc, et le `borrow_mut()` suivant panicait — ce qui rendait la
+    // navigation ←/→ dans un dossier inutilisable.
+    let index = {
+        let st = state.borrow();
+        st.folder_images
+            .iter()
+            .position(|candidate| candidate == &path)
+    };
+    if let Some(index) = index {
         state.borrow_mut().folder_index = Some(index);
     }
 
@@ -220,6 +226,9 @@ pub(crate) fn load_image(path: PathBuf, state: &Rc<RefCell<State>>, widgets: &Rc
                 st.src_dynamic = Some(img);
                 st.src_rgb = Some(rgb);
                 st.src_path = Some(path.clone());
+                // Document récent du bureau : c'est ce qui alimente le groupe
+                // « Images récentes » de l'état d'accueil au lancement suivant.
+                crate::recent::remember(&path);
                 // Taille du fichier d'origine : référence de la taille d'export.
                 st.source_size = std::fs::metadata(&path).ok().map(|meta| meta.len());
                 st.export_sizes = None;
@@ -503,6 +512,9 @@ pub(crate) fn apply_preset(index: usize, state: &Rc<RefCell<State>>, widgets: &R
     }
     sections::sync_widgets(state, widgets);
     sections::update_sections(widgets, &state.borrow().params);
+    // La ligne de preset porte le sous-titre, l'état actif des vignettes et la
+    // légende : sans cet appel, cliquer une vignette n'afficherait rien.
+    crate::files::update_preset_row(state, widgets);
     refresh_src_rgb(state, widgets);
     request_compute(state, widgets);
     preview::notify(

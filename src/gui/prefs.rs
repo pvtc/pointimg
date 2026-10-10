@@ -15,6 +15,22 @@ const FILE_NAME: &str = "ui-prefs.ron";
 const KEY_SCALE: &str = "ui_scale";
 const KEY_THEME: &str = "ui_theme";
 
+/// Préfixe des entrées d'images récentes.
+///
+/// Le fichier est un simple `clé = valeur` par ligne, sans liste. Les entrées
+/// sont donc numérotées — `recent_00`, `recent_01`… — et le remplissage par
+/// zéro les fait se trier dans l'ordre (l'écriture trie les lignes) même si la
+/// liste dépasse dix éléments.
+const KEY_RECENT: &str = "recent_";
+
+/// Nombre d'images récentes conservées.
+const MAX_RECENT: usize = 10;
+
+/// Clé de la `n`-ième image récente.
+fn recent_key(index: usize) -> String {
+    format!("{KEY_RECENT}{index:02}")
+}
+
 /// Préférences d'interface chargées depuis le disque.
 pub(crate) struct InterfacePrefs {
     values: HashMap<String, String>,
@@ -62,6 +78,52 @@ impl InterfacePrefs {
             None => "auto",
         };
         self.values.insert(KEY_THEME.to_string(), theme.to_string());
+        self.flush();
+    }
+
+    /// Images ouvertes récemment, de la plus récente à la plus ancienne.
+    ///
+    /// Les entrées dont le fichier a disparu sont écartées : proposer une image
+    /// qui n'existe plus ne sert à rien.
+    pub(crate) fn recent(&self) -> Vec<PathBuf> {
+        let mut paths: Vec<PathBuf> = (0..MAX_RECENT)
+            .filter_map(|index| self.values.get(&recent_key(index)).cloned())
+            .map(PathBuf::from)
+            .collect();
+        paths.retain(|path| path.is_file());
+        paths
+    }
+
+    /// Place une image en tête des récentes et écrit le fichier.
+    ///
+    /// Une image déjà présente remonte sans être dupliquée — rouvrir la même
+    /// image dix fois de suite ne doit pas la pousser dix fois.
+    pub(crate) fn push_recent(&mut self, path: &Path) {
+        let path = path.to_string_lossy().into_owned();
+        let mut paths: Vec<String> = (0..MAX_RECENT)
+            .map(|index| self.values.get(&recent_key(index)).cloned())
+            .collect::<Option<Vec<String>>>()
+            .unwrap_or_default();
+        paths.retain(|stored| stored != &path);
+        paths.insert(0, path);
+        paths.truncate(MAX_RECENT);
+        // Les emplacements au-delà de la nouvelle longueur disparaissent :
+        // sans cela, rétrécir la liste laisserait des entrées orphelines.
+        for index in 0..MAX_RECENT {
+            match paths.get(index) {
+                Some(value) => {
+                    self.values.insert(recent_key(index), value.clone());
+                }
+                None => {
+                    self.values.remove(&recent_key(index));
+                }
+            }
+        }
+        self.flush();
+    }
+
+    /// Écrit le fichier de préférences.
+    fn flush(&self) {
         write_pairs(&self.path, &self.values);
     }
 }
@@ -140,5 +202,84 @@ mod tests {
             path: PathBuf::new(),
         };
         assert_eq!(prefs.scale(), None, "une valeur aberrante est ignorée");
+    }
+
+    /// Une liste numérotée à remplissage nul se relit dans l'ordre une fois les
+    /// lignes triées — c'est ce que garantit l'écriture, qui trie.
+    #[test]
+    fn les_cles_recentes_se_relisent_dans_lordre() {
+        for nombre in [1, 9, 10, 11] {
+            let attendu: Vec<String> = (0..MAX_RECENT.min(nombre))
+                .map(|index| format!("/img/{index}.png"))
+                .collect();
+            let mut values = HashMap::new();
+            for image in &attendu {
+                let index: usize = image
+                    .trim_start_matches("/img/")
+                    .trim_end_matches(".png")
+                    .parse()
+                    .unwrap();
+                values.insert(recent_key(index), image.clone());
+            }
+            let prefs = InterfacePrefs {
+                values,
+                path: PathBuf::new(),
+            };
+
+            // Ce que l'écriture produit : les lignes triées par clé…
+            let ecrit: Vec<String> = {
+                let mut lignes: Vec<String> = prefs
+                    .values
+                    .iter()
+                    .filter(|(cle, _)| cle.starts_with(KEY_RECENT))
+                    .map(|(cle, valeur)| format!("{cle} = {valeur}"))
+                    .collect();
+                lignes.sort();
+                lignes
+            };
+            // … et ce qu'on en relit doit être l'ordre d'insertion.
+            let relu: Vec<String> = ecrit
+                .iter()
+                .map(|ligne| ligne.split_once('=').unwrap().1.trim().to_string())
+                .collect();
+            assert_eq!(
+                relu, attendu,
+                "la liste doit se relire dans l'ordre pour {nombre} entrée(s)"
+            );
+        }
+    }
+
+    /// Rouvrir la même image ne doit pas la dupliquer.
+    #[test]
+    fn pousser_deux_fois_ne_duplique_pas() {
+        let dir = std::env::temp_dir().join(format!(
+            "pointimg-prefs-recent-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        std::fs::create_dir_all(&dir).unwrap();
+        let fichier = dir.join("photo.png");
+        std::fs::write(&fichier, b"x").unwrap();
+
+        let mut prefs = InterfacePrefs {
+            values: HashMap::new(),
+            path: dir.join("ui-prefs.ron"),
+        };
+        prefs.push_recent(&fichier);
+        prefs.push_recent(&fichier);
+        assert_eq!(
+            prefs.recent().len(),
+            1,
+            "la même image ne doit pas se répéter"
+        );
+
+        let autre = dir.join("autre.png");
+        std::fs::write(&autre, b"x").unwrap();
+        prefs.push_recent(&autre);
+        assert_eq!(prefs.recent()[0], autre, "la plus récente passe en tête");
+        let _ = std::fs::remove_dir_all(&dir);
     }
 }

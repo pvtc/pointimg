@@ -102,11 +102,17 @@ impl ValueSlider {
     /// `adw::PreferencesGroup` n'accepte que des `AdwPreferencesRow`, et le
     /// suffixe d'un `AdwActionRow` n'est pas extensible : le curseur occupe
     /// donc la partie droite de la rangée, comme les curseurs des réglages
-    /// GNOME. `hint` explique l'échelle, peu lisible sans elle.
-    pub(crate) fn row(&mut self, hint: &str, tooltip: &str) -> adw::ActionRow {
+    /// GNOME.
+    ///
+    /// Ni titre ni sous-titre : la rangée double un `SpinRow` situé juste au
+    /// dessus, dont le libellé et l'aide nomment déjà le réglage. Le curseur
+    /// n'est qu'un second moyen de le régler, pas un réglage à part entière —
+    /// libellé et surtout le mot « curseur », déjà présent dans la moitié
+    /// droite de la fenêtre, n'apprenaient rien. L'échelle est expliquée dans
+    /// l'infobulle.
+    pub(crate) fn row(&mut self, tooltip: &str) -> adw::ActionRow {
         let row = adw::ActionRow::new();
         row.set_activatable(false);
-        row.set_subtitle(hint);
         row.set_tooltip_text(Some(tooltip));
         row.add_suffix(&self.scale);
         self.row = Some(row.clone());
@@ -128,15 +134,9 @@ impl ValueSlider {
 /// curseurs l'un sous l'autre, chacun marquant la position de l'autre borne :
 /// la lecture de la plage et de son écart reste immédiate, et la saisie
 /// chiffrée se fait dans les deux `SpinRow` du dessus.
-fn pair_row(
-    low: &mut ValueSlider,
-    high: &mut ValueSlider,
-    hint: &str,
-    tooltip: &str,
-) -> adw::ActionRow {
+fn pair_row(low: &mut ValueSlider, high: &mut ValueSlider, tooltip: &str) -> adw::ActionRow {
     let row = adw::ActionRow::new();
     row.set_activatable(false);
-    row.set_subtitle(hint);
     row.set_tooltip_text(Some(tooltip));
     let box_ = gtk::Box::new(gtk::Orientation::Vertical, 0);
     box_.set_hexpand(true);
@@ -193,6 +193,11 @@ pub(crate) struct ComparePane {
 pub(crate) struct Widgets {
     // ── En-tête ──────────────────────────────────────────────────────────────
     pub window_title: adw::WindowTitle,
+    /// Panneau de réglages / aperçu. Se replie sous 900 px de large.
+    pub split: adw::OverlaySplitView,
+    /// Bouton d'en-tête qui déploie le panneau lorsqu'il est replié. Masqué
+    /// tant que la fenêtre est assez large pour les afficher côte à côte.
+    pub panel_toggle: gtk::ToggleButton,
     pub open: gtk::Button,
     pub progress: gtk::ProgressBar,
     pub cancel: gtk::Button,
@@ -204,6 +209,12 @@ pub(crate) struct Widgets {
 
     // ── Presets / fichiers ───────────────────────────────────────────────────
     pub preset_combo: adw::ComboRow,
+    /// Cases de la grille de vignettes, dans l'ordre des presets. Vide si les
+    /// vignettes ne sont pas installées — la liste déroulante prend alors le
+    /// relais.
+    pub preset_thumbs: Vec<gtk::Widget>,
+    /// Légende sous la grille : nom du preset courant, ou « Personnalisé ».
+    pub preset_caption: gtk::Label,
     pub load_preset: gtk::Button,
     pub save_preset: gtk::Button,
     pub open_folder: gtk::Button,
@@ -261,6 +272,9 @@ pub(crate) struct Widgets {
     pub gamma: adw::SwitchRow,
     pub use_seed: adw::SwitchRow,
     pub seed: gtk::SpinButton,
+    /// Rangée « Graine » + bouton « Varier » : masquée tant que la graine n'est
+    /// pas fixée (cf. `sections::update_sections`).
+    pub seed_row: adw::ActionRow,
     pub vary_seed: gtk::Button,
 
     // ── Calcul ───────────────────────────────────────────────────────────────
@@ -288,6 +302,9 @@ pub(crate) struct Widgets {
 
     // ── État vide / barre d'état ─────────────────────────────────────────────
     pub empty_page: adw::StatusPage,
+    /// Zone sous les boutons de l'état d'accueil : accueille les images
+    /// récentes.
+    pub empty_extra: gtk::Box,
     pub open_empty: gtk::Button,
     pub sample_button: gtk::Button,
     pub memory: gtk::Label,
@@ -315,7 +332,7 @@ const VIEWS: [&str; 5] = [
     "Côte à côte",
     "Résultat",
     "Source",
-    "Density map",
+    "Carte de densité",
 ];
 const QUALITIES: [&str; 3] = ["Rapide (1/2)", "Rapide (1/4)", "Pleine résolution"];
 
@@ -331,13 +348,15 @@ pub(crate) fn build() -> (adw::ToastOverlay, Rc<Widgets>) {
     let undo = gtk::Button::new();
     let redo = gtk::Button::new();
     let export = gtk::MenuButton::new();
+    let menu = gtk::MenuButton::new();
+    menu.set_menu_model(Some(&crate::wire::menu_model()));
     let toast_overlay = adw::ToastOverlay::new();
     let shortcuts = adw::Window::new();
 
     let preset_combo = combo_row("Preset", &["Personnalisé"], None);
     let load_preset = gtk::Button::with_label("Charger un preset…");
     let save_preset = gtk::Button::with_label("Sauver le preset…");
-    let open_folder = gtk::Button::with_label("Dossier…");
+    let open_folder = gtk::Button::new();
     let folder_label = gtk::Label::new(None);
 
     let algo = combo_row("Algorithme", &ALGOS, Some(ALGO_HELP[0]));
@@ -422,7 +441,10 @@ pub(crate) fn build() -> (adw::ToastOverlay, Rc<Widgets>) {
         1.0,
         0,
     );
-    let mut iterations_slider = ValueSlider::new(1.0, 100.0, 0, Curve::Log);
+    // Linéaire, comme dans l'interface egui : sur 1 → 100, une échelle
+    // logarithmique gaspille 80 % de la course entre 1 et 10, alors que
+    // c'est justement là que se joue le réglage (« 5 ou 10 itérations ?»).
+    let mut iterations_slider = ValueSlider::new(1.0, 100.0, 0, Curve::Linear);
 
     let halftone_mode = combo_row("Mode", &["CMJN (rosette)", "Couleurs dominantes"], None);
     let dominant_n = spin_row(
@@ -602,7 +624,7 @@ pub(crate) fn build() -> (adw::ToastOverlay, Rc<Widgets>) {
 
     let src_pane = preview_pane("Source");
     let dst_pane = preview_pane("Résultat");
-    let density_pane = preview_pane("Density map");
+    let density_pane = preview_pane("Carte de densité");
     let compare_pane = crate::compare::build_pane();
 
     let empty_page = adw::StatusPage::new();
@@ -623,12 +645,50 @@ pub(crate) fn build() -> (adw::ToastOverlay, Rc<Widgets>) {
     let mut preset_items = vec!["Personnalisé"];
     preset_items.extend(preset_names.iter().map(String::as_str));
     preset_combo.set_model(Some(&gtk::StringList::new(&preset_items)));
-    preset_group.add(&preset_combo);
+
+    // Grille de vignettes : un preset se choisit sur son rendu, pas sur son nom.
+    // Présente seulement si les vignettes sont là — sinon la liste déroulante,
+    // qui reste le sélecteur de référence, fait le travail seule.
+    let preset_thumbs: Vec<gtk::Widget> = pointimg::filter::builtin_presets()
+        .iter()
+        .enumerate()
+        .filter_map(|(index, preset)| {
+            let chemin = pointimg::frontend::preset_thumbnail(index)?;
+            let image = gtk::Image::from_file(&chemin);
+            image.set_pixel_size(72);
+            let bouton = gtk::ToggleButton::new();
+            bouton.set_child(Some(&image));
+            bouton.add_css_class("flat");
+            bouton.set_tooltip_text(Some(&format!("{}\n\n{}", preset.name, preset.description)));
+            Some(bouton.upcast())
+        })
+        .collect();
+
+    let preset_grid = gtk::FlowBox::new();
+    preset_grid.set_selection_mode(gtk::SelectionMode::None);
+    preset_grid.set_homogeneous(true);
+    preset_grid.set_column_spacing(6);
+    preset_grid.set_row_spacing(6);
+    preset_grid.set_valign(gtk::Align::Center);
+    preset_grid.set_max_children_per_line(3);
+    for vignette in &preset_thumbs {
+        preset_grid.append(vignette);
+    }
+    let preset_caption = gtk::Label::new(None);
+    preset_caption.set_xalign(0.0);
+    preset_caption.set_wrap(true);
+    preset_caption.add_css_class("dim-label");
+
+    if preset_thumbs.is_empty() {
+        preset_group.add(&preset_combo);
+    } else {
+        preset_group.add(&preset_grid);
+        preset_group.add(&preset_caption);
+    }
 
     let files_buttons = button_row();
     files_buttons.append(&load_preset);
     files_buttons.append(&save_preset);
-    files_buttons.append(&open_folder);
     preset_group.add(&files_buttons);
 
     let folder_row = adw::ActionRow::new();
@@ -644,32 +704,42 @@ pub(crate) fn build() -> (adw::ToastOverlay, Rc<Widgets>) {
     algo_group.set_title("Algorithme");
     algo_group.add(&algo);
     algo_group.add(&variance);
-    algo_group.add(&variance_slider.row("curseur", "Sensibilité à la souris"));
+    algo_group.add(
+        &variance_slider
+            .row("Ajuster la sensibilité à la souris ; l'infobulle du réglage explique son effet"),
+    );
     algo_group.add(&min_radius);
     algo_group.add(&max_radius);
     algo_group.add(&pair_row(
         &mut min_radius_slider,
         &mut max_radius_slider,
-        "logarithme · repère = autre borne",
-        "Curseurs des bornes min et max ; le repère marque l'autre borne",
+        "Curseurs des bornes min et max. Échelle logarithmique ; le repère \
+         marque la position de l'autre borne.",
     ));
     algo_group.add(&max_boost);
-    algo_group.add(&max_boost_slider.row("curseur", "Boost à la souris"));
+    algo_group
+        .add(&max_boost_slider.row("Ajuster l'agrandissement des points en zones sans détail"));
     page.add(&algo_group);
 
     let grid_group = adw::PreferencesGroup::new();
     grid_group.set_title("Grille");
     grid_group.add(&cols);
-    grid_group.add(&cols_slider.row("logarithme", "De 2 à 8 192 cellules"));
+    grid_group.add(
+        &cols_slider.row("Nombre de cellules de la grille, de 2 à 8 192, en échelle logarithmique"),
+    );
     grid_group.add(&grid_angle);
     page.add(&grid_group);
 
     let points_group = adw::PreferencesGroup::new();
     points_group.set_title("Densité de points");
     points_group.add(&num_points);
-    points_group.add(&num_points_slider.row("logarithme", "De 10 à 100 000 points"));
+    points_group
+        .add(&num_points_slider.row("Nombre de points, de 10 à 100 000, en échelle logarithmique"));
     points_group.add(&iterations);
-    points_group.add(&iterations_slider.row("curseur", "Itérations de Lloyd"));
+    points_group.add(
+        &iterations_slider
+            .row("Passes de Lloyd ; au-delà d'une trentaine, le gain devient marginal"),
+    );
     page.add(&points_group);
 
     let halftone_group = adw::PreferencesGroup::new();
@@ -681,14 +751,16 @@ pub(crate) fn build() -> (adw::ToastOverlay, Rc<Widgets>) {
     halftone_group.add(&dominant_box);
     halftone_group.add(&screening);
     halftone_group.add(&halftone_freq);
-    halftone_group.add(&halftone_freq_slider.row("logarithme", "De 4 à 400 cellules"));
+    halftone_group.add(
+        &halftone_freq_slider
+            .row("Fréquence de trame, de 4 à 400 cellules, en échelle logarithmique"),
+    );
     halftone_group.add(&halftone_min_radius);
     halftone_group.add(&halftone_max_dot);
     halftone_group.add(&pair_row(
         &mut halftone_min_slider,
         &mut halftone_max_slider,
-        "repère = autre borne",
-        "Curseurs des bornes min et max du halftone ; le repère marque l'autre borne",
+        "Curseurs des bornes min et max du halftone ; le repère marque la position de l'autre borne",
     ));
     page.add(&halftone_group);
 
@@ -759,8 +831,11 @@ pub(crate) fn build() -> (adw::ToastOverlay, Rc<Widgets>) {
         .vscrollbar_policy(gtk::PolicyType::Automatic)
         .child(&page)
         .build();
-    // Largeur fixe : sans cela le `Paned` s'étire à la largeur naturelle de la
-    // ligne la plus large et le panneau mange la moitié de la fenêtre.
+    // Largeur imposée : sans cela le conteneur s'étire à la largeur naturelle de
+    // la ligne la plus large du panneau et celui-ci mange la moitié de la
+    // fenêtre. `propagate_natural_width(false)` empêche la largeur du contenu de
+    // remonter jusqu'à la taille demandée — c'est lui qui faisait 540 px.
+    controls_scroll.set_propagate_natural_width(false);
     controls_scroll.set_size_request(360, -1);
 
     // ── En-tête ──────────────────────────────────────────────────────────────
@@ -768,6 +843,16 @@ pub(crate) fn build() -> (adw::ToastOverlay, Rc<Widgets>) {
     // suivi de `set_icon_name` sur un GtkButton ne garde que l'icône.
     set_button_content(&open, "document-open-symbolic", "Ouvrir…");
     open.set_tooltip_text(Some("Ouvrir une image (Ctrl+O)"));
+    set_button_content(&open_folder, "folder-open-symbolic", "Dossier…");
+    open_folder.set_tooltip_text(Some(
+        "Ouvrir un dossier et passer d'une image à l'autre avec ← et → (Ctrl+Maj+O)",
+    ));
+    // Révèle le panneau de réglages quand il est replié (fenêtre étroite) :
+    // le bouton n'existe que dans ce cas, cf. le point de rupture plus bas.
+    let panel_toggle = gtk::ToggleButton::new();
+    panel_toggle.set_icon_name("sidebar-show-symbolic");
+    panel_toggle.set_tooltip_text(Some("Afficher les réglages"));
+    panel_toggle.set_visible(false);
     progress.set_show_text(true);
     progress.set_valign(gtk::Align::Center);
     progress.set_size_request(200, -1);
@@ -787,11 +872,17 @@ pub(crate) fn build() -> (adw::ToastOverlay, Rc<Widgets>) {
     set_button_content(&export, "document-save-symbolic", "Exporter");
     export.add_css_class("suggested-action");
     export.set_tooltip_text(Some("Exporter l'image (Ctrl+S)"));
-    export.set_menu_model(Some(&crate::wire::menu_model()));
+    // Le bouton ne propose que les exports : le menu complet (dossier,
+    // presets, affichage, raccourcis) est sous le bouton hamburger.
+    export.set_menu_model(Some(&crate::wire::export_menu_model()));
+    menu.set_tooltip_text(Some("Menu principal"));
 
     let header = adw::HeaderBar::new();
     header.set_title_widget(Some(&window_title));
+    header.pack_start(&menu);
+    header.pack_start(&panel_toggle);
     header.pack_start(&open);
+    header.pack_start(&open_folder);
     header.pack_end(&export);
     header.pack_end(&redo);
     header.pack_end(&undo);
@@ -845,7 +936,16 @@ pub(crate) fn build() -> (adw::ToastOverlay, Rc<Widgets>) {
     let empty_actions = button_row();
     empty_actions.append(&open_empty);
     empty_actions.append(&sample_button);
-    empty_page.set_child(Some(&empty_actions));
+    // Les images récentes s'ajoutent sous les boutons par `ui.rs`, qui
+    // connaît l'état : la page d'accueil les accueille sans les remplacer.
+    let empty_child = gtk::Box::new(gtk::Orientation::Vertical, 0);
+    empty_child.set_valign(gtk::Align::Center);
+    empty_child.set_halign(gtk::Align::Center);
+    empty_child.set_spacing(18);
+    empty_child.append(&empty_actions);
+    let empty_extra = gtk::Box::new(gtk::Orientation::Vertical, 0);
+    empty_child.append(&empty_extra);
+    empty_page.set_child(Some(&empty_child));
 
     let overlay = gtk::Overlay::new();
     overlay.set_child(Some(&images));
@@ -856,14 +956,19 @@ pub(crate) fn build() -> (adw::ToastOverlay, Rc<Widgets>) {
     preview.append(&preview_toolbar);
     preview.append(&overlay);
 
-    let paned = gtk::Paned::new(gtk::Orientation::Horizontal);
-    paned.set_start_child(Some(&controls_scroll));
-    paned.set_end_child(Some(&preview));
-    paned.set_position(360);
-    paned.set_resize_start_child(false);
-    paned.set_shrink_start_child(false);
-    paned.set_vexpand(true);
-    paned.set_hexpand(true);
+    // `AdwOverlaySplitView` plutôt qu'un `GtkPaned` : le panneau garde une
+    // largeur imposée, et se replie au-dessus de l'aperçu quand la fenêtre
+    // devient étroite. Un `Paned` ne sait pas le faire, et imposait la largeur
+    // naturelle de sa rangée la plus large (540 px, dictée par la rangée de
+    // boutons) : il ne laissait que 280 px d'aperçu en fenêtre 820 px.
+    let split = adw::OverlaySplitView::new();
+    split.set_sidebar(Some(&controls_scroll));
+    split.set_content(Some(&preview));
+    split.set_collapsed(false);
+    split.set_min_sidebar_width(320.0);
+    split.set_max_sidebar_width(400.0);
+    split.set_sidebar_width_unit(adw::LengthUnit::Px);
+    split.set_show_sidebar(true);
 
     // ── Barre d'état ─────────────────────────────────────────────────────────
     let status_bar = gtk::Box::new(gtk::Orientation::Horizontal, 14);
@@ -874,6 +979,14 @@ pub(crate) fn build() -> (adw::ToastOverlay, Rc<Widgets>) {
     for label in [&memory, &export_sizes, &timing] {
         label.set_xalign(0.0);
         label.add_css_class("dim-label");
+        // La liste des formats est longue (« PNG 1.4 Mo · WebP — · JPEG… »)
+        // et ne tient pas dans une fenêtre étroite : sans élision elle était
+        // coupée net, sans aucun signe de continuation.
+        label.set_ellipsize(gtk::pango::EllipsizeMode::End);
+        // Le libellé ne doit pas non plus s'étendre : il prend ce dont il a
+        // besoin et cède le reste au message d'état, qui est le champ qui
+        // change.
+        label.set_max_width_chars(40);
         status_bar.append(label);
     }
     status_bar.append(&quality_badge);
@@ -885,7 +998,7 @@ pub(crate) fn build() -> (adw::ToastOverlay, Rc<Widgets>) {
 
     let toolbar = adw::ToolbarView::new();
     toolbar.add_top_bar(&header);
-    toolbar.set_content(Some(&paned));
+    toolbar.set_content(Some(&split));
     toolbar.add_bottom_bar(&status_bar);
 
     toast_overlay.set_child(Some(&toolbar));
@@ -893,6 +1006,8 @@ pub(crate) fn build() -> (adw::ToastOverlay, Rc<Widgets>) {
     let toast_overlay_for_return = toast_overlay.clone();
     let widgets = Widgets {
         window_title,
+        split,
+        panel_toggle,
         open,
         progress,
         cancel,
@@ -902,6 +1017,8 @@ pub(crate) fn build() -> (adw::ToastOverlay, Rc<Widgets>) {
         shortcuts,
         toast_overlay,
         preset_combo,
+        preset_thumbs,
+        preset_caption,
         load_preset,
         save_preset,
         open_folder,
@@ -951,6 +1068,7 @@ pub(crate) fn build() -> (adw::ToastOverlay, Rc<Widgets>) {
         gamma,
         use_seed,
         seed,
+        seed_row,
         vary_seed,
         quality,
         recalc,
@@ -971,6 +1089,7 @@ pub(crate) fn build() -> (adw::ToastOverlay, Rc<Widgets>) {
         density_pane,
         compare_pane,
         empty_page,
+        empty_extra,
         open_empty,
         sample_button,
         memory,

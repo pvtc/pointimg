@@ -26,7 +26,11 @@ mod convert;
 mod exports;
 mod format;
 mod io;
+mod notify;
+mod palette;
 mod prefs;
+#[cfg(test)]
+mod ranges;
 mod save;
 mod sliders;
 mod ui;
@@ -65,16 +69,71 @@ fn main() -> eframe::Result {
             .with_title("pointimg")
             .with_inner_size([1280.0, 820.0])
             .with_min_inner_size([860.0, 560.0])
-            .with_drag_and_drop(true),
+            .with_drag_and_drop(true)
+            .with_icon(window_icon()),
         renderer: eframe::Renderer::Wgpu,
         wgpu_options,
         ..Default::default()
     };
+    // Chemin passé en argument : `pointimg-gui photo.jpg`. La fenêtre n'existe
+    // pas encore ici, le chargement attend la première frame — c'est
+    // `App::pending_open` qui s'en charge.
+    let requested = pending_open_from_args();
     eframe::run_native(
         "pointimg",
         options,
-        Box::new(|_cc| Ok(Box::new(App::new()))),
+        Box::new(move |_cc| {
+            let mut app = App::new();
+            app.pending_open = requested;
+            Ok(Box::new(app))
+        }),
     )
+}
+
+/// Icône de la fenêtre, lue dans le binaire.
+///
+/// egui n'a pas de thème d'icônes : contrairement à GTK, qui va chercher
+/// `pointimg` dans le thème du bureau, il faut fournir les pixels. Le PNG est
+/// embarqué — c'est le coût de 20 ko — plutôt que lu sur disque, pour ne pas
+/// dépendre du répertoire d'installation.
+///
+/// Le SVG maître est dans `assets/logo/` ; les PNG en sont dérivés par
+/// `packaging/icons/regenerate.sh`.
+fn window_icon() -> egui::IconData {
+    let png = include_bytes!("../../assets/logo/pointimg-256.png");
+    match image::load_from_memory_with_format(png, image::ImageFormat::Png) {
+        Ok(image) => {
+            let image = image.into_rgba8();
+            let (width, height) = image.dimensions();
+            egui::IconData {
+                rgba: image.into_raw(),
+                width,
+                height,
+            }
+        }
+        Err(e) => {
+            // Une icône absente ne doit pas empêcher l'application de
+            // démarrer : on le signale et on ouvre sans.
+            log::warn!("icône de fenêtre illisible : {e}");
+            egui::IconData {
+                rgba: Vec::new(),
+                width: 0,
+                height: 0,
+            }
+        }
+    }
+}
+
+/// Chemins d'images ou de dossiers reçus sur la ligne de commande.
+///
+/// egui ne gère pas l'activation D-Bus comme GTK : seule la ligne de commande
+/// est lue ici, ce qui couvre `pointimg-gui photo.jpg` et l'association de
+/// fichiers du bureau.
+fn pending_open_from_args() -> Option<PathBuf> {
+    std::env::args_os()
+        .skip(1)
+        .map(PathBuf::from)
+        .find(|path| pointimg::frontend::is_supported_image(path) || path.is_dir())
 }
 
 /// Entrée d'historique : les paramètres d'un état passé + son libellé.
@@ -196,6 +255,13 @@ pub(crate) struct App {
     pub status: String,
     // Titre de la fenêtre (nom du fichier), pour éviter de le renvoyer à chaque frame.
     pub window_title: String,
+    /// Notifications éphémères (erreurs, confirmations).
+    pub toasts: notify::Toasts,
+    /// Palette de commandes ouverte (`Ctrl+K`) et son texte de recherche.
+    pub palette: Option<String>,
+    /// Chemin donné en ligne de commande, chargé à la première frame : la
+    /// fenêtre n'existe pas encore au moment où `main` le reçoit.
+    pub pending_open: Option<PathBuf>,
     /// Échelle d'interface appliquée au style egui (1.0 = confortable).
     pub ui_scale: f32,
     /// Thème imposé par l'utilisateur ; `None` suit la préférence du système.
@@ -259,6 +325,9 @@ impl Default for App {
             compare_split: 0.5,
             status: "Ouvrez une image pour commencer (ou faites glisser un fichier).".to_string(),
             window_title: String::new(),
+            toasts: notify::Toasts::new(),
+            palette: None,
+            pending_open: None,
             ui_scale: 1.0,
             ui_theme: None,
             prefs: None,
@@ -370,5 +439,34 @@ impl App {
             target_h,
             image::imageops::FilterType::Triangle,
         ))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// L'icône embarquée doit être décodable, sinon la fenêtre s'ouvre sans
+    /// icône et rien ne le signale à l'utilisateur.
+    #[test]
+    fn licone_de_fenetre_est_decodable() {
+        let icon = window_icon();
+        assert_eq!(icon.width, 256);
+        assert_eq!(icon.height, 256);
+        assert_eq!(icon.rgba.len(), 256 * 256 * 4);
+        // Le centre du grand point cyan, à (163, 169) sur la grille 512,
+        // soit (81, 84) en 256. Le coin haut-gauche est transparent : le
+        // cercle n'y passe pas.
+        let x = 81 * 4;
+        let y = 84 * icon.width as usize * 4;
+        let centre = &icon.rgba[x + y..x + y + 4];
+        assert_eq!(
+            centre,
+            &[0x00, 0xAE, 0xEF, 0xFF],
+            "le centre du logo devrait être le cyan du point principal"
+        );
+        // Et le coin, lui, doit être transparent : une icône de bureau ne doit
+        // pas poser un carré opaque.
+        assert_eq!(&icon.rgba[..4], &[0, 0, 0, 0]);
     }
 }

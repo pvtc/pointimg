@@ -391,4 +391,8 @@ pub(crate) fn update_preset_row(state: &Rc<RefCell<State>>, widgets: &Rc<Widgets
     widgets.preset_combo.set_subtitle(&text);
     state.borrow_mut().updating = false;
     sections::update_sections(widgets, &state.borrow().params);
+    // La grille remplace la liste déroulante quand elle est présente : elle
+    // porte donc elle aussi la légende, et l'état actif des vignettes.
+    crate::wire::sync_preset_thumbs(state, widgets, selected);
+    crate::wire::update_preset_caption(state, widgets, &text);
 }
