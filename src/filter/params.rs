@@ -168,17 +168,6 @@ pub struct FilterParams {
 }
 
 impl FilterParams {
-    /// Le fond est-il clair ? Dérivé de `bg_color` (faux si `transparent`).
-    pub fn is_bg_light(&self) -> bool {
-        if self.transparent {
-            return false;
-        }
-        let lum = 0.2126 * self.bg_color[0] as f32
-            + 0.7152 * self.bg_color[1] as f32
-            + 0.0722 * self.bg_color[2] as f32;
-        lum > 127.5
-    }
-
     /// Construit une `HalftoneConfig` prête à passer au moteur halftone.
     pub fn halftone_config(&self) -> HalftoneConfig<'_> {
         HalftoneConfig {

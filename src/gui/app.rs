@@ -12,7 +12,7 @@ use super::format::describe_parameter_change;
 use super::io;
 use pointimg::filter::{self, FilterParams};
 use pointimg::frontend;
-use pointimg::frontend::{IMAGE_EXTENSIONS, describe_image_size, is_supported_image};
+use pointimg::frontend::{IMAGE_EXTENSIONS, describe_image_size};
 
 impl App {
     // ─── Images ──────────────────────────────────────────────────────────────
@@ -48,20 +48,14 @@ impl App {
 
     /// Charge la première image d'un dossier et active la navigation `←`/`→`.
     pub(crate) fn open_folder(&mut self, path: PathBuf, ctx: &egui::Context) {
-        let Ok(entries) = std::fs::read_dir(&path) else {
-            self.notify_error(format!("Dossier illisible : {}", path.display()));
-            return;
+        // Le balayage et ses messages viennent de `frontend`, partagés avec GTK.
+        let images = match frontend::collect_folder_images(&path) {
+            Ok(images) => images,
+            Err(e) => {
+                self.notify_error(e.to_string());
+                return;
+            }
         };
-        let mut images: Vec<PathBuf> = entries
-            .flatten()
-            .map(|entry| entry.path())
-            .filter(|candidate| is_supported_image(candidate))
-            .collect();
-        images.sort();
-        if images.is_empty() {
-            self.notify_error(format!("Aucune image dans {}", path.display()));
-            return;
-        }
         self.last_dir = Some(path);
         self.folder_images = images;
         self.folder_index = Some(0);
@@ -207,9 +201,7 @@ impl App {
 
     /// Index du preset correspondant exactement aux réglages courants.
     pub(crate) fn preset_index(&self) -> Option<usize> {
-        filter::builtin_presets()
-            .iter()
-            .position(|preset| preset.params == self.params)
+        frontend::matching_preset_index(&self.params)
     }
 
     pub(crate) fn cycle_preset(&mut self, delta: i32, ctx: &egui::Context) {
@@ -224,16 +216,8 @@ impl App {
 
     /// Tire une nouvelle graine aléatoire et relance le calcul.
     pub(crate) fn vary_seed(&mut self, ctx: &egui::Context) {
-        use std::collections::hash_map::RandomState;
-        use std::hash::{BuildHasher, Hasher};
-        let mut hasher = RandomState::new().build_hasher();
-        hasher.write_u64(
-            std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
-                .map(|duration| duration.as_nanos() as u64)
-                .unwrap_or(0),
-        );
-        self.params.rng_seed = Some(hasher.finish());
+        // Même tirage que GTK, donc une seule définition (voir `frontend`).
+        self.params.rng_seed = Some(frontend::random_seed());
         self.on_params_changed(ctx);
     }
 
@@ -254,7 +238,7 @@ impl App {
     pub(crate) fn save_preset(&mut self, path: PathBuf) {
         let path = frontend::ensure_toml_extension(path);
         if !io::confirm_overwrite(&path) {
-            self.notify("Sauvegarde annulée.");
+            self.notify(frontend::msg::SAVE_CANCELLED);
             return;
         }
         match frontend::save_preset(&path, &self.params) {
@@ -294,7 +278,7 @@ impl App {
             self.pending_commit = false;
         }
         let Some(prev) = self.history.pop() else {
-            self.notify("Rien à annuler.");
+            self.notify(frontend::msg::NOTHING_TO_UNDO);
             return;
         };
         if let Some(prev_committed) = self.last_committed.take() {
@@ -309,14 +293,14 @@ impl App {
             self.cancel.store(true, Ordering::Relaxed);
         }
         self.last_param_change = Some(Instant::now());
-        self.notify("Annulé.");
+        self.notify(frontend::msg::UNDONE);
         ctx.request_repaint();
     }
 
     /// `Ctrl+Y` (ou `Ctrl+Shift+Z`) : restore l'état suivant.
     pub(crate) fn redo(&mut self, ctx: &egui::Context) {
         let Some(next) = self.future.pop() else {
-            self.notify("Rien à rétablir.");
+            self.notify(frontend::msg::NOTHING_TO_REDO);
             return;
         };
         if let Some(prev_committed) = self.last_committed.take() {
@@ -331,7 +315,7 @@ impl App {
             self.cancel.store(true, Ordering::Relaxed);
         }
         self.last_param_change = Some(Instant::now());
-        self.notify("Rétabli.");
+        self.notify(frontend::msg::REDONE);
         ctx.request_repaint();
     }
 
@@ -339,7 +323,7 @@ impl App {
     /// annulable (`Ctrl+Z`).
     pub(crate) fn reset_params(&mut self, ctx: &egui::Context) {
         if self.params == FilterParams::default() {
-            self.notify("Réglages déjà par défaut.");
+            self.notify(frontend::msg::ALREADY_DEFAULT);
             return;
         }
         self.params = FilterParams::default();
@@ -362,7 +346,7 @@ impl App {
 
     /// Change le zoom en sortant du mode « Ajuster ».
     pub(crate) fn set_zoom(&mut self, value: f32) {
-        self.zoom = value.clamp(0.02, 16.0);
+        self.zoom = value.clamp(frontend::ZOOM_MIN, frontend::ZOOM_MAX);
         self.zoom_fit = false;
     }
 

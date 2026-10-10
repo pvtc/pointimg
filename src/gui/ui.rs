@@ -17,7 +17,7 @@ use super::App;
 use super::convert::{gray_to_color_image, rgb_to_color_image, rgba_to_color_image_checker};
 use super::exports;
 use super::format::format_duration;
-use super::sliders::{display_decimals, int_slider_row, range_slider, round_to};
+use super::sliders::{Bounds, display_decimals, range_slider, round_to};
 use pointimg::frontend::{
     self, Curve, Quality, ViewMode, sample_image, view_from_index, view_index,
 };
@@ -387,9 +387,10 @@ impl App {
         if keys.reset {
             self.reset_params(ctx);
         }
-        if keys.palette {
-            // La palette intercepte tout le clavier : `wants_text` est vérifié
-            // pour ne pas déclencher `Ctrl+K` depuis un champ de saisie.
+        if keys.palette && !wants_text {
+            // La palette intercepte tout le clavier : la garde est indispensable,
+            // car ses propres champs sont les seuls où `Ctrl+K` peut être une
+            // commande (dans un nom de fichier, par exemple).
             self.palette = if self.palette.is_some() {
                 None
             } else {
@@ -402,7 +403,7 @@ impl App {
         if keys.redo && !wants_text {
             self.redo(ctx);
         }
-        if keys.recalc {
+        if keys.recalc && !wants_text {
             self.request_full_compute(ctx);
         }
         if keys.preset && !wants_text {
@@ -674,26 +675,13 @@ impl App {
         // Grille de vignettes : un preset se choisit sur son rendu, pas sur son
         // nom. Sans image (`assets/presets/` absent), on retombe sur une liste
         // de noms — même information, forme différente.
-        let textures: Vec<Option<egui::TextureHandle>> = presets
-            .iter()
-            .enumerate()
-            .map(|(index, _)| {
-                let chemin = frontend::preset_thumbnail(index)?;
-                // Un fichier illisible ne doit pas faire tomber le panneau : la
-                // grille bascule alors sur la liste de noms.
-                match image::open(&chemin) {
-                    Ok(img) => Some(ui.ctx().load_texture(
-                        format!("preset_{index}"),
-                        super::convert::rgba_to_color_image_checker(&img.to_rgba8()),
-                        egui::TextureOptions::NEAREST,
-                    )),
-                    Err(e) => {
-                        log::warn!("vignette de preset illisible ({}) : {e}", chemin.display());
-                        None
-                    }
-                }
-            })
-            .collect();
+        // Une fois, pas à chaque frame : le panneau est redessiné bien plus
+        // souvent que les vignettes ne changent.
+        self.ensure_preset_thumbnails(ctx);
+        // Le clone est une poignée `Arc` par vignette, pas une image. Sans lui
+        // l'emprunt de `self` traverserait les appels `&mut self` ci-dessous.
+        let textures: Vec<Option<egui::TextureHandle>> =
+            self.preset_thumbnails.clone().unwrap_or_default();
         let avec_vignettes = textures.iter().any(|t| t.is_some());
 
         if avec_vignettes {
@@ -899,7 +887,7 @@ impl App {
             "rayon",
             &mut self.params.min_radius_ratio,
             &mut self.params.max_radius_ratio,
-            0.0005..=1.0,
+            Bounds::both(0.0005..=1.0),
             Curve::Log,
             "Rayon min et max, en fraction du plus petit côté",
         );
@@ -1159,7 +1147,10 @@ impl App {
         match &mut self.params.halftone {
             HalftoneMode::Dominant { n, base_angle_deg } => {
                 let mut channels = *n;
-                int_number_row(
+                // `slider_int_row` et non `int_number_row` : celui-ci dessinait
+                // aussi un second curseur sans libellé, et « Canaux »
+                // apparaissait deux fois dans la même section.
+                slider_int_row(
                     ui,
                     "Canaux",
                     &mut channels,
@@ -1220,13 +1211,45 @@ impl App {
             "halftone_rayon",
             &mut self.params.halftone_min_radius_ratio,
             &mut self.params.halftone_max_dot_ratio,
-            0.0..=10.0,
+            Bounds {
+                low: 0.0..=1.0,
+                high: 0.05..=10.0,
+            },
             Curve::Sqrt,
             "Rayon min et max des dots d'encre",
         );
     }
 
     /// Charge (une seule fois) les textures egui correspondant aux images.
+    /// Charge une fois pour toutes les vignettes des presets.
+    ///
+    /// Un fichier illisible donne `None` : si aucune ne passe, la grille
+    /// basculera sur la liste de noms, et le panneau n'aura rien perdu.
+    fn ensure_preset_thumbnails(&mut self, ctx: &egui::Context) {
+        if self.preset_thumbnails.is_some() {
+            return;
+        }
+        let textures = filter::builtin_presets()
+            .iter()
+            .enumerate()
+            .map(|(index, _)| {
+                let chemin = frontend::preset_thumbnail(index)?;
+                match image::open(&chemin) {
+                    Ok(img) => Some(ctx.load_texture(
+                        format!("preset_{index}"),
+                        super::convert::rgba_to_color_image_checker(&img.to_rgba8()),
+                        egui::TextureOptions::NEAREST,
+                    )),
+                    Err(e) => {
+                        log::warn!("vignette de preset illisible ({}) : {e}", chemin.display());
+                        None
+                    }
+                }
+            })
+            .collect();
+        self.preset_thumbnails = Some(textures);
+    }
+
     fn ensure_textures(&mut self, ctx: &egui::Context) {
         if let Some(src) = &self.src_rgb
             && self.src_texture.is_none()
@@ -1435,7 +1458,7 @@ impl App {
                 if self.computing.load(Ordering::Relaxed) {
                     ui.spinner();
                 }
-                ui.label("Calcul en cours…");
+                ui.label(frontend::msg::COMPUTING);
             });
             return;
         };
@@ -1527,7 +1550,7 @@ impl App {
                 if stale {
                     // Plaque opaque derrière le texte : blanc nu, il était
                     // illisible sur un ciel clair.
-                    let text = "aperçu obsolète — recalcul en cours";
+                    let text = frontend::msg::STALE;
                     let galley = ui.painter().layout_no_wrap(
                         text.to_owned(),
                         egui::FontId::proportional(12.0),
@@ -1684,7 +1707,7 @@ impl App {
                         ui.spinner();
                         ui.small(format!("{done}/{total}"));
                     } else {
-                        ui.label("Calcul en cours…");
+                        ui.label(frontend::msg::COMPUTING);
                     }
                 } else {
                     ui.label(&status);
@@ -1705,7 +1728,7 @@ impl App {
                         ui.small("Export : mesure…");
                     }
                     if quick && quick_stale {
-                        ui.small("pleine résolution…");
+                        ui.small(frontend::msg::FINALIZING);
                     } else if quick {
                         ui.small("aperçu rapide").on_hover_text(
                             "Calcul sur une image réduite ; la pleine résolution est \
@@ -2032,21 +2055,6 @@ fn show_dithering_selector(ui: &mut egui::Ui, dithering: &mut Dithering) {
 
 /// Ligne « libellé + saisie directe + curseur » pour un réglage entier : la
 /// saisie comme le glissement sont arrondis à l'unité.
-fn int_number_row(
-    ui: &mut egui::Ui,
-    label: &str,
-    value: &mut usize,
-    range: std::ops::RangeInclusive<f32>,
-    logarithmic: bool,
-    hint: &str,
-) {
-    let mut mirror = *value as f32;
-    if number_row(ui, label, &mut mirror, range.clone()).changed() {
-        *value = mirror.round().max(1.0) as usize;
-    }
-    int_slider_row(ui, label, value, range, logarithmic, hint);
-}
-
 /// Sélecteur de forme des points.
 fn show_shape_selector(ui: &mut egui::Ui, shape: &mut DotShape) {
     let current = match shape {
@@ -2098,15 +2106,6 @@ fn show_shape_selector(ui: &mut egui::Ui, shape: &mut DotShape) {
 mod tests {
     use super::*;
 
-    #[test]
-    fn view_cycle_wraps() {
-        let len = VIEWS.len() as i32;
-        for index in 0..len {
-            let next = ((index + 1).rem_euclid(len)) as usize;
-            assert_ne!(VIEWS[next].1, VIEWS[index as usize].1);
-        }
-    }
-
     /// `Tab` avance et `Maj+Tab` recule, en rebouclant dans les deux sens —
     /// c'est ce que la fenêtre de raccourcis GTK annonce des deux côtés.
     #[test]
@@ -2147,12 +2146,5 @@ mod tests {
         for mode in &modes {
             assert!(vus.contains(mode), "{mode:?} n'a pas été parcouru");
         }
-    }
-
-    #[test]
-    fn number_row_range_is_inclusive() {
-        let range = 2.0..=256.0;
-        assert_eq!(*range.start(), 2.0);
-        assert_eq!(*range.end(), 256.0);
     }
 }

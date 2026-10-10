@@ -10,8 +10,8 @@ use std::time::{Duration, Instant};
 use gtk::glib;
 use gtk::prelude::*;
 
-use image::{RgbImage, RgbaImage};
-use pointimg::filter::{self, Algorithm, Dot, FilterParams};
+use image::RgbImage;
+use pointimg::filter::{self, Algorithm, FilterParams};
 use pointimg::frontend;
 pub(crate) use pointimg::frontend::{
     IMAGE_EXTENSIONS as SUPPORTED_IMAGE_EXTENSIONS, is_supported_image as supported_image,
@@ -120,7 +120,7 @@ pub(crate) fn start_compute(state: &Rc<RefCell<State>>, widgets: &Rc<Widgets>) {
         }
         st.compute_start = Some(Instant::now());
         st.status = if full {
-            "Calcul en cours…".to_string()
+            frontend::msg::COMPUTING.to_string()
         } else {
             "Aperçu rapide en cours…".to_string()
         };
@@ -269,28 +269,14 @@ pub(crate) fn load_image(path: PathBuf, state: &Rc<RefCell<State>>, widgets: &Rc
 
 /// Ouvre un dossier : charge la première image et active la navigation.
 pub(crate) fn open_folder(path: PathBuf, state: &Rc<RefCell<State>>, widgets: &Rc<Widgets>) {
-    let Ok(entries) = std::fs::read_dir(&path) else {
-        preview::notify_error(
-            state,
-            widgets,
-            &format!("Dossier illisible : {}", path.display()),
-        );
-        return;
+    // Balayage et messages partagés avec egui (voir `frontend`).
+    let images = match frontend::collect_folder_images(&path) {
+        Ok(images) => images,
+        Err(e) => {
+            preview::notify_error(state, widgets, &e.to_string());
+            return;
+        }
     };
-    let mut images: Vec<PathBuf> = entries
-        .flatten()
-        .map(|entry| entry.path())
-        .filter(|path| supported_image(path))
-        .collect();
-    images.sort();
-    if images.is_empty() {
-        preview::notify_error(
-            state,
-            widgets,
-            &format!("Aucune image dans {}", path.display()),
-        );
-        return;
-    }
     {
         let mut st = state.borrow_mut();
         st.last_dir = Some(path);
@@ -365,7 +351,7 @@ pub(crate) fn undo(state: &Rc<RefCell<State>>, widgets: &Rc<Widgets>) {
     }
     let previous = state.borrow_mut().history.pop();
     let Some(previous) = previous else {
-        preview::notify(state, widgets, "Rien à annuler.");
+        preview::notify(state, widgets, frontend::msg::NOTHING_TO_UNDO);
         return;
     };
     {
@@ -380,13 +366,13 @@ pub(crate) fn undo(state: &Rc<RefCell<State>>, widgets: &Rc<Widgets>) {
     sections::update_sections(widgets, &state.borrow().params);
     refresh_src_rgb(state, widgets);
     request_compute(state, widgets);
-    preview::notify(state, widgets, "Annulé.");
+    preview::notify(state, widgets, frontend::msg::UNDONE);
 }
 
 pub(crate) fn redo(state: &Rc<RefCell<State>>, widgets: &Rc<Widgets>) {
     let next = state.borrow_mut().future.pop();
     let Some(next) = next else {
-        preview::notify(state, widgets, "Rien à rétablir.");
+        preview::notify(state, widgets, frontend::msg::NOTHING_TO_REDO);
         return;
     };
     {
@@ -401,7 +387,7 @@ pub(crate) fn redo(state: &Rc<RefCell<State>>, widgets: &Rc<Widgets>) {
     sections::update_sections(widgets, &state.borrow().params);
     refresh_src_rgb(state, widgets);
     request_compute(state, widgets);
-    preview::notify(state, widgets, "Rétabli.");
+    preview::notify(state, widgets, frontend::msg::REDONE);
 }
 
 /// Rétablit les valeurs par défaut d'une section, **sans toucher aux autres** :
@@ -447,7 +433,7 @@ fn with_section_defaults(current: &FilterParams, target: ResetTarget) -> FilterP
 /// annulable (Ctrl+Z).
 pub(crate) fn reset_params(state: &Rc<RefCell<State>>, widgets: &Rc<Widgets>) {
     if state.borrow().params == FilterParams::default() {
-        preview::notify(state, widgets, "Réglages déjà par défaut.");
+        preview::notify(state, widgets, frontend::msg::ALREADY_DEFAULT);
         return;
     }
     {
@@ -546,18 +532,8 @@ pub(crate) fn apply_preset_params(
 
 /// Tire une nouvelle graine aléatoire et recalcule.
 pub(crate) fn vary_seed(state: &Rc<RefCell<State>>, widgets: &Rc<Widgets>) {
-    let seed = {
-        use std::collections::hash_map::RandomState;
-        use std::hash::{BuildHasher, Hasher};
-        let mut hasher = RandomState::new().build_hasher();
-        hasher.write_u64(
-            std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
-                .map(|d| d.as_nanos() as u64)
-                .unwrap_or(0),
-        );
-        hasher.finish()
-    };
+    // Même tirage qu'en egui : une seule définition, dans `frontend`.
+    let seed = frontend::random_seed();
     {
         let mut st = state.borrow_mut();
         st.params.rng_seed = Some(seed);
@@ -570,14 +546,14 @@ pub(crate) fn vary_seed(state: &Rc<RefCell<State>>, widgets: &Rc<Widgets>) {
 /// Copie le résultat courant dans le presse-papiers.
 pub(crate) fn copy_to_clipboard(state: &Rc<RefCell<State>>, widgets: &Rc<Widgets>) {
     let Some(result) = state.borrow().result.clone() else {
-        preview::notify(state, widgets, "Aucun résultat à copier.");
+        preview::notify(state, widgets, frontend::msg::NOTHING_TO_COPY);
         return;
     };
     let texture = crate::preview::rgba_to_texture(&result);
     // Le presse-papiers est un service de l'affichage : on passe par la
     // fenêtre pour être sûr d'être dans le bon display.
     widgets.toast_overlay.clipboard().set_texture(&texture);
-    preview::notify(state, widgets, "Image copiée dans le presse-papiers.");
+    preview::notify(state, widgets, frontend::msg::COPIED);
 }
 
 // ─── Messages des workers ────────────────────────────────────────────────────
@@ -826,18 +802,21 @@ fn run_worker(
 
 /// Export SVG des dots courants (utilisé par le menu et les raccourcis).
 pub(crate) fn save_svg_quick(state: &Rc<RefCell<State>>, widgets: &Rc<Widgets>) {
-    let Some(path) = state.borrow().src_path.as_ref().map(|p| {
-        let stem = p.file_stem().and_then(|s| s.to_str()).unwrap_or("pointimg");
-        p.with_file_name(format!("{stem}-pointimg.svg"))
-    }) else {
-        preview::notify(state, widgets, "Ouvrez d'abord une image.");
+    let Some(path) =
+        state.borrow().src_path.as_ref().map(|source| {
+            source.with_file_name(frontend::derived_export_name(Some(source), "svg"))
+        })
+    else {
+        preview::notify(state, widgets, frontend::msg::OPEN_FIRST);
         return;
     };
-    crate::files::save_svg(path, state, widgets);
+    // Pas de dialogue de choix : la confirmation se fait ici. Même raison de
+    // cloner le chemin qu'au-dessus.
+    let (destination, s, w) = (path.clone(), Rc::clone(state), Rc::clone(widgets));
+    crate::confirm::confirm_overwrite(widgets, &path, move || {
+        crate::files::save_svg(destination, &s, &w)
+    });
 }
-
-#[allow(dead_code)]
-fn _assert_types(_: &[Dot], _: &RgbaImage, _: &FilterParams) {}
 
 #[cfg(test)]
 mod tests {

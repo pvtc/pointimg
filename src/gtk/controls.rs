@@ -501,8 +501,14 @@ pub(crate) fn build() -> (adw::ToastOverlay, Rc<Widgets>) {
     let mut halftone_freq_slider = ValueSlider::new(4.0, 400.0, 0, Curve::Log);
     // La plage 0 → 10 passe en racine : en linéaire, les valeurs utiles
     // (0,002 et 0,85) seraient tassées dans le premier dixième du rail.
-    let mut halftone_min_slider = ValueSlider::new(0.0, 10.0, 3, Curve::Sqrt);
-    let mut halftone_max_slider = ValueSlider::new(0.0, 10.0, 2, Curve::Sqrt);
+    //
+    // La borne basse s'arrête à 1,0, pas à 10 : `validate_params` plafonne
+    // `halftone_min_radius_ratio` à 1,0 quand `halftone_max_dot_ratio` monte à
+    // 10. Les deux partageaient la même plage, et la poignée basse franchissait
+    // le plafond — erreur sèche du worker, sans cause visible. La `SpinRow`
+    // juste au-dessus indiquait déjà la bonne borne.
+    let mut halftone_min_slider = ValueSlider::new(0.0, 1.0, 3, Curve::Sqrt);
+    let mut halftone_max_slider = ValueSlider::new(0.05, 10.0, 2, Curve::Sqrt);
 
     let shape = combo_row("Forme", &SHAPES, None);
     let ellipse_aspect = spin_row(

@@ -29,7 +29,17 @@ mod bornes {
     pub const COLONNES: RangeInclusive<f32> = 2.0..=8192.0;
     pub const ANGLE_GRILLE: RangeInclusive<f32> = -180.0..=180.0;
     pub const FREQUENCE_TRAME: RangeInclusive<f32> = 4.0..=400.0;
-    pub const RAYON_TRAME: RangeInclusive<f32> = 0.0..=10.0;
+    /// Bornes basse et haute du rayon de trame, séparément.
+    ///
+    /// Le moteur plafonne `halftone_min_radius_ratio` à 1,0 quand
+    /// `halftone_max_dot_ratio` monte à 10 (`validate_params`). Une
+    /// constante partagée laissait le curseur de la borne basse franchir
+    /// ce plafond : l'utilisateur obtenait une erreur sèche du worker,
+    /// et les tests de plage ne le voyaient pas puisqu'ils n'exercaient
+    /// que la borne basse de la borne basse et la borne haute de la
+    /// borne haute.
+    pub const RAYON_TRAME_MIN: RangeInclusive<f32> = 0.0..=1.0;
+    pub const RAYON_TRAME_MAX: RangeInclusive<f32> = 0.05..=10.0;
     pub const PALETTE: RangeInclusive<f32> = 2.0..=256.0;
     pub const RAPPORT: RangeInclusive<f32> = 0.1..=10.0;
     pub const COTES: RangeInclusive<f32> = 3.0..=12.0;
@@ -121,11 +131,26 @@ fn les_deux_bornes_de_chaque_curseur_sont_acceptees() {
     });
     accepte(|p| {
         p.algorithm = Algorithm::Halftone;
-        p.halftone_min_radius_ratio = *bornes::RAYON_TRAME.start();
+        p.halftone_min_radius_ratio = *bornes::RAYON_TRAME_MIN.start();
+    });
+    // Le sommet de la plage de la borne *basse* : c'est le cas que le
+    // partage d'une constante unique laissait passer. Tant qu'il n'est pas
+    // exercé, un curseur partagé peut franchir 1,0 sans qu'aucun test rougeoie.
+    accepte(|p| {
+        p.algorithm = Algorithm::Halftone;
+        p.halftone_min_radius_ratio = *bornes::RAYON_TRAME_MIN.end();
     });
     accepte(|p| {
         p.algorithm = Algorithm::Halftone;
-        p.halftone_max_dot_ratio = *bornes::RAYON_TRAME.end();
+        p.halftone_max_dot_ratio = *bornes::RAYON_TRAME_MAX.start();
+    });
+    accepte(|p| {
+        p.algorithm = Algorithm::Halftone;
+        p.halftone_max_dot_ratio = *bornes::RAYON_TRAME_MAX.end();
+    });
+    refuse(|p| {
+        p.algorithm = Algorithm::Halftone;
+        p.halftone_min_radius_ratio = *bornes::RAYON_TRAME_MIN.end() + 0.001;
     });
     accepte(|p| p.palette_size = Some(*bornes::PALETTE.start() as usize));
     accepte(|p| p.palette_size = Some(*bornes::PALETTE.end() as usize));
@@ -168,7 +193,7 @@ fn juste_au_dela_de_chaque_borne_le_moteur_refuse() {
     refuse(|p| p.iterations = *bornes::ITERATIONS.end() as usize + 1);
     refuse(|p| {
         p.algorithm = Algorithm::Halftone;
-        p.halftone_max_dot_ratio = *bornes::RAYON_TRAME.end() + 0.5;
+        p.halftone_max_dot_ratio = *bornes::RAYON_TRAME_MAX.end() + 0.5;
     });
     refuse(|p| p.palette_size = Some(*bornes::PALETTE.end() as usize + 1));
     refuse(|p| {

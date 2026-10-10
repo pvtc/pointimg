@@ -38,37 +38,6 @@ pub(crate) fn display_decimals(value: f32, range: &RangeInclusive<f32>) -> usize
 }
 
 /// Curseur horizontal sous une ligne de saisie : réglage grossier à la souris.
-pub(crate) fn slider_row(
-    ui: &mut egui::Ui,
-    id: &str,
-    value: &mut f32,
-    range: RangeInclusive<f32>,
-    logarithmic: bool,
-    hint: &str,
-) -> egui::Response {
-    let decimals = display_decimals(*value, &range);
-    let step = 10f64.powi(-(decimals as i32));
-    ui.push_id(id, |ui| {
-        let response = ui.add(
-            egui::Slider::new(value, range)
-                .show_value(false)
-                .logarithmic(logarithmic)
-                .trailing_fill(true)
-                .step_by(step)
-                .min_decimals(decimals)
-                .max_decimals(decimals),
-        );
-        // Le pas du curseur s'applique au glissement ; on arrondit aussi la
-        // valeur écrite, sinon le champ affiche les décimales parasites du
-        // pointeur (0,25317937).
-        if response.changed() {
-            *value = round_to(*value, decimals);
-        }
-        response.on_hover_text(hint)
-    })
-    .inner
-}
-
 /// Arrondi à un nombre fixe de décimales, sans les flottants comme
 /// intermédiaires (`(0.1 + 0.2)` n'est pas représentable exactement).
 pub(crate) fn round_to(value: f32, decimals: usize) -> f32 {
@@ -76,23 +45,29 @@ pub(crate) fn round_to(value: f32, decimals: usize) -> f32 {
     ((f64::from(value) * factor).round() / factor) as f32
 }
 
-/// Curseur horizontal pour un réglage entier : la valeur est arrondie à chaque
-/// frappe comme à chaque glissement.
-pub(crate) fn int_slider_row(
-    ui: &mut egui::Ui,
-    id: &str,
-    value: &mut usize,
-    range: RangeInclusive<f32>,
-    logarithmic: bool,
-    hint: &str,
-) -> egui::Response {
-    let mut mirror = *value as f32;
-    let response = slider_row(ui, id, &mut mirror, range, logarithmic, hint);
-    let rounded = mirror.round().max(1.0);
-    if rounded != *value as f32 {
-        *value = rounded as usize;
+/// Plage de chaque poignée du curseur à deux bornes.
+///
+/// Deux plages plutôt qu'une, parce que les deux bornes n'ont pas le même
+/// plafond : `validate_params` limite `halftone_min_radius_ratio` à 1,0 quand
+/// `halftone_max_dot_ratio` monte à 10. Les partager laissait la poignée basse
+/// franchir le plafond — erreur sèche du worker, sans cause visible.
+///
+/// `RangeInclusive` n'est pas `Copy`, donc `Bounds` ne l'est pas non plus ;
+/// elle passe cependant par valeur, ce qui copie deux plages et rien de plus.
+#[derive(Clone)]
+pub(crate) struct Bounds {
+    pub low: RangeInclusive<f32>,
+    pub high: RangeInclusive<f32>,
+}
+
+impl Bounds {
+    /// Les deux poignées partagent la plage — le cas courant.
+    pub(crate) fn both(range: RangeInclusive<f32>) -> Self {
+        Self {
+            low: range.clone(),
+            high: range,
+        }
     }
-    response
 }
 
 /// Curseur à deux poignées pour une paire de bornes (Rayon min / Rayon max).
@@ -103,6 +78,9 @@ pub(crate) fn int_slider_row(
 /// indépendamment, sans état à conserver d'une frame à l'autre, et les deux
 /// ne peuvent pas se croiser (la borne basse ne dépasse jamais la haute).
 ///
+/// Le rail couvre l'union des deux plages, pour que les deux poignées restent
+/// comparables ; chacune est ensuite ramenée dans *sa* plage.
+///
 /// Renvoie `true` si la paire a changé — la saisie chiffrée des deux lignes
 /// voisines reste le moyen d'indiquer une valeur exacte.
 pub(crate) fn range_slider(
@@ -110,11 +88,13 @@ pub(crate) fn range_slider(
     id: &str,
     low: &mut f32,
     high: &mut f32,
-    range: RangeInclusive<f32>,
+    bounds: Bounds,
     curve: Curve,
     hint: &str,
 ) -> bool {
-    let (start, end) = (*range.start(), *range.end());
+    let (low_lo, low_hi) = (*bounds.low.start(), *bounds.low.end());
+    let (high_lo, high_hi) = (*bounds.high.start(), *bounds.high.end());
+    let (start, end) = (low_lo.min(high_lo), low_hi.max(high_hi));
     let to_pos =
         |value: f32| curve.position(f64::from(value), f64::from(start), f64::from(end)) as f32;
     let to_value = |t: f32| curve.value(f64::from(t), f64::from(start), f64::from(end)) as f32;
@@ -172,7 +152,7 @@ pub(crate) fn range_slider(
     // laisser une valeur à sept décimales dans le champ voisin. On retient la
     // précision la plus grossière des deux bornes, pour que la zone de saisie
     // de chacune reste stable.
-    let decimals = display_decimals(*low, &range).max(display_decimals(*high, &range));
+    let decimals = display_decimals(*low, &bounds.low).max(display_decimals(*high, &bounds.high));
     for (response, is_low) in [(low_response.clone(), true), (high_response.clone(), false)] {
         if !response.dragged() {
             continue;
@@ -181,11 +161,17 @@ pub(crate) fn range_slider(
             continue;
         };
         let t = ((pointer.x - rect.left()) / rect.width()).clamp(0.0, 1.0);
-        let value = round_to(to_value(t), decimals);
+        // La valeur brute du rail est ensuite ramenée dans la plage de *cette*
+        // poignée : sans quoi la poignée basse pouvant partager la borne haute
+        // de la poignée haute, elle francherait le plafond de
+        // `validate_params`.
+        let raw = round_to(to_value(t), decimals);
         if is_low {
-            *low = value.min(*high);
+            let borne = raw.clamp(low_lo, low_hi);
+            *low = borne.min(*high);
         } else {
-            *high = value.max(*low);
+            let borne = raw.clamp(high_lo, high_hi);
+            *high = borne.max(*low);
         }
     }
     if low_response.hovered() || high_response.hovered() {

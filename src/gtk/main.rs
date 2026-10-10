@@ -19,6 +19,7 @@
 
 mod actions;
 mod compare;
+mod confirm;
 mod controls;
 mod exports;
 mod files;
@@ -230,22 +231,12 @@ impl State {
     /// en mode rapide.
     pub fn compute_source(&self) -> Option<RgbImage> {
         let src = self.src_rgb.as_ref()?;
-        let scale = self.quality.scale();
         if self.final_pass {
             return Some(src.clone());
         }
-        if scale >= 1.0 {
-            return Some(src.clone());
-        }
-        let (w, h) = src.dimensions();
-        let target_w = ((w as f32 * scale).round() as u32).max(1);
-        let target_h = ((h as f32 * scale).round() as u32).max(1);
-        Some(image::imageops::resize(
-            src,
-            target_w,
-            target_h,
-            image::imageops::FilterType::Triangle,
-        ))
+        // Même sous-échantillonnage qu'egui : comparer deux aperçus n'aurait
+        // aucun sens s'ils ne montraient pas les mêmes pixels.
+        Some(pointimg::frontend::downsample(src, self.quality.scale()))
     }
 
     /// Index de l'image courante dans la navigation de dossier.

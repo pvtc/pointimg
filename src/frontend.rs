@@ -8,7 +8,7 @@
 //! Il est public parce que les binaires en ont besoin, mais il ne fait pas
 //! partie de l'API stable de `pointimg`.
 
-use crate::filter::FilterParams;
+use crate::filter::{self, FilterParams};
 use image::{RgbImage, RgbaImage};
 use std::io::Cursor;
 use std::path::{Path, PathBuf};
@@ -18,7 +18,14 @@ use std::sync::atomic::{AtomicU64, Ordering};
 
 /// Extensions d'images acceptées par les deux interfaces (ouverture, dossier,
 /// glisser-déposer).
-pub const IMAGE_EXTENSIONS: [&str; 7] = ["png", "jpg", "jpeg", "webp", "bmp", "tif", "tiff"];
+/// Extensions reconnues par les interfaces.
+///
+/// `gif` figure ici parce que la CLI l'acceptait déjà (`main.rs` tenait sa
+/// propre liste, en avance d'une entrée) et que `image::open` le décode :
+/// un GIF animé donne son premier plan, ce qui est exactement la promesse
+/// d'un rendu sur image fixe. Une seule liste, donc plus de divergence
+/// possible entre les interfaces et la CLI.
+pub const IMAGE_EXTENSIONS: [&str; 8] = ["png", "jpg", "jpeg", "webp", "bmp", "gif", "tif", "tiff"];
 
 /// Vrai si le chemin pointe vers un fichier image connu des interfaces.
 pub fn is_supported_image(path: &Path) -> bool {
@@ -212,6 +219,96 @@ pub fn preset_thumbnail(index: usize) -> Option<PathBuf> {
     trouvee
 }
 
+/// Tire une graine aléatoire.
+///
+/// Les deux interfaces en ont besoin pour « Varier la graine », et la formule
+/// identique des deux côtés (`RandomState` sur l'horloge) : une graine tirée
+/// différemment d'une interface à l'autre n'aurait aucun sens, et deux copies
+/// laissent la place à une divergence.
+pub fn random_seed() -> u64 {
+    use std::collections::hash_map::RandomState;
+    use std::hash::{BuildHasher, Hasher};
+    let mut hasher = RandomState::new().build_hasher();
+    hasher.write_u64(
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|duration| duration.as_nanos() as u64)
+            .unwrap_or(0),
+    );
+    hasher.finish()
+}
+
+/// Nom de fichier d'export dérivé de l'image source : `photo.jpg` →
+/// `photo-pointimg.png`.
+///
+/// La formule était écrite à cinq endroits (deux `default_name`, deux exports
+/// rapides, un SVG rapide). Le repli `pointimg.<ext>` est explicitement parachuté
+/// : une image sans nom ne doit pas faire échouer l'export.
+pub fn derived_export_name(src: Option<&Path>, extension: &str) -> String {
+    src.and_then(|path| path.file_stem())
+        .and_then(|stem| stem.to_str())
+        .map(|stem| format!("{stem}-pointimg.{extension}"))
+        .unwrap_or_else(|| format!("pointimg.{extension}"))
+}
+
+/// Index du preset intégré correspondant exactement à ces réglages.
+///
+/// C'est la question « ai-je personnalisé un preset ? », posée trois fois dans
+/// chaque interface. Une seule définition évite qu'un quatrième appel
+/// réinvente la comparaison.
+pub fn matching_preset_index(params: &filter::FilterParams) -> Option<usize> {
+    filter::builtin_presets()
+        .iter()
+        .position(|preset| preset.params == *params)
+}
+
+/// Bornes du zoom d'aperçu. Même étendue des deux côtés : à quoi bon proposer
+/// 8× d'un côté et 32× de l'autre pour le même geste de molette ?
+/// Plus petit zoom d'aperçu : 2 % de la taille réelle.
+pub const ZOOM_MIN: f32 = 0.02;
+/// Plus grand zoom d'aperçu : 16×.
+pub const ZOOM_MAX: f32 = 16.0;
+
+/// Facteur de zoom au clavier et aux boutons.
+///
+/// Le zoom à la molette reste propre à GTK (egui n'en a pas), donc son facteur
+/// n'est pas ici — il n'y a rien à partager tant qu'il n'existe pas d'un côté.
+pub const ZOOM_STEP: f32 = 1.25;
+
+/// Messages affichés par les deux interfaces, mot pour mot.
+///
+/// Ce ne sont pas des widgets : ce sont des chaînes. Les dupliquer garantit
+/// qu'un jour l'une dira « Rien à annuler. » et l'autre « Aucune annulation
+/// possible », pour la même action. Chaque interface choisit ensuite son
+/// moyen de l'afficher (ligne d'état d'un côté, notification éphémère de
+/// l'autre).
+pub mod msg {
+    /// Un calcul est en cours.
+    pub const COMPUTING: &str = "Calcul en cours…";
+    /// Le rendu affiché date d'avant le dernier réglage.
+    pub const STALE: &str = "aperçu obsolète — recalcul en cours";
+    /// La passe en pleine résolution suit l'aperçu réduit.
+    pub const FINALIZING: &str = "pleine résolution…";
+    /// Aucun état précédent à restaurer.
+    pub const NOTHING_TO_UNDO: &str = "Rien à annuler.";
+    /// Une annulation vient d'être appliquée.
+    pub const UNDONE: &str = "Annulé.";
+    /// Aucun état annulé à rétablir.
+    pub const NOTHING_TO_REDO: &str = "Rien à rétablir.";
+    /// Un rétablissement vient d'être appliqué.
+    pub const REDONE: &str = "Rétabli.";
+    /// Les réglages sont déjà ceux par défaut.
+    pub const ALREADY_DEFAULT: &str = "Réglages déjà par défaut.";
+    /// Aucune image n'est chargée.
+    pub const OPEN_FIRST: &str = "Ouvrez d'abord une image.";
+    /// Aucun rendu à copier.
+    pub const NOTHING_TO_COPY: &str = "Aucun résultat à copier.";
+    /// Le rendu est dans le presse-papiers.
+    pub const COPIED: &str = "Image copiée dans le presse-papiers.";
+    /// L'utilisateur a renoncé à écrire par-dessus un fichier.
+    pub const SAVE_CANCELLED: &str = "Sauvegarde annulée.";
+}
+
 /// Cherche un dossier d'assets près du binaire puis du répertoire courant.
 ///
 /// Même recherche que [`sample_image`] : une exécution depuis les sources
@@ -238,6 +335,107 @@ fn asset_dir(nom: &str) -> Option<PathBuf> {
         }
     }
     None
+}
+
+/// Sous-échantillonne une image pour un aperçu rapide.
+///
+/// Même filtre (`Triangle`) et même arrondi des deux côtés : deux aperçus de la
+/// même image doivent montrer les mêmes pixels, sinon comparer ce que produit
+/// un réglage d'une interface à l'autre n'aurait pas de sens. L'échelle >= 1 et
+/// la passe de finalisation renvoient l'image telle quelle (clone compris).
+pub fn downsample(src: &RgbImage, scale: f32) -> RgbImage {
+    if scale >= 1.0 {
+        return src.clone();
+    }
+    let (w, h) = src.dimensions();
+    let target_w = ((f64::from(w) * f64::from(scale)).round() as u32).max(1);
+    let target_h = ((f64::from(h) * f64::from(scale)).round() as u32).max(1);
+    image::imageops::resize(
+        src,
+        target_w,
+        target_h,
+        image::imageops::FilterType::Triangle,
+    )
+}
+
+/// Images d'un dossier, triées par nom, ou l'erreur qui explique pourquoi vide.
+///
+/// Le balayage était écrit deux fois, jusqu'aux messages d'erreur — un dossier
+/// sans image devait expliciter la même chose dans les deux interfaces. Seul le
+/// moyen d'afficher reste propre à chacune.
+pub fn collect_folder_images(dir: &Path) -> Result<Vec<PathBuf>, FolderError> {
+    let Ok(entries) = std::fs::read_dir(dir) else {
+        return Err(FolderError::Unreadable(dir.to_path_buf()));
+    };
+    let mut images: Vec<PathBuf> = entries
+        .flatten()
+        .map(|entry| entry.path())
+        .filter(|candidate| is_supported_image(candidate))
+        .collect();
+    images.sort();
+    if images.is_empty() {
+        return Err(FolderError::Empty(dir.to_path_buf()));
+    }
+    Ok(images)
+}
+
+/// Pourquoi un dossier n'a pas donné d'images.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum FolderError {
+    /// Le dossier n'a pas pu être lu.
+    Unreadable(PathBuf),
+    /// Le dossier est lisible mais ne contient aucune image reconnue.
+    Empty(PathBuf),
+}
+
+impl std::fmt::Display for FolderError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            FolderError::Unreadable(dir) => write!(f, "Dossier illisible : {}", dir.display()),
+            FolderError::Empty(dir) => write!(f, "Aucune image dans {}", dir.display()),
+        }
+    }
+}
+
+// ─── Damier de transparence ────────────────────────────────────────────────
+
+/// Côté d'une case du damier de transparence, en pixels.
+pub const CHECKER_SIZE: u32 = 8;
+/// Gris clair d'une case.
+pub const CHECKER_LIGHT: f32 = 200.0;
+/// Gris foncé d'une case.
+pub const CHECKER_DARK: f32 = 240.0;
+
+/// Gris du damier sous le pixel `(x, y)`.
+///
+/// La formule était écrite trois fois — egui, le panneau d'aperçu GTK, et le
+/// panneau de comparaison — avec les mêmes constantes. Trois copies de « à quoi
+/// ressemble la transparence » garantissent qu'un jour deux interfaces
+/// montreront des damiers différents sans que personne ne l'ait décidé.
+#[inline]
+pub fn checker_shade(x: u32, y: u32) -> f32 {
+    if (x / CHECKER_SIZE + y / CHECKER_SIZE).is_multiple_of(2) {
+        CHECKER_LIGHT
+    } else {
+        CHECKER_DARK
+    }
+}
+
+/// Composite un pixel RGBA sur le damier, et renvoie le `[r, g, b]` opaque.
+///
+/// L'ordre des octets en sortie appartient à chaque interface : egui empile des
+/// `Color32`, GTK des octets R8g8b8a8, cairo du BGRX. La *couleur*, elle, est
+/// unique — c'est la seule chose que ce module impose.
+#[inline]
+pub fn composite_on_checker(pixel: [u8; 4], x: u32, y: u32) -> [u8; 3] {
+    let alpha = f32::from(pixel[3]) / 255.0;
+    let inv = 1.0 - alpha;
+    let bg = checker_shade(x, y);
+    [
+        (f32::from(pixel[0]) * alpha + bg * inv + 0.5) as u8,
+        (f32::from(pixel[1]) * alpha + bg * inv + 0.5) as u8,
+        (f32::from(pixel[2]) * alpha + bg * inv + 0.5) as u8,
+    ]
 }
 
 // ─── Formatage ───────────────────────────────────────────────────────────────
@@ -553,11 +751,6 @@ fn image_format(extension: &str) -> image::ImageResult<image::ImageFormat> {
     }
 }
 
-/// Vrai si une extension (sans le point) désigne un format qui préserve l'alpha.
-pub fn extension_preserves_alpha_name(extension: &str) -> bool {
-    format_preserves_alpha(&extension.to_ascii_lowercase())
-}
-
 fn format_preserves_alpha(extension: &str) -> bool {
     matches!(extension, "png" | "webp" | "tif" | "tiff")
 }
@@ -749,5 +942,108 @@ mod tests {
         assert_eq!(loaded.algorithm, Algorithm::Grid);
         assert_eq!(loaded.cols, 42);
         let _ = std::fs::remove_file(path);
+    }
+
+    /// Le damier alterne sur une période de deux cases, et le composite suit
+    /// l'alpha : opaque = le pixel, transparent = le gris de la case.
+    #[test]
+    fn le_damier_alterne_et_suit_lalpha() {
+        // Sur une même ligne, la couleur de fond change d'une case à l'autre.
+        assert_eq!(checker_shade(0, 0), CHECKER_LIGHT);
+        assert_eq!(checker_shade(CHECKER_SIZE, 0), CHECKER_DARK);
+        assert_eq!(checker_shade(0, 0), checker_shade(2 * CHECKER_SIZE, 0));
+        // Et sur une colonne aussi : la formule combine les deux axes.
+        assert_eq!(
+            checker_shade(0, 0),
+            checker_shade(CHECKER_SIZE, CHECKER_SIZE)
+        );
+        assert_eq!(
+            checker_shade(CHECKER_SIZE, 0),
+            checker_shade(0, CHECKER_SIZE)
+        );
+
+        // Opaque : le pixel lui-même, le damier ne se voit pas.
+        assert_eq!(
+            composite_on_checker([10, 200, 30, 255], 0, 0),
+            [10, 200, 30],
+            "un pixel opaque ne dépend pas du damier"
+        );
+        // Transparent : exactement le gris de la case.
+        assert_eq!(composite_on_checker([9, 9, 9, 0], 0, 0).len(), 3);
+        assert_eq!(
+            composite_on_checker([9, 9, 9, 0], CHECKER_SIZE, 0),
+            [CHECKER_DARK as u8, CHECKER_DARK as u8, CHECKER_DARK as u8]
+        );
+        // Semi-transparent : entre les deux, quel que soit le canal.
+        let demi = composite_on_checker([0, 0, 0, 128], 0, 0);
+        assert!(
+            demi[0] > 0 && demi[0] < CHECKER_LIGHT as u8,
+            "un pixel à moitié opaque doit tomber entre le noir et le gris clair, pas à {}",
+            demi[0]
+        );
+        // Les trois canaux subissent le même traitement.
+        assert_eq!(demi[0], demi[1]);
+        assert_eq!(demi[1], demi[2]);
+    }
+
+    /// Le nom d'export dérivé donne la même chose avec ou sans fichier source,
+    /// et replie proprement quand il n'y en a pas.
+    #[test]
+    fn le_nom_derive_suit_le_repli() {
+        use std::path::Path;
+        assert_eq!(
+            derived_export_name(Some(Path::new("/photos/vacances.jpg")), "png"),
+            "vacances-pointimg.png"
+        );
+        assert_eq!(derived_export_name(None, "svg"), "pointimg.svg");
+        // Un nom de fichier sans extension : le tronc suffit.
+        assert_eq!(
+            derived_export_name(Some(Path::new("/tmp/photo")), "png"),
+            "photo-pointimg.png"
+        );
+    }
+
+    /// Un dossier lisible mais sans image connue n'est pas « illisible » : les
+    /// deux messages sont distincts, et les deux interfaces les affichent tels
+    /// quels.
+    #[test]
+    fn un_dossier_vide_se_distingue_dun_dossier_illisible() {
+        let dir = std::env::temp_dir().join(format!(
+            "pointimg-folder-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(dir.join("notes.txt"), b"pas une image").unwrap();
+
+        let e = collect_folder_images(&dir).unwrap_err();
+        assert_eq!(
+            e,
+            FolderError::Empty(dir.clone()),
+            "du texte n'est pas une image"
+        );
+        assert!(
+            e.to_string().contains("Aucune image"),
+            "le message doit expliquer le vide, pas l'illisibilité : {e}"
+        );
+
+        assert!(collect_folder_images(&dir.join("inexistant")).is_err());
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// Le sous-échantillonnage respecte l'échelle demandée, et ne bouge pas
+    /// quand l'échelle ne réduit rien.
+    #[test]
+    fn le_sous_echantillonnage_respecte_lechelle() {
+        let img = image::RgbImage::new(200, 100);
+        assert_eq!(downsample(&img, 1.0).dimensions(), (200, 100));
+        assert_eq!(downsample(&img, 2.0).dimensions(), (200, 100));
+        let reduit = downsample(&img, 0.5);
+        assert_eq!(reduit.dimensions(), (100, 50));
+        // Jamais de dimension nulle, même à une échelle absurde.
+        assert_eq!(downsample(&img, 0.0001).dimensions(), (1, 1));
     }
 }

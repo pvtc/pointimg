@@ -51,14 +51,9 @@ fn apply_initial_folder(dialog: &gtk::FileDialog, state: &Rc<RefCell<State>>) {
 /// Nom de fichier par défaut dérivé de l'image source (`photo.jpg` →
 /// `photo-pointimg.png`).
 fn default_name(state: &Rc<RefCell<State>>, ext: &str) -> String {
-    state
-        .borrow()
-        .src_path
-        .as_ref()
-        .and_then(|p| p.file_stem())
-        .and_then(|s| s.to_str())
-        .map(|stem| format!("{stem}-pointimg.{ext}"))
-        .unwrap_or_else(|| format!("pointimg.{ext}"))
+    // La formule est partagée avec egui ; seul le repli diffère, et il vit déjà
+    // dans `derived_export_name`.
+    frontend::derived_export_name(state.borrow().src_path.as_deref(), ext)
 }
 
 /// Mémorise le dossier d'un fichier écrit, pour les dialogues suivants.
@@ -291,7 +286,7 @@ pub(crate) fn save_svg(path: PathBuf, state: &Rc<RefCell<State>>, widgets: &Rc<W
         let st = state.borrow();
         let Some(src) = st.src_rgb.as_ref() else {
             drop(st);
-            preview::notify(state, widgets, "Ouvrez d'abord une image.");
+            preview::notify(state, widgets, frontend::msg::OPEN_FIRST);
             return;
         };
         let (w, h) = src.dimensions();
@@ -319,14 +314,18 @@ pub(crate) fn save_svg(path: PathBuf, state: &Rc<RefCell<State>>, widgets: &Rc<W
 
 /// Export sans dialogue : à côté de l'image source, en PNG.
 pub(crate) fn quick_export(state: &Rc<RefCell<State>>, widgets: &Rc<Widgets>) {
-    let Some(path) = state.borrow().src_path.as_ref().map(|p| {
-        let stem = p.file_stem().and_then(|s| s.to_str()).unwrap_or("pointimg");
-        p.with_file_name(format!("{stem}-pointimg.png"))
-    }) else {
-        preview::notify(state, widgets, "Ouvrez d'abord une image.");
+    let Some(path) =
+        state.borrow().src_path.as_ref().map(|source| {
+            source.with_file_name(frontend::derived_export_name(Some(source), "png"))
+        })
+    else {
+        preview::notify(state, widgets, frontend::msg::OPEN_FIRST);
         return;
     };
-    save_result(path, state, widgets);
+    // Pas de dialogue de choix : la confirmation se fait ici. Le chemin est
+    // cloné parce que le dialogue l'emprunte et la sauvegarde le consomme.
+    let (destination, s, w) = (path.clone(), Rc::clone(state), Rc::clone(widgets));
+    crate::confirm::confirm_overwrite(widgets, &path, move || save_result(destination, &s, &w));
 }
 
 /// Export SVG sans dialogue, à côté de l'image source.
@@ -340,14 +339,9 @@ pub(crate) fn mark_preset_custom(state: &Rc<RefCell<State>>, widgets: &Rc<Widget
     if selected == 0 {
         return;
     }
-    let preset_params: Vec<_> = filter::builtin_presets()
-        .into_iter()
-        .map(|p| p.params)
-        .collect();
-    if preset_params
-        .get(selected as usize - 1)
-        .is_some_and(|params| *params == state.borrow().params)
-    {
+    // Le prédicat « ces réglages sont-ils exactement ce preset ? » vit dans
+    // `frontend` : il était posé trois fois ici, et une quatrième fois côté egui.
+    if frontend::matching_preset_index(&state.borrow().params) == Some(selected as usize - 1) {
         return;
     }
     state.borrow_mut().updating = true;
@@ -379,8 +373,7 @@ pub(crate) fn update_preset_row(state: &Rc<RefCell<State>>, widgets: &Rc<Widgets
         0 => true,
         index => preset
             .get(index as usize - 1)
-            .map(|p| p.params == state.borrow().params)
-            .unwrap_or(false),
+            .is_some_and(|p| p.params == state.borrow().params),
     };
     state.borrow_mut().updating = true;
     let text = if matches_params {

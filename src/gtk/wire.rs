@@ -177,7 +177,7 @@ pub(crate) fn install_actions(state: &St, widgets: &Wi, window: &adw::Applicatio
     });
     add("zoom-in", &[], {
         let (s, w) = (Rc::clone(&s), Rc::clone(&w));
-        Rc::new(move || preview::zoom_by(&s, &w, 1.25))
+        Rc::new(move || preview::zoom_by(&s, &w, preview::ZOOM_STEP))
     });
     add("zoom-out", &[], {
         let (s, w) = (Rc::clone(&s), Rc::clone(&w));
@@ -1038,18 +1038,25 @@ pub(crate) fn install_dnd(window: &adw::ApplicationWindow, state: &St, widgets: 
         let Ok(list) = value.get::<gtk::gdk::FileList>() else {
             return false;
         };
+        // Chaque fichier est traité, et le geste est accepté dès que la liste
+        // contient au moins un élément utile. Le `return true` était à
+        // l'intérieur de la boucle : il sortait après le premier fichier, quoi
+        // qu'il advienne des suivants. Déposer un dossier et une image ne
+        // chargeait donc que le dossier.
+        let mut traite = false;
         for file in list.files() {
             let Some(path) = file.path() else {
                 continue;
             };
             if path.is_dir() {
                 actions::open_folder(path, &drop_state, &drop_widgets);
+                traite = true;
             } else if actions::supported_image(&path) {
                 actions::load_image(path, &drop_state, &drop_widgets);
+                traite = true;
             }
-            return true;
         }
-        false
+        traite
     });
     window.add_controller(drop);
 }
@@ -1075,7 +1082,11 @@ pub(crate) fn install_shortcuts(state: &St, widgets: &Wi, window: &adw::Applicat
             return glib::Propagation::Proceed;
         }
         match keyval {
-            Key::space => {
+            // `editing` garde déjà les raccourcis « lettre » : l'espace est le
+            // seul caractère qu'un champ de saisie peut recevoir au milieu d'un
+            // mot (une couleur « #ff cc00 », un nom de fichier). Sans la garde,
+            // taper un espace dans « Couleur du fond » relançait un calcul.
+            Key::space if !editing => {
                 actions::request_full_compute(&key_state, &key_widgets);
                 glib::Propagation::Stop
             }
