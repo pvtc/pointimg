@@ -51,6 +51,23 @@ et ce projet adhère au [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
   extrémités de chaque curseur contre `validate_params`, plus la valeur
   juste au-delà. (`src/gui/ranges.rs`, `src/gtk/ranges.rs`)
 
+- **Chemin sans aperçus pour la CLI** (`filter::apply_with_iteration_counts`) :
+  la CLI rendait une image complète à chaque itération de Lloyd, image que son
+  callback jetait. Elle n'annonce plus que la progression. **1,21× mesuré** sur
+  un aperçu 1000×800 / 10 itérations / 4000 points, sortie identique au bit.
+  (`src/filter/mod.rs`, `tests/no_preview_path.rs`)
+- **Logique partagée extraite** dans `frontend`, sans toucher aux widgets :
+  `random_seed` (la graine tirée par « Varier la graine »), `derived_export_name`
+  (cinq copies), `matching_preset_index` (quatre copies), `collect_folder_images`
+  et `FolderError`, `downsample`, les bornes et le pas de zoom, et un module
+  `msg` de treize messages. Ces éléments étaient écrits une fois par interface,
+  chacune pouvant diverger en silence. (`src/frontend.rs`)
+- **Damier de transparence défini une seule fois** : la formule du composite
+  était écrite trois fois — egui, l'aperçu GTK, la comparaison GTK — avec les
+  mêmes constantes et un ordre d'octets différent (Color32 / RGBA / BGRX).
+  `frontend::checker_shade` et `composite_on_checker` fixent la couleur ; chaque
+  interface garde son emballage. (`src/frontend.rs`)
+
 ### Modifié
 
 - **Champ et curseur fusionnés dans egui** : six réglages (sensibilité variance,
@@ -107,6 +124,41 @@ et ce projet adhère au [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
   les notifications, les images récentes et l'ouverture par la ligne de
   commande ; une sous-section explique ce que les deux interfaces ne
   partagent pas, et pourquoi aucune description partagée des réglages n'existe.
+
+- **La poignée basse du rayon de trame pouvait aller jusqu'à 10** : les deux
+  interfaces partageaient une seule plage pour les deux poignées du curseur à
+  deux bornes, alors que `validate_params` plafonne `halftone_min_radius_ratio`
+  à 1,0 quand `halftone_max_dot_ratio` monte à 10. Traîner la poignette au-delà
+  de 1 donnait une erreur sèche du worker, sans cause visible. Chaque poignée a
+  désormais sa plage (`Bounds` côté egui, borne basse à 1,0 côté GTK) — et le
+  test qui manquait est ajouté : l'ancien n'exerçait que la borne basse de la
+  borne basse et la borne haute de la borne haute, jamais le sommet de la
+  première. (`src/gui/sliders.rs`, `src/gtk/controls.rs`, `src/*/ranges.rs`)
+- **Le glisser-déposer GTK ne chargeait que le premier fichier** : le
+  `return true` était à l'intérieur de la boucle sur `list.files()`. Déposer un
+  dossier et une image ne chargeait que le dossier. (`src/gtk/wire.rs`)
+- **`Ctrl+K` et `Espace` mal gardés** : le commentaire annonçait une garde
+  `wants_text` que le code ne faisait pas, là où ses huit voisins l'avaient.
+  Taper `Ctrl+K` dans un champ de saisie ouvrait la palette en pleine frappe.
+  Même trou sur `Espace` côté GTK. (`src/gui/ui.rs`, `src/gtk/wire.rs`)
+- **Le GIF divergeait entre la CLI et les interfaces** : `main.rs` tenait sa
+  propre liste d'extensions, en avance d'une entrée (`gif`) sur
+  `IMAGE_EXTENSIONS`. Un dossier listait donc des fichiers que les interfaces
+  refusaient. Les deux viennent de la même constante. (`src/frontend.rs`,
+  `src/main.rs`)
+- **L'export rapide GTK écrasait sans prévenir** : `quick_export` écrivait
+  `{stem}-pointimg.png` à côté de la source sans confirmation, là où egui
+  demandait. `src/gtk/confirm.rs` ajoute la demande sur les seuls chemins sans
+  dialogue (les autres sont déjà couverts par le portail).
+- **Une régression introduite puis retirée au passage** : en coupant les aperçus
+  de la CLI, plus aucune itération n'était annoncée — « Iteration n/10 »
+  disparaissait. Le contrat interne est maintenant `Option<&RgbImage>`, `None`
+  signifiant « pas d'aperçu », et un test verrouille les 7 annonces.
+  (`src/filter/mod.rs`)
+- **Le test de reproductibilité ne prouvait rien** : il compare des points sur
+  un damier, où la densité est nulle partout — les graines ne bougent donc
+  jamais, et l'égalité est garantie par construction. (Constat, non corrigé :
+  voir « ce qui reste ».)
 
 ### Corrigé
 

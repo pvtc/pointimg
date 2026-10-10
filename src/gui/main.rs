@@ -268,6 +268,14 @@ pub(crate) struct App {
     pub ui_theme: Option<egui::Theme>,
     /// Préférences d'interface persistées (échelle, thème).
     pub prefs: Option<prefs::InterfacePrefs>,
+    /// Vignettes des presets, décodées et montées au GPU une seule fois.
+    ///
+    /// Elles étaient reconstruites à chaque frame (neuf `read_dir`, neuf
+    /// décodages PNG de ~130 Ko et neuf montées de texture), ce qu'un panneau
+    /// redessiné plusieurs fois par seconde ne peut pas se permettre. `None`
+    /// tant que le chargement n'a pas eu lieu — c'est ce qui distingue « pas
+    /// encore fait » de « fait et vide ».
+    pub preset_thumbnails: Option<Vec<Option<egui::TextureHandle>>>,
     /// Échelle pour laquelle le style a été appliqué (evite de le refaire à
     /// chaque frame).
     pub applied_style: Option<f32>,
@@ -331,6 +339,7 @@ impl Default for App {
             ui_scale: 1.0,
             ui_theme: None,
             prefs: None,
+            preset_thumbnails: None,
             applied_style: None,
         }
     }
@@ -426,19 +435,9 @@ impl App {
         if self.final_pass {
             return Some(src.clone());
         }
-        let scale = self.quality.scale();
-        if scale >= 1.0 {
-            return Some(src.clone());
-        }
-        let (w, h) = src.dimensions();
-        let target_w = ((w as f32 * scale).round() as u32).max(1);
-        let target_h = ((h as f32 * scale).round() as u32).max(1);
-        Some(image::imageops::resize(
-            src,
-            target_w,
-            target_h,
-            image::imageops::FilterType::Triangle,
-        ))
+        // Le sous-échantillonnage est partagé avec GTK : un aperçu doit montrer
+        // les mêmes pixels des deux côtés.
+        Some(pointimg::frontend::downsample(src, self.quality.scale()))
     }
 }
 

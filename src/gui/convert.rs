@@ -3,6 +3,7 @@
 use eframe::egui;
 use egui::ColorImage;
 use image::{GrayImage, RgbImage, RgbaImage};
+use pointimg::frontend;
 
 pub(crate) fn rgb_to_color_image(img: &RgbImage) -> ColorImage {
     let (w, h) = img.dimensions();
@@ -23,21 +24,9 @@ pub(crate) fn rgba_to_color_image_checker(img: &RgbaImage) -> ColorImage {
     for y in 0..h {
         for x in 0..w {
             let p = img.get_pixel(x, y);
-            let a = p[3] as f32 / 255.0;
-            // Damier 8px, deux gris.
-            let checker_light = 200u8;
-            let checker_dark = 240u8;
-            let cell = ((x / 8) + (y / 8)) % 2;
-            let bg = if cell == 0 {
-                checker_light
-            } else {
-                checker_dark
-            };
-            // Composite sur le damier.
-            let inv = 1.0 - a;
-            let r = (p[0] as f32 * a + bg as f32 * inv + 0.5) as u8;
-            let g = (p[1] as f32 * a + bg as f32 * inv + 0.5) as u8;
-            let b = (p[2] as f32 * a + bg as f32 * inv + 0.5) as u8;
+            // Le composite vit dans `frontend` (partagé avec GTK) ; l'emballage
+            // en `Color32` est le seul travail qui reste ici.
+            let [r, g, b] = frontend::composite_on_checker(p.0, x, y);
             pixels.push(egui::Color32::from_rgb(r, g, b));
         }
     }

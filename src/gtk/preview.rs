@@ -7,14 +7,20 @@ use gtk::prelude::*;
 
 use image::{GrayImage, RgbImage, RgbaImage};
 use pointimg::filter;
+use pointimg::frontend;
 
 use crate::compare;
 use crate::controls::Widgets;
 use crate::{State, ViewMode};
 
 /// Zoom maximal de l'aperçu : au-delà, on ne voit plus qu'un aplat de couleur.
-const ZOOM_MAX: f64 = 16.0;
-const ZOOM_MIN: f64 = 0.02;
+/// Bornes du zoom, alignées sur egui via `frontend`. Deux plages différentes
+/// pour le même geste feraient comparer ce qui n'est pas comparable.
+/// (`f64::from` n'est pas encore `const`, d'où le `as` explicite.)
+const ZOOM_MIN: f64 = frontend::ZOOM_MIN as f64;
+const ZOOM_MAX: f64 = frontend::ZOOM_MAX as f64;
+/// Un cran de zoom, au clavier et aux boutons (identique des deux côtés).
+pub(crate) const ZOOM_STEP: f64 = frontend::ZOOM_STEP as f64;
 
 fn texture_from_bytes(width: u32, height: u32, data: Vec<u8>) -> gtk::gdk::Texture {
     let bytes = gtk::glib::Bytes::from_owned(data);
@@ -58,14 +64,13 @@ pub(crate) fn rgba_checker_bytes(img: &RgbaImage) -> Vec<u8> {
     for y in 0..h {
         for x in 0..w {
             let p = img.get_pixel(x, y);
-            let a = p[3] as f32 / 255.0;
-            let cell = ((x / 8) + (y / 8)) % 2;
-            let bg = if cell == 0 { 200.0 } else { 240.0 };
-            let inv = 1.0 - a;
+            // Composite partagé avec egui ; seul l'ordre des octets RGBA est
+            // propre à GTK.
+            let [r, g, b] = frontend::composite_on_checker(p.0, x, y);
             let i = ((y * w + x) * 4) as usize;
-            data[i] = (p[0] as f32 * a + bg * inv + 0.5) as u8;
-            data[i + 1] = (p[1] as f32 * a + bg * inv + 0.5) as u8;
-            data[i + 2] = (p[2] as f32 * a + bg * inv + 0.5) as u8;
+            data[i] = r;
+            data[i + 1] = g;
+            data[i + 2] = b;
             data[i + 3] = 255;
         }
     }
@@ -402,7 +407,7 @@ pub(crate) fn update_overlays(state: &Rc<RefCell<State>>, widgets: &Rc<Widgets>)
         widgets.quality_badge.set_visible(false);
     } else {
         widgets.quality_badge.set_text(if stale {
-            "pleine résolution…"
+            frontend::msg::FINALIZING
         } else {
             "aperçu rapide"
         });
@@ -564,7 +569,7 @@ pub(crate) fn zoom_by(state: &Rc<RefCell<State>>, widgets: &Rc<Widgets>, factor:
 }
 
 pub(crate) fn set_zoom(state: &Rc<RefCell<State>>, widgets: &Rc<Widgets>, value: f64) {
-    let (center_x, center_y) = viewport_center(state, widgets);
+    let (center_x, center_y) = viewport_center(widgets);
     {
         let mut st = state.borrow_mut();
         st.zoom = value.clamp(ZOOM_MIN, ZOOM_MAX);
@@ -572,7 +577,7 @@ pub(crate) fn set_zoom(state: &Rc<RefCell<State>>, widgets: &Rc<Widgets>, value:
     }
     sync_zoom_toggles(state, widgets);
     apply_zoom(state, widgets);
-    keep_center(state, widgets, center_x, center_y);
+    keep_center(widgets, center_x, center_y);
 }
 
 /// Bascule le mode « Ajuster ».
@@ -615,8 +620,11 @@ pub(crate) fn sync_zoom_toggles(state: &Rc<RefCell<State>>, widgets: &Rc<Widgets
     }
 }
 
-fn viewport_center(state: &Rc<RefCell<State>>, widgets: &Rc<Widgets>) -> (f64, f64) {
-    let _ = state;
+/// Centre du viewport, en coordonnées d'ajustement.
+///
+/// Ni `state` ni les ajustements eux-mêmes n'y entrent : seul le défilement
+/// visible compte, ce qui vaudrait aussi bien au clavier qu'à la molette.
+fn viewport_center(widgets: &Rc<Widgets>) -> (f64, f64) {
     let scroll = visible_scroll(widgets);
     match scroll {
         Some(scroll) => {
@@ -629,8 +637,7 @@ fn viewport_center(state: &Rc<RefCell<State>>, widgets: &Rc<Widgets>) -> (f64, f
     }
 }
 
-fn keep_center(state: &Rc<RefCell<State>>, widgets: &Rc<Widgets>, center_x: f64, center_y: f64) {
-    let _ = state;
+fn keep_center(widgets: &Rc<Widgets>, center_x: f64, center_y: f64) {
     let Some(scroll) = visible_scroll(widgets) else {
         return;
     };

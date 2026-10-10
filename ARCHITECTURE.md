@@ -38,8 +38,10 @@ pointimg/
 │   ├── lib.rs          — crate root; exposes `pub mod filter`, `color`, `frontend`
 │   ├── color.rs        — ICC-aware decoding (embedded/`--input-profile`) and
 │   │                     output-profile encoding (moxcms)
-│   ├── frontend.rs     — helpers shared by the egui and GTK4 front-ends
-│   │                     (formatting, output paths, atomic writes, presets)
+│   ├── frontend.rs     — logic shared by the egui and GTK4 front-ends
+│   │                     (formatting, output paths, atomic writes, presets,
+│   │                      seed, zoom bounds, folder scan, user messages,
+│   │                      transparency checker), no widgets
 │   ├── filter/         — all logic, split by concern
 │   │   ├── mod.rs      — module root: public API (apply, apply_with_progress,
 │   │   │               compute_dots), re-exports, unit tests
@@ -335,7 +337,6 @@ pub struct FilterParams {
 }
 ```
 
-`is_bg_light()` — derived method from `bg_color` (perceptual luminance > 127.5). Faux si `transparent`.
 
 **`min_radius_ratio` / `max_radius_ratio`:** fractions of `min(width, height)` of the image.
 On an 800×600 image, `0.003` → 1.8 px and `0.06` → 36 px.
@@ -415,6 +416,28 @@ compute_dots()
   ├─ Voronoi          → compute_dots_voronoi() (Lloyd iterations without PNG rendering)
   └─ Kmeans           → compute_dots_kmeans()  (K-means iterations without PNG rendering)
 ```
+
+**`apply_with_iteration_counts` — the same, without the intermediate images.**
+`apply_with_progress` renders a whole image at every Lloyd iteration to feed the
+callback. That is what a GUI wants: it shows the previews. The CLI does not —
+its callback only prints a progress line — and it was paying one
+full-resolution render per iteration for a picture it never looked at. This
+entry point takes `FnMut(usize, usize)` instead, and lets `run_lloyd` skip the
+build+render inside the loop. The progress line is still printed (the iteration
+callback is separate from the image), and the output is bit-identical to the
+direct path — a regression test compares the two over several iterations,
+variances and algorithms, including halftone. Measured 1.21× on a 1000×800
+preview.
+
+```rust
+pub fn apply_with_iteration_counts<F>(src, params, cancel, on_iter: F)
+    -> Result<(RgbImage, Vec<Dot>)>
+where F: FnMut(usize, usize);
+```
+
+The internal contract is `FnMut(usize, usize, Option<&RgbImage>)`: `None` means
+"no preview". The public entry points that promise an image convert back, so the
+difference cannot leak into their signatures.
 
 ---
 
@@ -844,6 +867,30 @@ the engine refuses: `src/gui/ranges.rs` and `src/gtk/ranges.rs` each declare
 their bounds and check both ends of every control against
 `filter::validate_params`, plus the value just past it. A bound that drifts out
 of contract then fails in the front-end that declared it, not at export time.
+
+**What does go into the library.** None of this is a shared UI description: it
+is logic that has no widget. What was written once per front-end — and could
+therefore drift in silence — now lives in `frontend`, while each front-end keeps
+its own widgets for *displaying* it:
+
+| `frontend` | Was written | Why it belongs here rather than in each front-end |
+|---|---|---|
+| `random_seed` | 2× | "vary the seed" must draw the same way on both sides |
+| `derived_export_name` | 5× | the `{stem}-pointimg.<ext>` name must not differ |
+| `matching_preset_index` | 4× | the question "have I customised a preset?" |
+| `collect_folder_images` / `FolderError` | 2× | the scan *and* its two error messages |
+| `downsample` | 2× | two previews of one image should show the same pixels |
+| `ZOOM_MIN` / `ZOOM_MAX` / `ZOOM_STEP` | side by side | two ranges for the same wheel gesture would be incomparable |
+| `msg::*` (13 messages) | 13× | an action should not change text between front-ends |
+| `checker_shade` / `composite_on_checker` | 3× | "what transparency looks like", byte order excluded |
+
+The last one is the most telling: the checker formula was written three times
+with the same constants, only because cairo reads BGRX where egui packs
+`Color32`. The arithmetic *was* already shared in spirit — it just was not
+written down, and nothing prevented it from drifting.
+
+None of this touches the shortcuts or the widgets, which stay strictly
+per-front-end.
 
 `src/frontend.rs` stays shared because it holds logic rather than presentation:
 formatting, `Curve`, `ViewMode`, `Quality`, atomic writes, presets, export.

@@ -10,6 +10,7 @@ use super::App;
 use super::convert::rgb_to_rgba_opaque;
 use super::format::generation_is_current;
 use pointimg::filter::{self, Algorithm, FilterParams};
+use pointimg::frontend;
 
 /// Ensemble des canaux de communication partagés entre le thread GUI et un
 /// worker de calcul (fige les `Arc::clone` de `start_compute`).
@@ -67,7 +68,7 @@ impl App {
         channels.cancel.store(false, Ordering::Relaxed);
         *self.progress.lock().unwrap_or_else(|e| e.into_inner()) = (0, params.iterations);
         self.status = if full_resolution {
-            "Calcul en cours…".to_string()
+            frontend::msg::COMPUTING.to_string()
         } else {
             "Aperçu rapide en cours…".to_string()
         };

@@ -498,18 +498,14 @@ fn expand_inputs(input: &str) -> Result<Vec<PathBuf>> {
     }
     let p = PathBuf::from(input);
     if p.is_dir() {
-        const IMAGE_EXTS: &[&str] = &["jpg", "jpeg", "png", "webp", "bmp", "tiff", "tif", "gif"];
+        // La liste vient de la bibliothèque : elle était recopiée ici, en
+        // avance d'une entrée (`gif`) sur celle des interfaces. Un dossier
+        // listait donc des fichiers que les interfaces refusaient.
         let mut out = Vec::new();
         for entry in std::fs::read_dir(&p)? {
             let entry = entry?;
             let path = entry.path();
-            if path.is_file()
-                && path
-                    .extension()
-                    .and_then(|e| e.to_str())
-                    .map(|e| IMAGE_EXTS.contains(&e.to_lowercase().as_str()))
-                    .unwrap_or(false)
-            {
+            if pointimg::frontend::is_supported_image(&path) && path.is_file() {
                 out.push(path);
             }
         }
@@ -637,8 +633,10 @@ fn process_one(
         && params.iterations > 1;
 
     if args.svg {
+        // `apply_with_iteration_counts` : l'image n'est jamais regardée ici, et
+        // la rendre à chaque itération était le poste dominant du traitement.
         let (_, dots) =
-            filter::apply_with_progress(&rgb, params, &never_cancel, |iter, total, _| {
+            filter::apply_with_iteration_counts(&rgb, params, &never_cancel, |iter, total| {
                 if show_progress {
                     eprint!("\r  Iteration {iter}/{total}");
                 }
@@ -684,7 +682,7 @@ fn process_one(
         println!("Sauvegarde (RGBA) : {}", output.display());
     } else {
         let (dst, _dots) =
-            filter::apply_with_progress(&rgb, params, &never_cancel, |iter, total, _| {
+            filter::apply_with_iteration_counts(&rgb, params, &never_cancel, |iter, total| {
                 if show_progress {
                     eprint!("\r  Iteration {iter}/{total}");
                 }

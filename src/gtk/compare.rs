@@ -17,6 +17,7 @@ use adw::prelude::*;
 use gtk::cairo;
 
 use image::{RgbImage, RgbaImage};
+use pointimg::frontend;
 
 use crate::controls::{ComparePane, make_scroll};
 
@@ -66,14 +67,13 @@ fn rgba_checker_surface(img: &RgbaImage) -> Option<cairo::ImageSurface> {
     let stride = img.width() as usize * 4;
     let mut data = vec![0u8; stride * img.height() as usize];
     for (x, y, p) in img.enumerate_pixels() {
-        let a = p[3] as f32 / 255.0;
-        let inv = 1.0 - a;
-        let cell = ((x / 8) + (y / 8)) % 2;
-        let bg = if cell == 0 { 200.0 } else { 240.0 };
+        // Même composite que les autres panneaux ; cairo lit du BGRX, d'où
+        // l'ordre inversé des deux premiers canaux.
+        let [r, g, b] = frontend::composite_on_checker(p.0, x, y);
         let i = y as usize * stride + x as usize * 4;
-        data[i] = (p[2] as f32 * a + bg * inv + 0.5) as u8;
-        data[i + 1] = (p[1] as f32 * a + bg * inv + 0.5) as u8;
-        data[i + 2] = (p[0] as f32 * a + bg * inv + 0.5) as u8;
+        data[i] = b;
+        data[i + 1] = g;
+        data[i + 2] = r;
         data[i + 3] = 0;
     }
     cairo::ImageSurface::create_for_data(
@@ -195,7 +195,7 @@ fn paint(cr: &cairo::Context, width: i32, height: i32, data: &CompareData) {
         if data.has_image {
             // Image chargée mais rendu pas encore arrivé : le message du
             // comparateur reste, l'état d'accueil couvre le cas sans image.
-            message(cr, width as f64, height as f64, "Calcul en cours…");
+            message(cr, width as f64, height as f64, frontend::msg::COMPUTING);
         }
         return;
     };
@@ -257,7 +257,7 @@ fn paint(cr: &cairo::Context, width: i32, height: i32, data: &CompareData) {
     cr.stroke().ok();
 
     if data.stale {
-        badge(cr, 12.0, 12.0, "aperçu obsolète — recalcul en cours");
+        badge(cr, 12.0, 12.0, frontend::msg::STALE);
     }
     let _ = (width, height);
 }

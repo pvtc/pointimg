@@ -22,7 +22,7 @@ impl App {
 
     pub(crate) fn choose_export(&mut self) {
         let Some(name) = self.default_name("png") else {
-            self.notify("Ouvrez d'abord une image.");
+            self.notify(frontend::msg::OPEN_FIRST);
             return;
         };
         let mut dialog = rfd::FileDialog::new()
@@ -42,7 +42,7 @@ impl App {
 
     pub(crate) fn choose_svg_export(&mut self) {
         let Some(name) = self.default_name("svg") else {
-            self.notify("Ouvrez d'abord une image.");
+            self.notify(frontend::msg::OPEN_FIRST);
             return;
         };
         let mut dialog = rfd::FileDialog::new()
@@ -80,25 +80,21 @@ impl App {
 
     /// Nom proposé par défaut : `photo.jpg` → `photo-pointimg.png`.
     fn default_name(&self, extension: &str) -> Option<String> {
-        self.src_path
-            .as_ref()
-            .and_then(|path| path.file_stem())
-            .and_then(|stem| stem.to_str())
-            .map(|stem| format!("{stem}-pointimg.{extension}"))
+        let nom = frontend::derived_export_name(self.src_path.as_deref(), extension);
+        // egui refuse d'exporter sans image, là où GTK retombe sur
+        // `pointimg.<ext>` : la formule du nom est partagée, la décision de
+        // l'accepter appartient à chaque interface.
+        self.src_path.as_ref().map(|_| nom)
     }
 
     // ─── Exports ─────────────────────────────────────────────────────────────
 
     /// Export sans dialogue, à côté de l'image source.
     pub(crate) fn quick_export(&mut self) {
-        let Some(path) = self.src_path.as_ref().map(|path| {
-            let stem = path
-                .file_stem()
-                .and_then(|s| s.to_str())
-                .unwrap_or("pointimg");
-            path.with_file_name(format!("{stem}-pointimg.png"))
+        let Some(path) = self.src_path.as_ref().map(|source| {
+            source.with_file_name(frontend::derived_export_name(Some(source), "png"))
         }) else {
-            self.notify("Ouvrez d'abord une image.");
+            self.notify(frontend::msg::OPEN_FIRST);
             return;
         };
         self.save_result(path);
@@ -111,11 +107,11 @@ impl App {
             guard.as_ref().map(|img| rgba_to_color_image_checker(img))
         };
         let Some(image) = image else {
-            self.notify("Aucun résultat à copier.");
+            self.notify(frontend::msg::NOTHING_TO_COPY);
             return;
         };
         ctx.copy_image(image);
-        self.notify("Image copiée dans le presse-papiers.");
+        self.notify(frontend::msg::COPIED);
     }
 
     pub(crate) fn save_result(&mut self, path: PathBuf) {
@@ -128,7 +124,7 @@ impl App {
         // Validate and normalize the selected extension.
         let path = frontend::ensure_image_extension(path, "png");
         if !io::confirm_overwrite(&path) {
-            self.notify("Sauvegarde annulée.");
+            self.notify(frontend::msg::SAVE_CANCELLED);
             return;
         }
         // Le garde est relâché avant de muter `self` (voir `remember_dir`).
@@ -154,7 +150,7 @@ impl App {
     pub(crate) fn save_svg(&mut self, path: PathBuf) {
         let path = frontend::ensure_svg_extension(path);
         if !io::confirm_overwrite(&path) {
-            self.notify("Sauvegarde annulée.");
+            self.notify(frontend::msg::SAVE_CANCELLED);
             return;
         }
         // Utiliser render_svg_from_dots si on a les dots (archi 19)
