@@ -403,7 +403,7 @@ pub(crate) fn quick_export_svg(state: &Rc<RefCell<State>>, widgets: &Rc<Widgets>
 
 /// Réinitialise l'état « preset personnalisé » de la liste déroulante.
 pub(crate) fn mark_preset_custom(state: &Rc<RefCell<State>>, widgets: &Rc<Widgets>) {
-    let selected = widgets.preset_combo.selected();
+    let selected = widgets.presets.preset_combo.selected();
     if selected == 0 {
         return;
     }
@@ -413,13 +413,13 @@ pub(crate) fn mark_preset_custom(state: &Rc<RefCell<State>>, widgets: &Rc<Widget
         return;
     }
     state.borrow_mut().updating = true;
-    widgets.preset_combo.set_selected(0);
+    widgets.presets.preset_combo.set_selected(0);
     state.borrow_mut().updating = false;
 }
 
 /// Applique le preset sélectionné dans la liste déroulante.
 pub(crate) fn apply_selected_preset(state: &Rc<RefCell<State>>, widgets: &Rc<Widgets>) {
-    let selected = widgets.preset_combo.selected();
+    let selected = widgets.presets.preset_combo.selected();
     if selected == 0 {
         return;
     }
@@ -428,7 +428,7 @@ pub(crate) fn apply_selected_preset(state: &Rc<RefCell<State>>, widgets: &Rc<Wid
 
 /// Affiche le sous-titre du preset sélectionné (aide contextuelle).
 pub(crate) fn update_preset_row(state: &Rc<RefCell<State>>, widgets: &Rc<Widgets>) {
-    let selected = widgets.preset_combo.selected();
+    let selected = widgets.presets.preset_combo.selected();
     let preset = filter::builtin_presets();
     let subtitle = match selected {
         0 => "Réglages personnalisés".to_string(),
@@ -449,7 +449,7 @@ pub(crate) fn update_preset_row(state: &Rc<RefCell<State>>, widgets: &Rc<Widgets
     } else {
         format!("{subtitle} (modifié)")
     };
-    widgets.preset_combo.set_subtitle(&text);
+    widgets.presets.preset_combo.set_subtitle(&text);
     state.borrow_mut().updating = false;
     sections::update_sections(widgets, &state.borrow().params);
     // La grille remplace la liste déroulante quand elle est présente : elle

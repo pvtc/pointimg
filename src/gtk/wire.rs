@@ -222,7 +222,7 @@ pub(crate) fn install_actions(state: &St, widgets: &Wi, window: &adw::Applicatio
     });
     add("shortcuts", &["<Control>question"], {
         let w = Rc::clone(widgets);
-        Rc::new(move || w.shortcuts.present())
+        Rc::new(move || w.window.shortcuts.present())
     });
     add("preset-next", &["<Alt>Down"], {
         let (s, w) = (Rc::clone(&s), Rc::clone(&w));
@@ -238,7 +238,7 @@ pub(crate) fn install_actions(state: &St, widgets: &Wi, window: &adw::Applicatio
     });
 
     window.insert_action_group("win", Some(&group));
-    widgets.export.set_menu_model(Some(&menu_model()));
+    widgets.window.export.set_menu_model(Some(&menu_model()));
 
     let controller = gtk::ShortcutController::new();
     controller.set_propagation_phase(gtk::PropagationPhase::Capture);
@@ -277,7 +277,7 @@ fn step_view(state: &St, widgets: &Wi, delta: i32) {
         st.view_mode = view_from_index(next);
         st.updating = true;
     }
-    widgets.view_mode.set_selected(next);
+    widgets.preview.view_mode.set_selected(next);
     state.borrow_mut().updating = false;
     preview::apply_zoom(state, widgets);
 }
@@ -285,7 +285,7 @@ fn step_view(state: &St, widgets: &Wi, delta: i32) {
 /// Applique le preset suivant/précédent de la liste.
 fn step_preset(state: &St, widgets: &Wi, delta: i32) {
     let total = pointimg::filter::builtin_presets().len() as i32;
-    let current = widgets.preset_combo.selected() as i32;
+    let current = widgets.presets.preset_combo.selected() as i32;
     let next = (current + delta).rem_euclid(total + 1) as u32;
     if next == 0 {
         files::mark_preset_custom(state, widgets);
@@ -293,7 +293,7 @@ fn step_preset(state: &St, widgets: &Wi, delta: i32) {
         return;
     }
     state.borrow_mut().updating = true;
-    widgets.preset_combo.set_selected(next);
+    widgets.presets.preset_combo.set_selected(next);
     sync_preset_thumbs(state, widgets, next);
     state.borrow_mut().updating = false;
     actions::apply_preset(next as usize - 1, state, widgets);
@@ -310,7 +310,7 @@ fn step_preset(state: &St, widgets: &Wi, delta: i32) {
 /// rappel réappliquerait le preset — une seconde fois, et pour le mauvais.
 pub(crate) fn sync_preset_thumbs(state: &St, widgets: &Wi, next: u32) {
     state.borrow_mut().updating = true;
-    for (index, widget) in widgets.preset_thumbs.iter().enumerate() {
+    for (index, widget) in widgets.presets.preset_thumbs.iter().enumerate() {
         if let Ok(bouton) = widget.clone().downcast::<gtk::ToggleButton>() {
             bouton.set_active(next == index as u32 + 1);
         }
@@ -324,10 +324,10 @@ pub(crate) fn sync_preset_thumbs(state: &St, widgets: &Wi, next: u32) {
 /// seule source. Sans la grille, l'opération ne fait rien : c'est le
 /// sous-titre du `ComboRow` qui tient lieu de légende.
 pub(crate) fn update_preset_caption(_state: &St, widgets: &Wi, texte: &str) {
-    if widgets.preset_thumbs.is_empty() {
+    if widgets.presets.preset_thumbs.is_empty() {
         return;
     }
-    widgets.preset_caption.set_text(texte);
+    widgets.presets.preset_caption.set_text(texte);
 }
 
 // ─── Signaux des widgets ─────────────────────────────────────────────────────
@@ -450,27 +450,43 @@ pub(crate) fn wire(state: &St, widgets: &Wi, window: &adw::ApplicationWindow) {
 
 /// Signaux du groupe « Boutons de l'en-tête et de l'accueil ».
 fn wire_header_buttons(state: &St, widgets: &Wi, window: &adw::ApplicationWindow) {
-    for button in [&widgets.open, &widgets.open_empty] {
+    for button in [&widgets.window.open, &widgets.status_bar.open_empty] {
         let (s, w) = clone_state_widgets(state, widgets);
         let window = window.clone();
         button.connect_clicked(move |_| actions::choose_open_image(&window, &s, &w));
     }
-    on_click(state, widgets, &widgets.cancel, actions::cancel_compute);
     on_click(
         state,
         widgets,
-        &widgets.recalc,
+        &widgets.window.cancel,
+        actions::cancel_compute,
+    );
+    on_click(
+        state,
+        widgets,
+        &widgets.compute.recalc,
         actions::request_full_compute,
     );
-    on_click(state, widgets, &widgets.undo, actions::undo);
-    on_click(state, widgets, &widgets.redo, actions::redo);
-    on_click(state, widgets, &widgets.reset, actions::reset_params);
-    on_click(state, widgets, &widgets.vary_seed, actions::vary_seed);
+    on_click(state, widgets, &widgets.window.undo, actions::undo);
+    on_click(state, widgets, &widgets.window.redo, actions::redo);
+    on_click(
+        state,
+        widgets,
+        &widgets.compute.reset,
+        actions::reset_params,
+    );
+    on_click(
+        state,
+        widgets,
+        &widgets.render.vary_seed,
+        actions::vary_seed,
+    );
 
     {
         let (s, w) = clone_state_widgets(state, widgets);
         let window = window.clone();
         widgets
+            .presets
             .load_preset
             .connect_clicked(move |_| actions::choose_load_preset(&window, &s, &w));
     }
@@ -478,6 +494,7 @@ fn wire_header_buttons(state: &St, widgets: &Wi, window: &adw::ApplicationWindow
         let (s, w) = clone_state_widgets(state, widgets);
         let window = window.clone();
         widgets
+            .presets
             .save_preset
             .connect_clicked(move |_| actions::choose_save_preset(&window, &s, &w));
     }
@@ -485,21 +502,27 @@ fn wire_header_buttons(state: &St, widgets: &Wi, window: &adw::ApplicationWindow
         let (s, w) = clone_state_widgets(state, widgets);
         let window = window.clone();
         widgets
+            .presets
             .open_folder
             .connect_clicked(move |_| actions::choose_open_folder(&window, &s, &w));
     }
 
     // Exemple fourni avec le programme, s'il est présent sur le disque.
     if let Some(sample) = sample_image() {
-        on_click(state, widgets, &widgets.sample_button, move |s, w| {
-            actions::load_image(sample.clone(), s, w);
-        });
+        on_click(
+            state,
+            widgets,
+            &widgets.status_bar.sample_button,
+            move |s, w| {
+                actions::load_image(sample.clone(), s, w);
+            },
+        );
     } else {
-        widgets.sample_button.set_visible(false);
+        widgets.status_bar.sample_button.set_visible(false);
     }
 
     // Boutons de réinitialisation par section.
-    for reset in &widgets.group_resets {
+    for reset in &widgets.compute.group_resets {
         let (s, w) = clone_state_widgets(state, widgets);
         let target = reset.target;
         reset
@@ -512,18 +535,21 @@ fn wire_header_buttons(state: &St, widgets: &Wi, window: &adw::ApplicationWindow
 fn wire_presets(state: &St, widgets: &Wi) {
     {
         let (s, w) = clone_state_widgets(state, widgets);
-        widgets.preset_combo.connect_selected_notify(move |_| {
-            if s.borrow().updating {
-                return;
-            }
-            files::update_preset_row(&s, &w);
-            files::apply_selected_preset(&s, &w);
-        });
+        widgets
+            .presets
+            .preset_combo
+            .connect_selected_notify(move |_| {
+                if s.borrow().updating {
+                    return;
+                }
+                files::update_preset_row(&s, &w);
+                files::apply_selected_preset(&s, &w);
+            });
     }
     // Grille de vignettes : un clic applique le preset. La liste déroulante
     // reste branchée en amont — la grille ne fait que la piloter — ce qui évite
     // deux chemins d'application du même preset.
-    for (index, widget) in widgets.preset_thumbs.iter().enumerate() {
+    for (index, widget) in widgets.presets.preset_thumbs.iter().enumerate() {
         let Some(bouton) = widget.clone().downcast::<gtk::ToggleButton>().ok() else {
             continue;
         };
@@ -535,7 +561,7 @@ fn wire_presets(state: &St, widgets: &Wi) {
             // `updating` empêche le rappel de la liste déroulante de
             // réappliquer le preset une seconde fois.
             s.borrow_mut().updating = true;
-            w.preset_combo.set_selected(index as u32 + 1);
+            w.presets.preset_combo.set_selected(index as u32 + 1);
             s.borrow_mut().updating = false;
             actions::apply_preset(index, &s, &w);
         });
@@ -546,7 +572,7 @@ fn wire_presets(state: &St, widgets: &Wi) {
 fn wire_algorithm(state: &St, widgets: &Wi) {
     {
         let (s, w) = clone_state_widgets(state, widgets);
-        widgets.algo.connect_selected_notify(move |row| {
+        widgets.algorithm.algo.connect_selected_notify(move |row| {
             if s.borrow().updating {
                 return;
             }
@@ -573,76 +599,100 @@ fn wire_algorithm(state: &St, widgets: &Wi) {
     on_value(
         state,
         widgets,
-        &widgets.variance,
+        &widgets.algorithm.variance,
         set_variance,
         Some(after_variance),
     );
     on_value(
         state,
         widgets,
-        &widgets.min_radius,
+        &widgets.algorithm.min_radius,
         set_min_radius,
         Some(sync_radii),
     );
     on_value(
         state,
         widgets,
-        &widgets.max_radius,
+        &widgets.algorithm.max_radius,
         set_max_radius,
         Some(sync_radii),
     );
-    on_value(state, widgets, &widgets.max_boost, set_max_boost, None);
-    on_value(state, widgets, &widgets.cols, set_cols, None);
     on_value(
         state,
         widgets,
-        &widgets.grid_angle,
+        &widgets.algorithm.max_boost,
+        set_max_boost,
+        None,
+    );
+    on_value(state, widgets, &widgets.algorithm.cols, set_cols, None);
+    on_value(
+        state,
+        widgets,
+        &widgets.algorithm.grid_angle,
         |p, v| p.grid_angle_deg = v as f32,
         None,
     );
-    on_value(state, widgets, &widgets.num_points, set_num_points, None);
-    on_value(state, widgets, &widgets.iterations, set_iterations, None);
+    on_value(
+        state,
+        widgets,
+        &widgets.algorithm.num_points,
+        set_num_points,
+        None,
+    );
+    on_value(
+        state,
+        widgets,
+        &widgets.algorithm.iterations,
+        set_iterations,
+        None,
+    );
 
     on_slider(
         state,
         widgets,
-        &widgets.variance_slider,
+        &widgets.algorithm.variance_slider,
         set_variance,
         Some(after_variance),
     );
     on_slider(
         state,
         widgets,
-        &widgets.min_radius_slider,
+        &widgets.algorithm.min_radius_slider,
         set_min_radius,
         Some(sync_radii),
     );
     on_slider(
         state,
         widgets,
-        &widgets.max_radius_slider,
+        &widgets.algorithm.max_radius_slider,
         set_max_radius,
         Some(sync_radii),
     );
     on_slider(
         state,
         widgets,
-        &widgets.max_boost_slider,
+        &widgets.algorithm.max_boost_slider,
         set_max_boost,
         None,
     );
-    on_slider(state, widgets, &widgets.cols_slider, set_cols, None);
     on_slider(
         state,
         widgets,
-        &widgets.num_points_slider,
+        &widgets.algorithm.cols_slider,
+        set_cols,
+        None,
+    );
+    on_slider(
+        state,
+        widgets,
+        &widgets.algorithm.num_points_slider,
         set_num_points,
         None,
     );
     on_slider(
         state,
         widgets,
-        &widgets.iterations_slider,
+        &widgets.algorithm.iterations_slider,
         set_iterations,
         None,
     );
@@ -652,7 +702,7 @@ fn wire_algorithm(state: &St, widgets: &Wi) {
 fn wire_quality(state: &St, widgets: &Wi) {
     {
         let (s, w) = clone_state_widgets(state, widgets);
-        widgets.quality.connect_selected_notify(move |row| {
+        widgets.compute.quality.connect_selected_notify(move |row| {
             if s.borrow().updating {
                 return;
             }
@@ -674,30 +724,33 @@ fn wire_quality(state: &St, widgets: &Wi) {
 fn wire_halftone(state: &St, widgets: &Wi) {
     {
         let (s, w) = clone_state_widgets(state, widgets);
-        widgets.halftone_mode.connect_selected_notify(move |row| {
-            if s.borrow().updating {
-                return;
-            }
-            s.borrow_mut().params.halftone = if row.selected() == 1 {
-                HalftoneMode::Dominant {
-                    n: 5,
-                    base_angle_deg: 15.0,
+        widgets
+            .halftone
+            .halftone_mode
+            .connect_selected_notify(move |row| {
+                if s.borrow().updating {
+                    return;
                 }
-            } else {
-                HalftoneMode::Cmyk {
-                    angles: [15.0, 75.0, 0.0, 45.0],
-                }
-            };
-            sections::sync_widgets(&s, &w);
-            sections::update_sections(&w, &s.borrow().params);
-            files::mark_preset_custom(&s, &w);
-            actions::on_params_changed(&s, &w);
-        });
+                s.borrow_mut().params.halftone = if row.selected() == 1 {
+                    HalftoneMode::Dominant {
+                        n: 5,
+                        base_angle_deg: 15.0,
+                    }
+                } else {
+                    HalftoneMode::Cmyk {
+                        angles: [15.0, 75.0, 0.0, 45.0],
+                    }
+                };
+                sections::sync_widgets(&s, &w);
+                sections::update_sections(&w, &s.borrow().params);
+                files::mark_preset_custom(&s, &w);
+                actions::on_params_changed(&s, &w);
+            });
     }
     on_value(
         state,
         widgets,
-        &widgets.dominant_n,
+        &widgets.halftone.dominant_n,
         |p, v| {
             if let HalftoneMode::Dominant { n, .. } = &mut p.halftone {
                 *n = v.round().clamp(2.0, 32.0) as usize;
@@ -708,7 +761,7 @@ fn wire_halftone(state: &St, widgets: &Wi) {
     on_value(
         state,
         widgets,
-        &widgets.dominant_angle,
+        &widgets.halftone.dominant_angle,
         |p, v| {
             if let HalftoneMode::Dominant { base_angle_deg, .. } = &mut p.halftone {
                 *base_angle_deg = v as f32;
@@ -718,58 +771,61 @@ fn wire_halftone(state: &St, widgets: &Wi) {
     );
     {
         let (s, w) = clone_state_widgets(state, widgets);
-        widgets.screening.connect_selected_notify(move |row| {
-            if s.borrow().updating {
-                return;
-            }
-            s.borrow_mut().params.screening = if row.selected() == 1 {
-                Screening::Fm
-            } else {
-                Screening::Am
-            };
-            files::mark_preset_custom(&s, &w);
-            actions::on_params_changed(&s, &w);
-        });
+        widgets
+            .halftone
+            .screening
+            .connect_selected_notify(move |row| {
+                if s.borrow().updating {
+                    return;
+                }
+                s.borrow_mut().params.screening = if row.selected() == 1 {
+                    Screening::Fm
+                } else {
+                    Screening::Am
+                };
+                files::mark_preset_custom(&s, &w);
+                actions::on_params_changed(&s, &w);
+            });
     }
     on_value(
         state,
         widgets,
-        &widgets.halftone_freq,
+        &widgets.halftone.halftone_freq,
         set_halftone_freq,
         None,
     );
     on_value(
         state,
         widgets,
-        &widgets.halftone_min_radius,
+        &widgets.halftone.halftone_min_radius,
         set_halftone_min_radius,
         Some(sync_halftone_radii),
     );
     on_value(
         state,
         widgets,
-        &widgets.halftone_max_dot,
+        &widgets.halftone.halftone_max_dot,
         set_halftone_max_dot,
         Some(sync_halftone_radii),
     );
     on_slider(
         state,
         widgets,
-        &widgets.halftone_freq_slider,
+        &widgets.halftone.halftone_freq_slider,
         set_halftone_freq,
         None,
     );
     on_slider(
         state,
         widgets,
-        &widgets.halftone_min_slider,
+        &widgets.halftone.halftone_min_slider,
         set_halftone_min_radius,
         Some(sync_halftone_radii),
     );
     on_slider(
         state,
         widgets,
-        &widgets.halftone_max_slider,
+        &widgets.halftone.halftone_max_slider,
         set_halftone_max_dot,
         Some(sync_halftone_radii),
     );
@@ -779,7 +835,7 @@ fn wire_halftone(state: &St, widgets: &Wi) {
 fn wire_shape(state: &St, widgets: &Wi) {
     {
         let (s, w) = clone_state_widgets(state, widgets);
-        widgets.shape.connect_selected_notify(move |row| {
+        widgets.dots.shape.connect_selected_notify(move |row| {
             if s.borrow().updating {
                 return;
             }
@@ -811,7 +867,7 @@ fn wire_shape(state: &St, widgets: &Wi) {
     on_value(
         state,
         widgets,
-        &widgets.ellipse_aspect,
+        &widgets.dots.ellipse_aspect,
         |p, v| {
             if let DotShape::Ellipse { aspect, .. } = &mut p.dot_shape {
                 *aspect = v as f32;
@@ -822,7 +878,7 @@ fn wire_shape(state: &St, widgets: &Wi) {
     on_value(
         state,
         widgets,
-        &widgets.ellipse_angle,
+        &widgets.dots.ellipse_angle,
         |p, v| {
             if let DotShape::Ellipse { angle_deg, .. } = &mut p.dot_shape {
                 *angle_deg = v as f32;
@@ -833,7 +889,7 @@ fn wire_shape(state: &St, widgets: &Wi) {
     on_value(
         state,
         widgets,
-        &widgets.polygon_sides,
+        &widgets.dots.polygon_sides,
         |p, v| {
             if let DotShape::RegularPolygon { sides } = &mut p.dot_shape {
                 *sides = v.round().clamp(3.0, 12.0) as u8;
@@ -842,13 +898,13 @@ fn wire_shape(state: &St, widgets: &Wi) {
         None,
     );
 
-    on_switch(state, widgets, &widgets.use_palette, |p, on| {
+    on_switch(state, widgets, &widgets.dots.use_palette, |p, on| {
         p.palette_size = if on { Some(8) } else { None };
     });
     on_value(
         state,
         widgets,
-        &widgets.palette_size,
+        &widgets.dots.palette_size,
         |p, v| {
             p.palette_size = Some(v.round().clamp(2.0, 256.0) as usize);
         },
@@ -856,7 +912,7 @@ fn wire_shape(state: &St, widgets: &Wi) {
     );
     {
         let (s, w) = clone_state_widgets(state, widgets);
-        widgets.dithering.connect_selected_notify(move |row| {
+        widgets.dots.dithering.connect_selected_notify(move |row| {
             if s.borrow().updating {
                 return;
             }
@@ -874,7 +930,7 @@ fn wire_shape(state: &St, widgets: &Wi) {
 fn wire_render(state: &St, widgets: &Wi) {
     {
         let (s, w) = clone_state_widgets(state, widgets);
-        let button = w.bg_button.clone();
+        let button = w.render.bg_button.clone();
         button.connect_rgba_notify(move |b| {
             if s.borrow().updating {
                 return;
@@ -892,25 +948,25 @@ fn wire_render(state: &St, widgets: &Wi) {
             }
             // Les setters GTK émettent des signaux synchrones : on relâche le
             // borrow avant de toucher aux widgets.
-            w.transparent.set_active(false);
+            w.render.transparent.set_active(false);
             s.borrow_mut().updating = false;
             sections::update_sections(&w, &s.borrow().params);
             actions::refresh_src_rgb(&s, &w);
             actions::on_params_changed(&s, &w);
         });
     }
-    on_switch(state, widgets, &widgets.transparent, |p, on| {
+    on_switch(state, widgets, &widgets.render.transparent, |p, on| {
         p.transparent = on;
     });
-    on_switch(state, widgets, &widgets.gamma, |p, on| {
+    on_switch(state, widgets, &widgets.render.gamma, |p, on| {
         p.gamma_correct = on;
     });
-    on_switch(state, widgets, &widgets.use_seed, |p, on| {
+    on_switch(state, widgets, &widgets.render.use_seed, |p, on| {
         p.rng_seed = if on { Some(42) } else { None };
     });
     {
         let (s, w) = clone_state_widgets(state, widgets);
-        widgets.seed.connect_value_changed(move |spin| {
+        widgets.render.seed.connect_value_changed(move |spin| {
             if s.borrow().updating {
                 return;
             }
@@ -925,23 +981,26 @@ fn wire_render(state: &St, widgets: &Wi) {
 fn wire_display(state: &St, widgets: &Wi) {
     {
         let (s, w) = clone_state_widgets(state, widgets);
-        widgets.view_mode.connect_selected_notify(move |drop| {
-            if s.borrow().updating {
-                return;
-            }
-            s.borrow_mut().view_mode = view_from_index(drop.selected());
-            preview::apply_zoom(&s, &w);
-        });
+        widgets
+            .preview
+            .view_mode
+            .connect_selected_notify(move |drop| {
+                if s.borrow().updating {
+                    return;
+                }
+                s.borrow_mut().view_mode = view_from_index(drop.selected());
+                preview::apply_zoom(&s, &w);
+            });
     }
-    on_click(state, widgets, &widgets.zoom_out, |s, w| {
+    on_click(state, widgets, &widgets.preview.zoom_out, |s, w| {
         preview::zoom_by(s, w, 1.0 / 1.25);
     });
-    on_click(state, widgets, &widgets.zoom_in, |s, w| {
+    on_click(state, widgets, &widgets.preview.zoom_in, |s, w| {
         preview::zoom_by(s, w, 1.25);
     });
     {
         let (s, w) = clone_state_widgets(state, widgets);
-        widgets.zoom_one.connect_toggled(move |button| {
+        widgets.preview.zoom_one.connect_toggled(move |button| {
             if s.borrow().updating {
                 return;
             }
@@ -952,7 +1011,7 @@ fn wire_display(state: &St, widgets: &Wi) {
     }
     {
         let (s, w) = clone_state_widgets(state, widgets);
-        widgets.zoom_fit.connect_toggled(move |button| {
+        widgets.preview.zoom_fit.connect_toggled(move |button| {
             if s.borrow().updating {
                 return;
             }
@@ -1041,10 +1100,10 @@ fn sync_halftone_radii(state: &St, widgets: &Wi) {
     // garantit qu'aucun `return` ajouté plus tard ne la laisse levée.
     with_updating(state, widgets, |w| {
         sync_radius_pair(
-            &w.halftone_min_radius,
-            &w.halftone_max_dot,
-            &w.halftone_min_slider,
-            &w.halftone_max_slider,
+            &w.halftone.halftone_min_radius,
+            &w.halftone.halftone_max_dot,
+            &w.halftone.halftone_min_slider,
+            &w.halftone.halftone_max_slider,
             min,
             max,
         );
@@ -1063,10 +1122,10 @@ fn sync_radii(state: &St, widgets: &Wi) {
     };
     with_updating(state, widgets, |w| {
         sync_radius_pair(
-            &w.min_radius,
-            &w.max_radius,
-            &w.min_radius_slider,
-            &w.max_radius_slider,
+            &w.algorithm.min_radius,
+            &w.algorithm.max_radius,
+            &w.algorithm.min_radius_slider,
+            &w.algorithm.max_radius_slider,
             min,
             max,
         );
@@ -1144,7 +1203,8 @@ pub(crate) fn install_shortcuts(state: &St, widgets: &Wi, window: &adw::Applicat
         let ctrl = modifiers.intersects(ModifierType::CONTROL_MASK | ModifierType::META_MASK);
         // Tant qu'un champ de saisie a le focus, les raccourcis « lettre »
         // risqueraient d'être tapés dans le champ : on les laisse passer.
-        let editing = key_widgets.seed.has_focus() || key_widgets.bg_button.has_focus();
+        let editing =
+            key_widgets.render.seed.has_focus() || key_widgets.render.bg_button.has_focus();
         if ctrl {
             if keyval == Key::c && !editing {
                 actions::copy_to_clipboard(&key_state, &key_widgets);

@@ -552,7 +552,11 @@ pub(crate) fn copy_to_clipboard(state: &Rc<RefCell<State>>, widgets: &Rc<Widgets
     let texture = crate::preview::rgba_to_texture(&result);
     // Le presse-papiers est un service de l'affichage : on passe par la
     // fenêtre pour être sûr d'être dans le bon display.
-    widgets.toast_overlay.clipboard().set_texture(&texture);
+    widgets
+        .window
+        .toast_overlay
+        .clipboard()
+        .set_texture(&texture);
     preview::notify(state, widgets, frontend::msg::COPIED);
 }
 
@@ -570,8 +574,14 @@ pub(crate) fn handle_message(msg: Msg, state: &Rc<RefCell<State>>, widgets: &Rc<
                 return;
             }
             if total > 0 {
-                widgets.progress.set_fraction(done as f64 / total as f64);
-                widgets.progress.set_text(Some(&format!("{done}/{total}")));
+                widgets
+                    .window
+                    .progress
+                    .set_fraction(done as f64 / total as f64);
+                widgets
+                    .window
+                    .progress
+                    .set_text(Some(&format!("{done}/{total}")));
             }
         }
         Msg::Preview { generation, image } => {

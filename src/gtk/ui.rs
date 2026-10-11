@@ -30,11 +30,15 @@ pub(crate) fn build_ui(
     window.set_content(Some(&toast_overlay));
 
     // La fenêtre des raccourcis partage le même overlay de notifications.
-    widgets.shortcuts.set_transient_for(Some(&window));
-    widgets.shortcuts.set_modal(true);
-    widgets.shortcuts.set_title(Some("Raccourcis clavier"));
-    widgets.shortcuts.set_default_size(520, 560);
+    widgets.window.shortcuts.set_transient_for(Some(&window));
+    widgets.window.shortcuts.set_modal(true);
     widgets
+        .window
+        .shortcuts
+        .set_title(Some("Raccourcis clavier"));
+    widgets.window.shortcuts.set_default_size(520, 560);
+    widgets
+        .window
         .shortcuts
         .set_content(Some(&shortcuts::build_page()));
 
@@ -67,7 +71,7 @@ fn show_recent_images(state: &Rc<RefCell<State>>, widgets: &Rc<controls::Widgets
     let Some(group) = recent::build_recent_widget(state, widgets) else {
         return;
     };
-    widgets.empty_extra.append(&group);
+    widgets.status_bar.empty_extra.append(&group);
 }
 
 /// Sous 900 px de large, l'aperçu et le panneau de réglages ne peuvent plus
@@ -81,20 +85,28 @@ fn install_breakpoint(window: &adw::ApplicationWindow, widgets: &controls::Widge
     let condition = adw::BreakpointCondition::parse("max-width: 900px")
         .expect("condition de point de rupture valide");
     let breakpoint = adw::Breakpoint::new(condition);
-    breakpoint.add_setter(&widgets.split, "collapsed", Some(&true.to_value()));
-    breakpoint.add_setter(&widgets.panel_toggle, "visible", Some(&true.to_value()));
-    breakpoint.add_setter(&widgets.panel_toggle, "active", Some(&true.to_value()));
+    breakpoint.add_setter(&widgets.window.split, "collapsed", Some(&true.to_value()));
+    breakpoint.add_setter(
+        &widgets.window.panel_toggle,
+        "visible",
+        Some(&true.to_value()),
+    );
+    breakpoint.add_setter(
+        &widgets.window.panel_toggle,
+        "active",
+        Some(&true.to_value()),
+    );
     window.add_breakpoint(breakpoint);
 
     // Le bouton et le panneau se reflètent l'un l'autre dans les deux sens : le
     // point de rupture active le bouton en entrant dans la zone étroite, un clic
     // referme le panneau, et le geste de balayage le rouvre.
-    widgets.panel_toggle.connect_toggled({
-        let split = widgets.split.clone();
+    widgets.window.panel_toggle.connect_toggled({
+        let split = widgets.window.split.clone();
         move |toggle| split.set_collapsed(!toggle.is_active())
     });
-    widgets.split.connect_collapsed_notify({
-        let toggle = widgets.panel_toggle.clone();
+    widgets.window.split.connect_collapsed_notify({
+        let toggle = widgets.window.panel_toggle.clone();
         move |split| toggle.set_active(!split.is_collapsed())
     });
 }

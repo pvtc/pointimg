@@ -90,11 +90,12 @@ pub(crate) fn refresh_source_texture(state: &Rc<RefCell<State>>, widgets: &Rc<Wi
     // peuvent émettre des signaux synchrones).
     match texture {
         Some(texture) => {
-            widgets.src_pane.image.set_paintable(Some(&texture));
+            widgets.preview.src_pane.image.set_paintable(Some(&texture));
             state.borrow_mut().src_texture = Some(texture);
         }
         None => {
             widgets
+                .preview
                 .src_pane
                 .image
                 .set_paintable(None::<&gtk::gdk::Texture>);
@@ -111,11 +112,12 @@ pub(crate) fn refresh_result_texture(state: &Rc<RefCell<State>>, widgets: &Rc<Wi
         .map(|img| texture_from_rgba_checker(img));
     match texture {
         Some(texture) => {
-            widgets.dst_pane.image.set_paintable(Some(&texture));
+            widgets.preview.dst_pane.image.set_paintable(Some(&texture));
             state.borrow_mut().result_texture = Some(texture);
         }
         None => {
             widgets
+                .preview
                 .dst_pane
                 .image
                 .set_paintable(None::<&gtk::gdk::Texture>);
@@ -128,11 +130,16 @@ pub(crate) fn refresh_density_texture(state: &Rc<RefCell<State>>, widgets: &Rc<W
     let texture = state.borrow().density_image.as_ref().map(texture_from_gray);
     match texture {
         Some(texture) => {
-            widgets.density_pane.image.set_paintable(Some(&texture));
+            widgets
+                .preview
+                .density_pane
+                .image
+                .set_paintable(Some(&texture));
             state.borrow_mut().density_texture = Some(texture);
         }
         None => {
             widgets
+                .preview
                 .density_pane
                 .image
                 .set_paintable(None::<&gtk::gdk::Texture>);
@@ -186,10 +193,10 @@ pub(crate) fn apply_zoom(state: &Rc<RefCell<State>>, widgets: &Rc<Widgets>) {
     };
 
     for (root, visible) in [
-        (&widgets.src_pane.root, visible_src),
-        (&widgets.dst_pane.root, visible_dst),
-        (&widgets.density_pane.root, visible_density),
-        (&widgets.compare_pane.root, visible_compare),
+        (&widgets.preview.src_pane.root, visible_src),
+        (&widgets.preview.dst_pane.root, visible_dst),
+        (&widgets.preview.density_pane.root, visible_density),
+        (&widgets.preview.compare_pane.root, visible_compare),
     ] {
         root.set_visible(visible);
     }
@@ -203,10 +210,10 @@ pub(crate) fn apply_zoom(state: &Rc<RefCell<State>>, widgets: &Rc<Widgets>) {
     // sur un panneau visible puis on l'applique à tous (comparaison comprise).
     let mut effective = if fit {
         let (w, h) = viewport(
-            &widgets.src_pane.scroll,
-            &widgets.dst_pane.scroll,
-            &widgets.density_pane.scroll,
-            &widgets.compare_pane.scroll,
+            &widgets.preview.src_pane.scroll,
+            &widgets.preview.dst_pane.scroll,
+            &widgets.preview.density_pane.scroll,
+            &widgets.preview.compare_pane.scroll,
         );
         compute_fit_zoom(&state.borrow(), w, h)
     } else {
@@ -221,18 +228,18 @@ pub(crate) fn apply_zoom(state: &Rc<RefCell<State>>, widgets: &Rc<Widgets>) {
         let target = ((w as f64 * effective).round() as i32).max(1);
         let target_h = ((h as f64 * effective).round() as i32).max(1);
         for image in [
-            &widgets.src_pane.image,
-            &widgets.dst_pane.image,
-            &widgets.density_pane.image,
+            &widgets.preview.src_pane.image,
+            &widgets.preview.dst_pane.image,
+            &widgets.preview.density_pane.image,
         ] {
             if image.pixel_size() != target {
                 image.set_pixel_size(target);
             }
         }
-        let area = &widgets.compare_pane.area;
+        let area = &widgets.preview.compare_pane.area;
         let (cw, ch) = (target, target_h);
         {
-            let mut data = widgets.compare_pane.data.borrow_mut();
+            let mut data = widgets.preview.compare_pane.data.borrow_mut();
             if data.content_width != cw || data.content_height != ch {
                 data.content_width = cw;
                 data.content_height = ch;
@@ -246,16 +253,16 @@ pub(crate) fn apply_zoom(state: &Rc<RefCell<State>>, widgets: &Rc<Widgets>) {
         }
     } else {
         for image in [
-            &widgets.src_pane.image,
-            &widgets.dst_pane.image,
-            &widgets.density_pane.image,
+            &widgets.preview.src_pane.image,
+            &widgets.preview.dst_pane.image,
+            &widgets.preview.density_pane.image,
         ] {
             image.set_pixel_size(0);
         }
-        widgets.compare_pane.area.set_content_width(0);
-        widgets.compare_pane.area.set_content_height(0);
+        widgets.preview.compare_pane.area.set_content_width(0);
+        widgets.preview.compare_pane.area.set_content_height(0);
     }
-    widgets.compare_pane.area.queue_draw();
+    widgets.preview.compare_pane.area.queue_draw();
 
     // Le résultat n'est volontairement plus voilé pendant le calcul.
     //
@@ -271,11 +278,12 @@ pub(crate) fn apply_zoom(state: &Rc<RefCell<State>>, widgets: &Rc<Widgets>) {
     // Étiquettes de zoom : le pourcentage réellement appliqué, pas la valeur
     // mémorisée (inutilisée en mode « Ajuster »).
     widgets
+        .preview
         .zoom_label
         .set_text(&format!("{:.0} %", (effective * 100.0).round()));
-    widgets.zoom_out.set_sensitive(!fit);
-    widgets.zoom_in.set_sensitive(!fit);
-    widgets.zoom_fit.set_tooltip_text(Some(if fit {
+    widgets.preview.zoom_out.set_sensitive(!fit);
+    widgets.preview.zoom_in.set_sensitive(!fit);
+    widgets.preview.zoom_fit.set_tooltip_text(Some(if fit {
         "Zoom ajusté à la fenêtre (0)"
     } else {
         "Ajuster l'aperçu à la fenêtre (0)"
@@ -300,10 +308,10 @@ fn viewport(
 /// Recalcule le « Ajuster » quand le viewport change de taille.
 pub(crate) fn connect_fit_signals(state: &Rc<RefCell<State>>, widgets: &Rc<Widgets>) {
     let scrolls = [
-        widgets.src_pane.scroll.clone(),
-        widgets.dst_pane.scroll.clone(),
-        widgets.density_pane.scroll.clone(),
-        widgets.compare_pane.scroll.clone(),
+        widgets.preview.src_pane.scroll.clone(),
+        widgets.preview.dst_pane.scroll.clone(),
+        widgets.preview.density_pane.scroll.clone(),
+        widgets.preview.compare_pane.scroll.clone(),
     ];
     for scroll in scrolls {
         for adjustment in [scroll.hadjustment(), scroll.vadjustment()] {
@@ -328,10 +336,10 @@ thread_local! {
 /// Miroite le défilement d'un panneau vers tous les autres.
 pub(crate) fn connect_scroll_sync(widgets: &Rc<Widgets>) {
     let scrolls = [
-        widgets.src_pane.scroll.clone(),
-        widgets.dst_pane.scroll.clone(),
-        widgets.density_pane.scroll.clone(),
-        widgets.compare_pane.scroll.clone(),
+        widgets.preview.src_pane.scroll.clone(),
+        widgets.preview.dst_pane.scroll.clone(),
+        widgets.preview.density_pane.scroll.clone(),
+        widgets.preview.compare_pane.scroll.clone(),
     ];
     for (index, scroll) in scrolls.iter().enumerate() {
         for horizontal in [true, false] {
@@ -395,24 +403,25 @@ pub(crate) fn update_overlays(state: &Rc<RefCell<State>>, widgets: &Rc<Widgets>)
         )
     };
 
-    widgets.empty_page.set_visible(!has_image);
-    widgets.busy.set_visible(computing);
-    widgets.busy.set_spinning(computing);
+    widgets.status_bar.empty_page.set_visible(!has_image);
+    widgets.preview.busy.set_visible(computing);
+    widgets.preview.busy.set_spinning(computing);
     widgets
+        .preview
         .busy_label
         .set_text(if computing { "Calcul…" } else { "" });
 
     if quality.is_full() {
-        widgets.quality_badge.set_text("");
-        widgets.quality_badge.set_visible(false);
+        widgets.preview.quality_badge.set_text("");
+        widgets.preview.quality_badge.set_visible(false);
     } else {
-        widgets.quality_badge.set_text(if stale {
+        widgets.preview.quality_badge.set_text(if stale {
             frontend::msg::FINALIZING
         } else {
             "aperçu rapide"
         });
-        widgets.quality_badge.set_visible(has_image);
-        widgets.quality_badge.set_tooltip_text(Some(
+        widgets.preview.quality_badge.set_visible(has_image);
+        widgets.preview.quality_badge.set_tooltip_text(Some(
             "Calcul sur une image réduite. La pleine résolution est calculée \
              automatiquement dès que vous arrêtez de manipuler les réglages.",
         ));
@@ -434,17 +443,17 @@ pub(crate) fn update_overlays(state: &Rc<RefCell<State>>, widgets: &Rc<Widgets>)
             .unwrap_or_default();
         (format!("pointimg — {name}{suffix}"), window_subtitle(&st))
     };
-    widgets.window_title.set_title(&title);
-    widgets.window_title.set_subtitle(&subtitle);
+    widgets.window.window_title.set_title(&title);
+    widgets.window.window_title.set_subtitle(&subtitle);
 
     // Dossier : position de l'image courante.
     let folder = state.borrow().folder_position();
-    widgets.folder_label.set_text(
+    widgets.presets.folder_label.set_text(
         &folder
             .map(|(index, total)| format!("{index} / {total}"))
             .unwrap_or_default(),
     );
-    widgets.folder_row.set_visible(folder.is_some());
+    widgets.presets.folder_row.set_visible(folder.is_some());
 }
 
 fn window_subtitle(state: &State) -> String {
@@ -468,22 +477,28 @@ pub(crate) fn refresh_actions(state: &Rc<RefCell<State>>, widgets: &Rc<Widgets>)
         )
     };
 
-    widgets.cancel.set_visible(computing);
-    widgets.progress.set_visible(computing);
-    widgets.recalc.set_sensitive(!computing);
+    widgets.window.cancel.set_visible(computing);
+    widgets.window.progress.set_visible(computing);
+    widgets.compute.recalc.set_sensitive(!computing);
     if !computing {
-        widgets.progress.set_fraction(0.0);
+        widgets.window.progress.set_fraction(0.0);
     }
-    widgets.undo.set_sensitive(undoable);
-    widgets.redo.set_sensitive(redoable);
+    widgets.window.undo.set_sensitive(undoable);
+    widgets.window.redo.set_sensitive(redoable);
     // On n'exporte que le rendu en pleine résolution : en mode aperçu rapide,
     // l'export attend la finalisation automatique.
-    widgets.export.set_sensitive(has_result && !computing);
-    widgets.export.set_tooltip_text(Some(if final_result {
-        "Exporter l'image (Ctrl+S)"
-    } else {
-        "Export en attente du rendu en pleine résolution…"
-    }));
+    widgets
+        .window
+        .export
+        .set_sensitive(has_result && !computing);
+    widgets
+        .window
+        .export
+        .set_tooltip_text(Some(if final_result {
+            "Exporter l'image (Ctrl+S)"
+        } else {
+            "Export en attente du rendu en pleine résolution…"
+        }));
     update_overlays(state, widgets);
 }
 
@@ -505,31 +520,39 @@ pub(crate) fn update_status_labels(state: &Rc<RefCell<State>>, widgets: &Rc<Widg
         (memory, timing, st.status.clone())
     };
 
-    widgets.memory.set_text(memory.as_deref().unwrap_or(""));
     widgets
+        .status_bar
+        .memory
+        .set_text(memory.as_deref().unwrap_or(""));
+    widgets
+        .status_bar
         .memory
         .set_tooltip_text(Some("Pic mémoire estimé pour le calcul en cours."));
     // Taille d'export : mesurée par encodage réel du rendu définitif.
     let sizes = crate::exports::sizes_label(state);
-    widgets.export_sizes.set_text(&sizes);
+    widgets.preview.export_sizes.set_text(&sizes);
     if let Some(comparison) = crate::exports::comparison(state) {
-        widgets.export_sizes.set_tooltip_text(Some(&format!(
+        widgets.preview.export_sizes.set_tooltip_text(Some(&format!(
             "{comparison}\n{}",
             pointimg::export::ExportSizes::explanation()
         )));
     } else {
-        widgets.export_sizes.set_tooltip_text(None);
+        widgets.preview.export_sizes.set_tooltip_text(None);
     }
     // L'infobulle du menu d'export annonce la taille avant même de l'ouvrir.
     if let Some(comparison) = crate::exports::comparison(state) {
         widgets
+            .window
             .export
             .set_tooltip_text(Some(&format!("Exporter le rendu.\n{comparison}")));
     } else {
-        widgets.export.set_tooltip_text(None);
+        widgets.window.export.set_tooltip_text(None);
     }
-    widgets.timing.set_text(timing.as_deref().unwrap_or(""));
-    widgets.status.set_text(&status);
+    widgets
+        .status_bar
+        .timing
+        .set_text(timing.as_deref().unwrap_or(""));
+    widgets.status_bar.status.set_text(&status);
 }
 
 /// Message d'erreur éphémère (les erreurs ne doivent pas voler une ligne de
@@ -537,7 +560,7 @@ pub(crate) fn update_status_labels(state: &Rc<RefCell<State>>, widgets: &Rc<Widg
 pub(crate) fn notify_error(state: &Rc<RefCell<State>>, widgets: &Rc<Widgets>, message: &str) {
     let toast = adw::Toast::new(message);
     toast.set_timeout(6);
-    widgets.toast_overlay.add_toast(toast);
+    widgets.window.toast_overlay.add_toast(toast);
     state.borrow_mut().status = message.to_string();
     update_status_labels(state, widgets);
 }
@@ -545,7 +568,7 @@ pub(crate) fn notify_error(state: &Rc<RefCell<State>>, widgets: &Rc<Widgets>, me
 /// Notification d'information (enregistrement, copie, changement d'image).
 pub(crate) fn notify(state: &Rc<RefCell<State>>, widgets: &Rc<Widgets>, message: &str) {
     let toast = adw::Toast::new(message);
-    widgets.toast_overlay.add_toast(toast);
+    widgets.window.toast_overlay.add_toast(toast);
     state.borrow_mut().status = message.to_string();
     update_status_labels(state, widgets);
 }
@@ -613,8 +636,8 @@ pub(crate) fn sync_zoom_toggles(state: &Rc<RefCell<State>>, widgets: &Rc<Widgets
         }
     };
     if guard.is_some() {
-        widgets.zoom_fit.set_active(fit);
-        widgets.zoom_one.set_active(!fit && at_one);
+        widgets.preview.zoom_fit.set_active(fit);
+        widgets.preview.zoom_one.set_active(!fit && at_one);
         state.borrow_mut().updating = false;
     }
 }
@@ -652,10 +675,10 @@ fn keep_center(widgets: &Rc<Widgets>, center_x: f64, center_y: f64) {
 
 fn visible_scroll(widgets: &Rc<Widgets>) -> Option<gtk::ScrolledWindow> {
     for scroll in [
-        &widgets.compare_pane.scroll,
-        &widgets.src_pane.scroll,
-        &widgets.dst_pane.scroll,
-        &widgets.density_pane.scroll,
+        &widgets.preview.compare_pane.scroll,
+        &widgets.preview.src_pane.scroll,
+        &widgets.preview.dst_pane.scroll,
+        &widgets.preview.density_pane.scroll,
     ] {
         if scroll.is_visible() && scroll.width() > 1 {
             return Some(scroll.clone());
@@ -676,7 +699,7 @@ pub(crate) fn refresh_compare(state: &Rc<RefCell<State>>, widgets: &Rc<Widgets>)
         )
     };
     compare::refresh(
-        &widgets.compare_pane,
+        &widgets.preview.compare_pane,
         source.as_ref(),
         result.as_deref(),
         has_image,

@@ -47,6 +47,7 @@ impl SliderSpec {
 }
 
 /// Curseur horizontal doublant un `adw::SpinRow`.
+#[derive(Clone)]
 pub(crate) struct ValueSlider {
     pub scale: gtk::Scale,
     pub spec: SliderSpec,
@@ -169,12 +170,14 @@ pub(crate) enum ResetTarget {
 }
 
 /// Un bouton de réinitialisation de section.
+#[derive(Clone)]
 pub(crate) struct GroupReset {
     pub button: gtk::Button,
     pub target: ResetTarget,
 }
 
 /// Un panneau d'aperçu : légende + zone défilante.
+#[derive(Clone)]
 pub(crate) struct Pane {
     pub root: gtk::Box,
     pub scroll: gtk::ScrolledWindow,
@@ -182,6 +185,7 @@ pub(crate) struct Pane {
 }
 
 /// Le panneau « comparaison » : une seule image, deux couches, un curseur.
+#[derive(Clone)]
 pub(crate) struct ComparePane {
     pub root: gtk::Box,
     pub scroll: gtk::ScrolledWindow,
@@ -190,13 +194,11 @@ pub(crate) struct ComparePane {
 }
 
 /// Poignées vers tous les widgets contrôlés par l'application.
-pub(crate) struct Widgets {
-    // ── En-tête ──────────────────────────────────────────────────────────────
+/// Fenêtre : vue scindée, overlay de notifications, raccourcis.
+#[derive(Clone)]
+pub(crate) struct WindowWidgets {
     pub window_title: adw::WindowTitle,
-    /// Panneau de réglages / aperçu. Se replie sous 900 px de large.
     pub split: adw::OverlaySplitView,
-    /// Bouton d'en-tête qui déploie le panneau lorsqu'il est replié. Masqué
-    /// tant que la fenêtre est assez large pour les afficher côte à côte.
     pub panel_toggle: gtk::ToggleButton,
     pub open: gtk::Button,
     pub progress: gtk::ProgressBar,
@@ -206,22 +208,24 @@ pub(crate) struct Widgets {
     pub export: gtk::MenuButton,
     pub shortcuts: adw::Window,
     pub toast_overlay: adw::ToastOverlay,
+}
 
-    // ── Presets / fichiers ───────────────────────────────────────────────────
+/// Presets intégrés, ouverture de fichiers et de dossiers.
+#[derive(Clone)]
+pub(crate) struct PresetWidgets {
     pub preset_combo: adw::ComboRow,
-    /// Cases de la grille de vignettes, dans l'ordre des presets. Vide si les
-    /// vignettes ne sont pas installées — la liste déroulante prend alors le
-    /// relais.
     pub preset_thumbs: Vec<gtk::Widget>,
-    /// Légende sous la grille : nom du preset courant, ou « Personnalisé ».
     pub preset_caption: gtk::Label,
     pub load_preset: gtk::Button,
     pub save_preset: gtk::Button,
     pub open_folder: gtk::Button,
     pub folder_label: gtk::Label,
     pub folder_row: adw::ActionRow,
+}
 
-    // ── Algorithme ───────────────────────────────────────────────────────────
+/// Algorithme de placement et réglages communs.
+#[derive(Clone)]
+pub(crate) struct AlgorithmWidgets {
     pub algo: adw::ComboRow,
     pub variance: adw::SpinRow,
     pub variance_slider: ValueSlider,
@@ -240,8 +244,11 @@ pub(crate) struct Widgets {
     pub num_points_slider: ValueSlider,
     pub iterations: adw::SpinRow,
     pub iterations_slider: ValueSlider,
+}
 
-    // ── Halftone ─────────────────────────────────────────────────────────────
+/// Réglages propres à la trame.
+#[derive(Clone)]
+pub(crate) struct HalftoneWidgets {
     pub halftone_group: adw::PreferencesGroup,
     pub halftone_mode: adw::ComboRow,
     pub dominant_box: gtk::ListBox,
@@ -254,8 +261,11 @@ pub(crate) struct Widgets {
     pub halftone_max_dot: adw::SpinRow,
     pub halftone_min_slider: ValueSlider,
     pub halftone_max_slider: ValueSlider,
+}
 
-    // ── Forme des points ─────────────────────────────────────────────────────
+/// Forme des points et palette.
+#[derive(Clone)]
+pub(crate) struct DotWidgets {
     pub shape: adw::ComboRow,
     pub ellipse_box: gtk::ListBox,
     pub ellipse_aspect: adw::SpinRow,
@@ -265,25 +275,32 @@ pub(crate) struct Widgets {
     pub use_palette: adw::SwitchRow,
     pub palette_size: adw::SpinRow,
     pub dithering: adw::ComboRow,
+}
 
-    // ── Rendu ────────────────────────────────────────────────────────────────
+/// Fond, correction gamma, graine.
+#[derive(Clone)]
+pub(crate) struct RenderWidgets {
     pub bg_button: gtk::ColorDialogButton,
     pub transparent: adw::SwitchRow,
     pub gamma: adw::SwitchRow,
     pub use_seed: adw::SwitchRow,
     pub seed: gtk::SpinButton,
-    /// Rangée « Graine » + bouton « Varier » : masquée tant que la graine n'est
-    /// pas fixée (cf. `sections::update_sections`).
     pub seed_row: adw::ActionRow,
     pub vary_seed: gtk::Button,
+}
 
-    // ── Calcul ───────────────────────────────────────────────────────────────
+/// Qualité de l'aperçu et réinitialisations par section.
+#[derive(Clone)]
+pub(crate) struct ComputeWidgets {
     pub quality: adw::ComboRow,
     pub recalc: gtk::Button,
     pub reset: gtk::Button,
     pub group_resets: Vec<GroupReset>,
+}
 
-    // ── Aperçu ───────────────────────────────────────────────────────────────
+/// Barre d'outils et panneaux d'aperçu.
+#[derive(Clone)]
+pub(crate) struct PreviewWidgets {
     pub view_mode: gtk::DropDown,
     pub zoom_out: gtk::Button,
     pub zoom_label: gtk::Label,
@@ -294,22 +311,41 @@ pub(crate) struct Widgets {
     pub export_sizes: gtk::Label,
     pub busy_label: gtk::Label,
     pub quality_badge: gtk::Label,
-
     pub src_pane: Pane,
     pub dst_pane: Pane,
     pub density_pane: Pane,
     pub compare_pane: ComparePane,
+}
 
-    // ── État vide / barre d'état ─────────────────────────────────────────────
+/// Page d'accueil et barre d'état.
+#[derive(Clone)]
+pub(crate) struct StatusWidgets {
     pub empty_page: adw::StatusPage,
-    /// Zone sous les boutons de l'état d'accueil : accueille les images
-    /// récentes.
     pub empty_extra: gtk::Box,
     pub open_empty: gtk::Button,
     pub sample_button: gtk::Button,
     pub memory: gtk::Label,
     pub timing: gtk::Label,
     pub status: gtk::Label,
+}
+
+/// Tous les widgets, groupés par section de réglages.
+///
+/// `widgets.algorithm.variance` se lit comme ce qu'il est, et un widget ajouté
+/// à une section se range tout seul. Les noms de section ne peuvent pas
+/// collisionner avec un nom de champ — c'est ce qui a fait renoncer à `shape`
+/// et `status`, tous deux champs *et* sections.
+#[derive(Clone)]
+pub(crate) struct Widgets {
+    pub window: WindowWidgets,
+    pub presets: PresetWidgets,
+    pub algorithm: AlgorithmWidgets,
+    pub halftone: HalftoneWidgets,
+    pub dots: DotWidgets,
+    pub render: RenderWidgets,
+    pub compute: ComputeWidgets,
+    pub preview: PreviewWidgets,
+    pub status_bar: StatusWidgets,
 }
 
 const ALGOS: [&str; 5] = [
@@ -1067,96 +1103,114 @@ pub(crate) fn build() -> (adw::ToastOverlay, Rc<Widgets>) {
 
     let toast_overlay_for_return = toast_overlay.clone();
     let widgets = Widgets {
-        window_title,
-        split,
-        panel_toggle,
-        open,
-        progress,
-        cancel,
-        undo,
-        redo,
-        export,
-        shortcuts,
-        toast_overlay,
-        preset_combo,
-        preset_thumbs,
-        preset_caption,
-        load_preset,
-        save_preset,
-        open_folder,
-        folder_label,
-        folder_row,
-        algo,
-        variance,
-        variance_slider,
-        min_radius,
-        max_radius,
-        min_radius_slider,
-        max_radius_slider,
-        max_boost,
-        max_boost_slider,
-        grid_group,
-        cols,
-        cols_slider,
-        grid_angle,
-        points_group,
-        num_points,
-        num_points_slider,
-        iterations,
-        iterations_slider,
-        halftone_group,
-        halftone_mode,
-        dominant_box,
-        dominant_n,
-        dominant_angle,
-        screening,
-        halftone_freq,
-        halftone_freq_slider,
-        halftone_min_radius,
-        halftone_max_dot,
-        halftone_min_slider,
-        halftone_max_slider,
-        shape,
-        ellipse_box,
-        ellipse_aspect,
-        ellipse_angle,
-        polygon_box,
-        polygon_sides,
-        use_palette,
-        palette_size,
-        dithering,
-        bg_button,
-        transparent,
-        gamma,
-        use_seed,
-        seed,
-        seed_row,
-        vary_seed,
-        quality,
-        recalc,
-        reset,
-        group_resets,
-        view_mode,
-        zoom_out,
-        zoom_label,
-        zoom_in,
-        zoom_one,
-        zoom_fit,
-        busy,
-        export_sizes,
-        busy_label,
-        quality_badge,
-        src_pane,
-        dst_pane,
-        density_pane,
-        compare_pane,
-        empty_page,
-        empty_extra,
-        open_empty,
-        sample_button,
-        memory,
-        timing,
-        status,
+        window: WindowWidgets {
+            window_title,
+            split,
+            panel_toggle,
+            open,
+            progress,
+            cancel,
+            undo,
+            redo,
+            export,
+            shortcuts,
+            toast_overlay,
+        },
+        presets: PresetWidgets {
+            preset_combo,
+            preset_thumbs,
+            preset_caption,
+            load_preset,
+            save_preset,
+            open_folder,
+            folder_label,
+            folder_row,
+        },
+        algorithm: AlgorithmWidgets {
+            algo,
+            variance,
+            variance_slider,
+            min_radius,
+            max_radius,
+            min_radius_slider,
+            max_radius_slider,
+            max_boost,
+            max_boost_slider,
+            grid_group,
+            cols,
+            cols_slider,
+            grid_angle,
+            points_group,
+            num_points,
+            num_points_slider,
+            iterations,
+            iterations_slider,
+        },
+        halftone: HalftoneWidgets {
+            halftone_group,
+            halftone_mode,
+            dominant_box,
+            dominant_n,
+            dominant_angle,
+            screening,
+            halftone_freq,
+            halftone_freq_slider,
+            halftone_min_radius,
+            halftone_max_dot,
+            halftone_min_slider,
+            halftone_max_slider,
+        },
+        dots: DotWidgets {
+            shape,
+            ellipse_box,
+            ellipse_aspect,
+            ellipse_angle,
+            polygon_box,
+            polygon_sides,
+            use_palette,
+            palette_size,
+            dithering,
+        },
+        render: RenderWidgets {
+            bg_button,
+            transparent,
+            gamma,
+            use_seed,
+            seed,
+            seed_row,
+            vary_seed,
+        },
+        compute: ComputeWidgets {
+            quality,
+            recalc,
+            reset,
+            group_resets,
+        },
+        preview: PreviewWidgets {
+            view_mode,
+            zoom_out,
+            zoom_label,
+            zoom_in,
+            zoom_one,
+            zoom_fit,
+            busy,
+            export_sizes,
+            busy_label,
+            quality_badge,
+            src_pane,
+            dst_pane,
+            density_pane,
+            compare_pane,
+        },
+        status_bar: StatusWidgets {
+            empty_page,
+            empty_extra,
+            open_empty,
+            sample_button,
+            memory,
+            timing,
+            status,
+        },
     };
 
     (toast_overlay_for_return, Rc::new(widgets))

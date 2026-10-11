@@ -36,10 +36,17 @@ where
         return;
     }
     let fenetre = widgets
+        .window
         .split
         .root()
         .and_downcast::<gtk::Window>()
-        .or_else(|| widgets.window_title.root().and_downcast::<gtk::Window>());
+        .or_else(|| {
+            widgets
+                .window
+                .window_title
+                .root()
+                .and_downcast::<gtk::Window>()
+        });
     let Some(fenetre) = fenetre else {
         then();
         return;
