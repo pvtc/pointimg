@@ -63,150 +63,198 @@ fn remember_dir(state: &Rc<RefCell<State>>, path: &std::path::Path) {
     }
 }
 
+/// Ce qu'on demande au dialogue : un fichier existant, un dossier, ou un nom
+/// d'écriture.
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum Pick {
+    Open,
+    Folder,
+    Save,
+}
+
+/// Description d'un dialogue : ce qu'on demande, et comment le présenter.
+///
+/// Les six dialogues du module ne différaient que par ces champs et par la
+/// fonction appelée — soit ~120 lignes pour une vingtaine de lignes de
+/// différence réelle. Tout le reste (dossier de départ, clones, extraction du
+/// chemin) est ici une fois.
+struct Ask {
+    title: &'static str,
+    pick: Pick,
+    /// Nom proposé à l'écriture (`photo-pointimg.png`).
+    initial_name: Option<String>,
+    /// Filtres, et celui sélectionné par défaut — même objet, donc cloné à part.
+    filters: Vec<gtk::FileFilter>,
+    default: Option<gtk::FileFilter>,
+}
+
+impl Ask {
+    fn new(title: &'static str, pick: Pick) -> Self {
+        Self {
+            title,
+            pick,
+            initial_name: None,
+            filters: Vec::new(),
+            default: None,
+        }
+    }
+
+    fn named(mut self, name: String) -> Self {
+        self.initial_name = Some(name);
+        self
+    }
+
+    fn filters(mut self, filters: Vec<gtk::FileFilter>, default: Option<gtk::FileFilter>) -> Self {
+        self.filters = filters;
+        self.default = default;
+        self
+    }
+}
+
+/// Ouvre un dialogue et passe le chemin choisi à `picked`.
+///
+/// `picked` est un `fn` plutôt qu'une closure : chaque appelant a déjà sa
+/// fonction, et le `fn` évite d'embarquer des clones superflus dans la closure
+/// asynchrone du dialogue.
+fn pick_file<F>(
+    window: &adw::ApplicationWindow,
+    ask: &Ask,
+    state: &Rc<RefCell<State>>,
+    widgets: &Rc<Widgets>,
+    picked: F,
+) where
+    F: Fn(PathBuf, &Rc<RefCell<State>>, &Rc<Widgets>) + 'static,
+{
+    let mut builder = gtk::FileDialog::builder().title(ask.title).modal(true);
+    if let Some(name) = &ask.initial_name {
+        builder = builder.initial_name(name);
+    }
+    let dialog = builder.build();
+    apply_initial_folder(&dialog, state);
+    dialog.set_filters(Some(&filter_store(&ask.filters)));
+    dialog.set_default_filter(ask.default.as_ref());
+    let state = Rc::clone(state);
+    let widgets = Rc::clone(widgets);
+    // Un dialogue annulé, ou un fichier sans chemin local (URI distante), ne fait
+    // rien — comme dans les six copies d'origine.
+    let rappel = move |res: Result<gtk::gio::File, gtk::glib::Error>| {
+        let chemins = res.ok().and_then(|file| file.path());
+        if let Some(path) = chemins {
+            picked(path, &state, &widgets);
+        }
+    };
+    match ask.pick {
+        Pick::Open => dialog.open(Some(window), gtk::gio::Cancellable::NONE, rappel),
+        Pick::Folder => dialog.select_folder(Some(window), gtk::gio::Cancellable::NONE, rappel),
+        Pick::Save => dialog.save(Some(window), gtk::gio::Cancellable::NONE, rappel),
+    }
+}
+
+/// Ouvre une image.
 pub(crate) fn choose_open_image(
     window: &adw::ApplicationWindow,
     state: &Rc<RefCell<State>>,
     widgets: &Rc<Widgets>,
 ) {
-    let dialog = gtk::FileDialog::builder()
-        .title("Ouvrir une image")
-        .modal(true)
-        .build();
-    apply_initial_folder(&dialog, state);
-    let images = make_filter("Images", &actions::SUPPORTED_IMAGE_EXTENSIONS);
-    dialog.set_filters(Some(&filter_store(&[images])));
-    let state = Rc::clone(state);
-    let widgets = Rc::clone(widgets);
-    dialog.open(Some(window), gtk::gio::Cancellable::NONE, move |res| {
-        if let Ok(file) = res
-            && let Some(path) = file.path()
-        {
-            actions::load_image(path, &state, &widgets);
-        }
-    });
+    pick_file(
+        window,
+        &Ask::new("Ouvrir une image", Pick::Open).filters(
+            vec![make_filter("Images", &actions::SUPPORTED_IMAGE_EXTENSIONS)],
+            None,
+        ),
+        state,
+        widgets,
+        actions::load_image,
+    );
 }
 
+/// Ouvre un dossier d'images.
 pub(crate) fn choose_open_folder(
     window: &adw::ApplicationWindow,
     state: &Rc<RefCell<State>>,
     widgets: &Rc<Widgets>,
 ) {
-    let dialog = gtk::FileDialog::builder()
-        .title("Ouvrir un dossier d'images")
-        .modal(true)
-        .build();
-    apply_initial_folder(&dialog, state);
-    let state = Rc::clone(state);
-    let widgets = Rc::clone(widgets);
-    dialog.select_folder(Some(window), gtk::gio::Cancellable::NONE, move |res| {
-        if let Ok(file) = res
-            && let Some(path) = file.path()
-        {
-            actions::open_folder(path, &state, &widgets);
-        }
-    });
+    pick_file(
+        window,
+        &Ask::new("Ouvrir un dossier d'images", Pick::Folder),
+        state,
+        widgets,
+        actions::open_folder,
+    );
 }
 
+/// Sauvegarde le rendu, dans l'un des formats matriciels.
 pub(crate) fn choose_save_image(
     window: &adw::ApplicationWindow,
     state: &Rc<RefCell<State>>,
     widgets: &Rc<Widgets>,
 ) {
-    let dialog = gtk::FileDialog::builder()
-        .title("Sauvegarder l'image")
-        .modal(true)
-        .initial_name(default_name(state, "png"))
-        .build();
-    apply_initial_folder(&dialog, state);
     let png = make_filter("PNG", &["png"]);
     let jpeg = make_filter("JPEG", &["jpg", "jpeg"]);
     let webp = make_filter("WebP", &["webp"]);
     let bmp = make_filter("BMP", &["bmp"]);
     let tiff = make_filter("TIFF", &["tif", "tiff"]);
-    dialog.set_filters(Some(&filter_store(&[png.clone(), jpeg, webp, bmp, tiff])));
-    dialog.set_default_filter(Some(&png));
-    let state = Rc::clone(state);
-    let widgets = Rc::clone(widgets);
-    dialog.save(Some(window), gtk::gio::Cancellable::NONE, move |res| {
-        if let Ok(file) = res
-            && let Some(path) = file.path()
-        {
-            save_result(path, &state, &widgets);
-        }
-    });
+    pick_file(
+        window,
+        &Ask::new("Sauvegarder l'image", Pick::Save)
+            .named(default_name(state, "png"))
+            .filters(vec![png.clone(), jpeg, webp, bmp, tiff], Some(png.clone())),
+        state,
+        widgets,
+        save_result,
+    );
 }
 
+/// Sauvegarde le rendu en SVG.
 pub(crate) fn choose_save_svg(
     window: &adw::ApplicationWindow,
     state: &Rc<RefCell<State>>,
     widgets: &Rc<Widgets>,
 ) {
-    let dialog = gtk::FileDialog::builder()
-        .title("Sauvegarder le SVG")
-        .modal(true)
-        .initial_name(default_name(state, "svg"))
-        .build();
-    apply_initial_folder(&dialog, state);
     let svg = make_filter("SVG", &["svg"]);
-    dialog.set_filters(Some(&filter_store(std::slice::from_ref(&svg))));
-    dialog.set_default_filter(Some(&svg));
-    let state = Rc::clone(state);
-    let widgets = Rc::clone(widgets);
-    dialog.save(Some(window), gtk::gio::Cancellable::NONE, move |res| {
-        if let Ok(file) = res
-            && let Some(path) = file.path()
-        {
-            save_svg(path, &state, &widgets);
-        }
-    });
+    pick_file(
+        window,
+        &Ask::new("Sauvegarder le SVG", Pick::Save)
+            .named(default_name(state, "svg"))
+            .filters(vec![svg.clone()], Some(svg.clone())),
+        state,
+        widgets,
+        save_svg,
+    );
 }
 
+/// Charge un preset TOML.
 pub(crate) fn choose_load_preset(
     window: &adw::ApplicationWindow,
     state: &Rc<RefCell<State>>,
     widgets: &Rc<Widgets>,
 ) {
-    let dialog = gtk::FileDialog::builder()
-        .title("Charger un preset")
-        .modal(true)
-        .build();
-    apply_initial_folder(&dialog, state);
     let toml = make_filter("Preset TOML", &["toml"]);
-    dialog.set_filters(Some(&filter_store(&[toml])));
-    let state = Rc::clone(state);
-    let widgets = Rc::clone(widgets);
-    dialog.open(Some(window), gtk::gio::Cancellable::NONE, move |res| {
-        if let Ok(file) = res
-            && let Some(path) = file.path()
-        {
-            apply_preset(path, &state, &widgets);
-        }
-    });
+    pick_file(
+        window,
+        &Ask::new("Charger un preset", Pick::Open).filters(vec![toml], None),
+        state,
+        widgets,
+        apply_preset,
+    );
 }
 
+/// Sauvegarde un preset TOML.
 pub(crate) fn choose_save_preset(
     window: &adw::ApplicationWindow,
     state: &Rc<RefCell<State>>,
     widgets: &Rc<Widgets>,
 ) {
-    let dialog = gtk::FileDialog::builder()
-        .title("Sauvegarder le preset")
-        .modal(true)
-        .initial_name("preset.toml")
-        .build();
-    apply_initial_folder(&dialog, state);
     let toml = make_filter("Preset TOML", &["toml"]);
-    dialog.set_filters(Some(&filter_store(std::slice::from_ref(&toml))));
-    dialog.set_default_filter(Some(&toml));
-    let state = Rc::clone(state);
-    let widgets = Rc::clone(widgets);
-    dialog.save(Some(window), gtk::gio::Cancellable::NONE, move |res| {
-        if let Ok(file) = res
-            && let Some(path) = file.path()
-        {
-            save_preset(path, &state, &widgets);
-        }
-    });
+    pick_file(
+        window,
+        &Ask::new("Sauvegarder le preset", Pick::Save)
+            .named("preset.toml".to_string())
+            .filters(vec![toml.clone()], Some(toml.clone())),
+        state,
+        widgets,
+        save_preset,
+    );
 }
 
 fn save_preset(path: PathBuf, state: &Rc<RefCell<State>>, widgets: &Rc<Widgets>) {
