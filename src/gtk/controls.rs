@@ -336,6 +336,121 @@ const VIEWS: [&str; 5] = [
 ];
 const QUALITIES: [&str; 3] = ["Rapide (1/2)", "Rapide (1/4)", "Pleine résolution"];
 
+/// Compose la barre d'outils supérieure.
+///
+/// Tout y est déjà construit : cette fonction ne fait qu'habiller les boutons
+/// (icône, libellé, infobulle) et les ordonner. L'extraire retire cinquante lignes
+/// de mise en forme du milieu de `build()`, où elles masquaient la structure de la
+/// fenêtre.
+///
+/// `adw::ButtonContent` impose le contenu (icône + libellé) : `set_label` suivi de
+/// `set_icon_name` sur un GtkButton ne garde que l'icône.
+fn header_bar(
+    window_title: adw::WindowTitle,
+    menu: gtk::MenuButton,
+    open: gtk::Button,
+    open_folder: gtk::Button,
+    export: gtk::MenuButton,
+    redo: gtk::Button,
+    undo: gtk::Button,
+    cancel: gtk::Button,
+    progress: gtk::ProgressBar,
+) -> (adw::HeaderBar, gtk::ToggleButton) {
+    // `adw::ButtonContent` impose le contenu (icône + libellé) : `set_label`
+    // suivi de `set_icon_name` sur un GtkButton ne garde que l'icône.
+    set_button_content(&open, "document-open-symbolic", "Ouvrir…");
+    open.set_tooltip_text(Some("Ouvrir une image (Ctrl+O)"));
+    set_button_content(&open_folder, "folder-open-symbolic", "Dossier…");
+    open_folder.set_tooltip_text(Some(
+        "Ouvrir un dossier et passer d'une image à l'autre avec ← et → (Ctrl+Maj+O)",
+    ));
+    // Révèle le panneau de réglages quand il est replié (fenêtre étroite) :
+    // le bouton n'existe que dans ce cas, cf. le point de rupture plus bas.
+    // Révèle le panneau de réglages quand il est replié (fenêtre étroite) :
+    // le bouton n'existe que dans ce cas, cf. le point de rupture plus bas.
+    let panel_toggle = gtk::ToggleButton::new();
+    panel_toggle.set_icon_name("sidebar-show-symbolic");
+    panel_toggle.set_tooltip_text(Some("Afficher les réglages"));
+    panel_toggle.set_visible(false);
+    progress.set_show_text(true);
+    progress.set_valign(gtk::Align::Center);
+    progress.set_size_request(200, -1);
+    progress.set_visible(false);
+    set_button_content(&cancel, "process-stop-symbolic", "Annuler");
+    cancel.set_tooltip_text(Some("Annuler le calcul en cours"));
+    set_icon_button(
+        &undo,
+        "edit-undo-symbolic",
+        "Annuler la dernière modification (Ctrl+Z)",
+    );
+    set_icon_button(
+        &redo,
+        "edit-redo-symbolic",
+        "Rétablir la modification annulée (Ctrl+Y)",
+    );
+    set_button_content(&export, "document-save-symbolic", "Exporter");
+    export.add_css_class("suggested-action");
+    export.set_tooltip_text(Some("Exporter l'image (Ctrl+S)"));
+    // Le bouton ne propose que les exports : le menu complet (dossier,
+    // presets, affichage, raccourcis) est sous le bouton hamburger.
+    export.set_menu_model(Some(&crate::wire::export_menu_model()));
+    menu.set_tooltip_text(Some("Menu principal"));
+
+    let header = adw::HeaderBar::new();
+    header.set_title_widget(Some(&window_title));
+    header.pack_start(&menu);
+    header.pack_start(&panel_toggle);
+    header.pack_start(&open);
+    header.pack_start(&open_folder);
+    header.pack_end(&export);
+    header.pack_end(&redo);
+    header.pack_end(&undo);
+    header.pack_end(&cancel);
+    header.pack_end(&progress);
+
+    (header, panel_toggle)
+}
+
+/// Compose la barre d'état : trois mesures, un badge de qualité, un message.
+///
+/// L'ordre compte — le message d'état est en dernier parce qu'il est le seul à
+/// s'étirer (`hexpand`) et à devoir rester visible. Retourne le conteneur prêt à
+/// être posé en bas de la fenêtre.
+fn status_bar(
+    memory: &gtk::Label,
+    export_sizes: &gtk::Label,
+    timing: &gtk::Label,
+    quality_badge: &gtk::Label,
+    status: &gtk::Label,
+) -> gtk::Box {
+    let status_bar = gtk::Box::new(gtk::Orientation::Horizontal, 14);
+    status_bar.set_margin_top(4);
+    status_bar.set_margin_bottom(6);
+    status_bar.set_margin_start(12);
+    status_bar.set_margin_end(12);
+    for label in [memory, export_sizes, timing] {
+        label.set_xalign(0.0);
+        label.add_css_class("dim-label");
+        // La liste des formats est longue (« PNG 1.4 Mo · WebP — · JPEG… »)
+        // et ne tient pas dans une fenêtre étroite : sans élision elle était
+        // coupée net, sans aucun signe de continuation.
+        label.set_ellipsize(gtk::pango::EllipsizeMode::End);
+        // Le libellé ne doit pas non plus s'étendre : il prend ce dont il a
+        // besoin et cède le reste au message d'état, qui est le champ qui
+        // change.
+        label.set_max_width_chars(40);
+        status_bar.append(label);
+    }
+    status_bar.append(quality_badge);
+    status.set_xalign(0.0);
+    status.set_hexpand(true);
+    status.set_wrap(false);
+    status.set_ellipsize(gtk::pango::EllipsizeMode::End);
+    status_bar.append(status);
+    status_bar
+}
+
+/// Construit la disposition complète : en-tête, panneau de réglages, aperçu.
 /// Construit la disposition complète : en-tête, panneau de réglages, aperçu.
 pub(crate) fn build() -> (adw::ToastOverlay, Rc<Widgets>) {
     // ── Widgets de base ──────────────────────────────────────────────────────
@@ -845,55 +960,19 @@ pub(crate) fn build() -> (adw::ToastOverlay, Rc<Widgets>) {
     controls_scroll.set_size_request(360, -1);
 
     // ── En-tête ──────────────────────────────────────────────────────────────
-    // `adw::ButtonContent` impose le contenu (icône + libellé) : `set_label`
-    // suivi de `set_icon_name` sur un GtkButton ne garde que l'icône.
-    set_button_content(&open, "document-open-symbolic", "Ouvrir…");
-    open.set_tooltip_text(Some("Ouvrir une image (Ctrl+O)"));
-    set_button_content(&open_folder, "folder-open-symbolic", "Dossier…");
-    open_folder.set_tooltip_text(Some(
-        "Ouvrir un dossier et passer d'une image à l'autre avec ← et → (Ctrl+Maj+O)",
-    ));
-    // Révèle le panneau de réglages quand il est replié (fenêtre étroite) :
-    // le bouton n'existe que dans ce cas, cf. le point de rupture plus bas.
-    let panel_toggle = gtk::ToggleButton::new();
-    panel_toggle.set_icon_name("sidebar-show-symbolic");
-    panel_toggle.set_tooltip_text(Some("Afficher les réglages"));
-    panel_toggle.set_visible(false);
-    progress.set_show_text(true);
-    progress.set_valign(gtk::Align::Center);
-    progress.set_size_request(200, -1);
-    progress.set_visible(false);
-    set_button_content(&cancel, "process-stop-symbolic", "Annuler");
-    cancel.set_tooltip_text(Some("Annuler le calcul en cours"));
-    set_icon_button(
-        &undo,
-        "edit-undo-symbolic",
-        "Annuler la dernière modification (Ctrl+Z)",
+    // Par valeur : un widget GTK est un `Arc`, le clone ne copie rien. Les
+    // valeurs sont reprises ensuite dans `Widgets`, sans double possession.
+    let (header, panel_toggle) = header_bar(
+        window_title.clone(),
+        menu.clone(),
+        open.clone(),
+        open_folder.clone(),
+        export.clone(),
+        redo.clone(),
+        undo.clone(),
+        cancel.clone(),
+        progress.clone(),
     );
-    set_icon_button(
-        &redo,
-        "edit-redo-symbolic",
-        "Rétablir la modification annulée (Ctrl+Y)",
-    );
-    set_button_content(&export, "document-save-symbolic", "Exporter");
-    export.add_css_class("suggested-action");
-    export.set_tooltip_text(Some("Exporter l'image (Ctrl+S)"));
-    // Le bouton ne propose que les exports : le menu complet (dossier,
-    // presets, affichage, raccourcis) est sous le bouton hamburger.
-    export.set_menu_model(Some(&crate::wire::export_menu_model()));
-    menu.set_tooltip_text(Some("Menu principal"));
-
-    let header = adw::HeaderBar::new();
-    header.set_title_widget(Some(&window_title));
-    header.pack_start(&menu);
-    header.pack_start(&panel_toggle);
-    header.pack_start(&open);
-    header.pack_start(&open_folder);
-    header.pack_end(&export);
-    header.pack_end(&redo);
-    header.pack_end(&undo);
-    header.pack_end(&cancel);
-    header.pack_end(&progress);
 
     // ── Aperçu ───────────────────────────────────────────────────────────────
     let preview_toolbar = gtk::Box::new(gtk::Orientation::Horizontal, 8);
@@ -977,30 +1056,7 @@ pub(crate) fn build() -> (adw::ToastOverlay, Rc<Widgets>) {
     split.set_show_sidebar(true);
 
     // ── Barre d'état ─────────────────────────────────────────────────────────
-    let status_bar = gtk::Box::new(gtk::Orientation::Horizontal, 14);
-    status_bar.set_margin_top(4);
-    status_bar.set_margin_bottom(6);
-    status_bar.set_margin_start(12);
-    status_bar.set_margin_end(12);
-    for label in [&memory, &export_sizes, &timing] {
-        label.set_xalign(0.0);
-        label.add_css_class("dim-label");
-        // La liste des formats est longue (« PNG 1.4 Mo · WebP — · JPEG… »)
-        // et ne tient pas dans une fenêtre étroite : sans élision elle était
-        // coupée net, sans aucun signe de continuation.
-        label.set_ellipsize(gtk::pango::EllipsizeMode::End);
-        // Le libellé ne doit pas non plus s'étendre : il prend ce dont il a
-        // besoin et cède le reste au message d'état, qui est le champ qui
-        // change.
-        label.set_max_width_chars(40);
-        status_bar.append(label);
-    }
-    status_bar.append(&quality_badge);
-    status.set_xalign(0.0);
-    status.set_hexpand(true);
-    status.set_wrap(false);
-    status.set_ellipsize(gtk::pango::EllipsizeMode::End);
-    status_bar.append(&status);
+    let status_bar = status_bar(&memory, &export_sizes, &timing, &quality_badge, &status);
 
     let toolbar = adw::ToolbarView::new();
     toolbar.add_top_bar(&header);
