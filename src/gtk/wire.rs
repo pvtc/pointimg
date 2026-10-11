@@ -20,6 +20,21 @@ use crate::sections;
 type St = Rc<RefCell<State>>;
 type Wi = Rc<Widgets>;
 
+/// Lève `updating` le temps de `body`, puis le repose.
+///
+/// Écrire dans un widget réémet son signal ; `updating` empêche le rappel de
+/// relancer un calcul pendant cette écriture. Le garder dans une fermeture plutôt
+/// qu'en deux `borrow_mut` autour d'un bloc assure que la garde est reposée même
+/// si le bloc gagne un `return` un jour — ce que la forme ouverte ne garantit pas.
+fn with_updating<F>(state: &St, widgets: &Wi, body: F)
+where
+    F: FnOnce(&Wi),
+{
+    state.borrow_mut().updating = true;
+    body(widgets);
+    state.borrow_mut().updating = false;
+}
+
 fn clone_state_widgets(state: &St, widgets: &Wi) -> (St, Wi) {
     (Rc::clone(state), Rc::clone(widgets))
 }
@@ -989,20 +1004,20 @@ fn sync_halftone_radii(state: &St, widgets: &Wi) {
             st.params.halftone_max_dot_ratio,
         )
     };
-    state.borrow_mut().updating = true;
-    widgets
-        .halftone_min_radius
-        .adjustment()
-        .set_value(f64::from(min));
-    widgets
-        .halftone_max_dot
-        .adjustment()
-        .set_value(f64::from(max));
-    widgets.halftone_min_slider.set_value(f64::from(min));
-    widgets.halftone_max_slider.set_value(f64::from(max));
-    widgets.halftone_min_slider.set_bound(f64::from(max));
-    widgets.halftone_max_slider.set_bound(f64::from(min));
-    state.borrow_mut().updating = false;
+    // La garde encadre l'écriture des deux lignes : ici, `set_value` et
+    // `set_bound` réémettent tous deux, et la garde n'est levée qu'à la fin.
+    // C'est exactement ce que faisaient les deux copies, mais la fermeture
+    // garantit qu'aucun `return` ajouté plus tard ne la laisse levée.
+    with_updating(state, widgets, |w| {
+        sync_radius_pair(
+            &w.halftone_min_radius,
+            &w.halftone_max_dot,
+            &w.halftone_min_slider,
+            &w.halftone_max_slider,
+            min,
+            max,
+        );
+    });
 }
 
 /// Les deux rayons sont bornés l'un par l'autre : après un changement, la ligne
@@ -1015,14 +1030,39 @@ fn sync_radii(state: &St, widgets: &Wi) {
         let st = state.borrow();
         (st.params.min_radius_ratio, st.params.max_radius_ratio)
     };
-    state.borrow_mut().updating = true;
-    widgets.min_radius.adjustment().set_value(f64::from(min));
-    widgets.max_radius.adjustment().set_value(f64::from(max));
-    widgets.min_radius_slider.set_value(f64::from(min));
-    widgets.max_radius_slider.set_value(f64::from(max));
-    widgets.min_radius_slider.set_bound(f64::from(max));
-    widgets.max_radius_slider.set_bound(f64::from(min));
-    state.borrow_mut().updating = false;
+    with_updating(state, widgets, |w| {
+        sync_radius_pair(
+            &w.min_radius,
+            &w.max_radius,
+            &w.min_radius_slider,
+            &w.max_radius_slider,
+            min,
+            max,
+        );
+    });
+}
+
+/// Écrit une paire (ligne de saisie, curseur, borne croisée) des deux côtés.
+///
+/// Les deux copies de ce bloc — rayons de points et rayons de trame — étaient
+/// identiques aux noms de widgets près. La danse d'emprunts (`borrow_mut` en
+/// deux temps de part et d'autre) était la partie fragile : une copie pouvait
+/// évoluer sans l'autre et laisser `updating` désynchronisé.
+fn sync_radius_pair(
+    min_row: &adw::SpinRow,
+    max_row: &adw::SpinRow,
+    min_slider: &crate::controls::ValueSlider,
+    max_slider: &crate::controls::ValueSlider,
+    min: f32,
+    max: f32,
+) {
+    min_row.adjustment().set_value(f64::from(min));
+    max_row.adjustment().set_value(f64::from(max));
+    min_slider.set_value(f64::from(min));
+    max_slider.set_value(f64::from(max));
+    // La borne croisée : chaque poignée ne peut pas dépasser l'autre.
+    min_slider.set_bound(f64::from(max));
+    max_slider.set_bound(f64::from(min));
 }
 
 // ─── Glisser-déposer ─────────────────────────────────────────────────────────

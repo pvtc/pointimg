@@ -130,6 +130,16 @@ impl ExportSizes {
         parts.join(" · ")
     }
 
+    /// Explication affichée sous la comparaison, dans l'infobulle.
+    ///
+    /// Le texte était écrit deux fois, une par interface, et une correction
+    /// d'un côté ne serait pas arrivée de l'autre. Ce n'est pas un widget : c'est
+    /// l'explication d'une donnée produite ici, donc elle part son logique avec.
+    pub fn explanation() -> &'static str {
+        "Tailles obtenues en encodant réellement le rendu dans chaque format.\n\
+         « — » : format non mesuré (image trop grande pour un WebP sans perte)."
+    }
+
     /// Rendu de la comparaison avec la source, pour l'infobulle du bouton
     /// d'export : « source 8,4 Mo · PNG −75 % ».
     pub fn comparison(&self, format: ExportFormat) -> Option<String> {

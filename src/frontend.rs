@@ -707,50 +707,57 @@ pub fn replace_file(from: &Path, to: &Path) -> std::io::Result<()> {
     std::fs::rename(from, to)
 }
 
+/// Écrit dans un fichier temporaire, puis remplace la cible atomiquement.
+/// Le temporaire est supprimé en cas d'échec, dans les deux phases.
+///
+/// Le squelette était recopié trois fois (image, octets, texte). Les copies
+/// différaient par le type d'erreur qu'elles renvoient — `image::ImageError` pour
+/// les deux premières, `std::io::Error` pour le texte — et seule la première
+/// rapportait l'erreur d'écriture telle quelle : un changement de ce nettoyage
+/// (par exemple retenir le dossier d'un échec) ne serait appliqué qu'à une copie.
+/// Le type d'erreur est donc un paramètre, et les trois entrées publiques
+/// gardent leur signature.
+fn atomic_write<E, F>(
+    path: &Path,
+    write: F,
+    on_rename_error: fn(std::io::Error) -> E,
+) -> Result<(), E>
+where
+    F: FnOnce(&Path) -> Result<(), E>,
+{
+    let tmp = temporary_path(path);
+    if let Err(error) = write(&tmp) {
+        let _ = std::fs::remove_file(&tmp);
+        return Err(error);
+    }
+    if let Err(error) = replace_file(&tmp, path) {
+        let _ = std::fs::remove_file(&tmp);
+        return Err(on_rename_error(error));
+    }
+    Ok(())
+}
+
 /// Écrit une image via un fichier temporaire puis un remplacement atomique.
 /// Le fichier temporaire est supprimé en cas d'erreur.
 pub fn atomic_image_save<F>(path: &Path, save: F) -> image::ImageResult<()>
 where
     F: FnOnce(&Path) -> image::ImageResult<()>,
 {
-    let tmp = temporary_path(path);
-    if let Err(error) = save(&tmp) {
-        let _ = std::fs::remove_file(&tmp);
-        return Err(error);
-    }
-    if let Err(error) = replace_file(&tmp, path) {
-        let _ = std::fs::remove_file(&tmp);
-        return Err(image::ImageError::IoError(error));
-    }
-    Ok(())
+    atomic_write(path, save, image::ImageError::IoError)
 }
 
 /// Écrit des octets via un fichier temporaire puis un remplacement atomique.
 pub fn atomic_bytes_write(path: &Path, bytes: &[u8]) -> image::ImageResult<()> {
-    let tmp = temporary_path(path);
-    if let Err(error) = std::fs::write(&tmp, bytes) {
-        let _ = std::fs::remove_file(&tmp);
-        return Err(image::ImageError::IoError(error));
-    }
-    if let Err(error) = replace_file(&tmp, path) {
-        let _ = std::fs::remove_file(&tmp);
-        return Err(image::ImageError::IoError(error));
-    }
-    Ok(())
+    atomic_write(
+        path,
+        |tmp| std::fs::write(tmp, bytes).map_err(image::ImageError::IoError),
+        image::ImageError::IoError,
+    )
 }
 
 /// Écrit du texte via un fichier temporaire puis un remplacement atomique.
 pub fn atomic_text_write(path: &Path, contents: &str) -> std::io::Result<()> {
-    let tmp = temporary_path(path);
-    if let Err(error) = std::fs::write(&tmp, contents) {
-        let _ = std::fs::remove_file(&tmp);
-        return Err(error);
-    }
-    if let Err(error) = replace_file(&tmp, path) {
-        let _ = std::fs::remove_file(&tmp);
-        return Err(error);
-    }
-    Ok(())
+    atomic_write(path, |tmp| std::fs::write(tmp, contents), |error| error)
 }
 
 // ─── Export de haut niveau ───────────────────────────────────────────────────
@@ -1172,5 +1179,48 @@ mod tests {
         assert_eq!(reduit.dimensions(), (100, 50));
         // Jamais de dimension nulle, même à une échelle absurde.
         assert_eq!(downsample(&img, 0.0001).dimensions(), (1, 1));
+    }
+
+    /// Les trois écritures atomiques partagent le même nettoyage : un temporaire
+    /// ne doit jamais survivre à un échec, et le remplacement doit avoir lieu.
+    #[test]
+    fn les_ecritures_atomiques_nettoyent_leur_temporaire() {
+        let dir = std::env::temp_dir().join(format!(
+            "pointimg-atomic-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        std::fs::create_dir_all(&dir).unwrap();
+        let cible = dir.join("texte.txt");
+
+        atomic_text_write(&cible, "bonjour").expect("écriture");
+        assert_eq!(std::fs::read_to_string(&cible).unwrap(), "bonjour");
+        assert_eq!(
+            std::fs::read_dir(&dir).unwrap().count(),
+            1,
+            "le temporaire a disparu après le remplacement"
+        );
+
+        // Écrasement : la remplacement doit avoir lieu, pas seulement la création.
+        atomic_text_write(&cible, "au revoir").expect("réécriture");
+        assert_eq!(std::fs::read_to_string(&cible).unwrap(), "au revoir");
+
+        // Échec d'écriture : `write` échoue, donc rien ne doit rester.
+        let vide = dir.join("vide.bin");
+        let echec: image::ImageResult<()> = atomic_write(
+            &vide,
+            |_| Err(image::ImageError::IoError(std::io::Error::other("refusé"))),
+            image::ImageError::IoError,
+        );
+        assert!(echec.is_err());
+        assert_eq!(
+            std::fs::read_dir(&dir).unwrap().count(),
+            1,
+            "un temporaire d'un échec doit être supprimé"
+        );
+        let _ = std::fs::remove_dir_all(&dir);
     }
 }

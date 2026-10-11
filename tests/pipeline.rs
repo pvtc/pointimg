@@ -3,7 +3,7 @@
 //! Ces tests ne touchent que l'API publique de `pointimg::filter`, contrairement
 //! aux tests unitaires dans `src/filter/mod.rs` qui inspectent les internals.
 
-use pointimg::filter::{self, Algorithm, FilterParams};
+use pointimg::filter::{self, Algorithm, DotShape, FilterParams, HalftoneMode};
 use std::sync::atomic::AtomicBool;
 
 fn checkerboard(w: u32, h: u32) -> image::RgbImage {
@@ -14,6 +14,86 @@ fn checkerboard(w: u32, h: u32) -> image::RgbImage {
             image::Rgb([0, 0, 0])
         }
     })
+}
+
+/// Chaque contrôle de `validate_params` doit mentionner le champ qu'il refuse.
+///
+/// `validate_params` a été découpé en sept fonctions ; ces tests vérifient que le
+/// découpage n'a pas fusionné deux contrôles ni perdu un message. La borne
+/// *juste acceptée* est testée avec, pour qu'un contrôle devenu trop large se
+/// voie.
+#[test]
+fn chaque_controle_nomme_le_champ_quil_refuse() {
+    fn refuse(nom: &str, corps: impl FnOnce(&mut FilterParams)) {
+        let mut params = FilterParams::default();
+        corps(&mut params);
+        let err = filter::validate_params(64, 64, &params)
+            .expect_err(&format!("{nom} aurait dû être refusé"));
+        assert!(
+            err.to_string().contains(nom),
+            "{nom} : le message doit nommer le champ, trouvé « {err} »"
+        );
+    }
+    fn accepte(corps: impl FnOnce(&mut FilterParams)) {
+        let mut params = FilterParams::default();
+        corps(&mut params);
+        filter::validate_params(64, 64, &params).expect("réglage valide");
+    }
+
+    refuse("min_radius_ratio", |p| p.min_radius_ratio = 0.0);
+    refuse("max_radius_ratio", |p| p.max_radius_ratio = 2.0);
+    refuse("num_points", |p| p.num_points = 0);
+    refuse("cols", |p| p.cols = 0);
+    refuse("iterations", |p| p.iterations = 200);
+    refuse("palette_size", |p| p.palette_size = Some(1));
+    refuse("variance_sensitivity", |p| p.variance_sensitivity = 2.0);
+    refuse("max_boost", |p| p.max_boost = 0.5);
+    refuse("halftone_frequency", |p| p.halftone_frequency = 0.0);
+    refuse("halftone_min_radius_ratio", |p| {
+        p.algorithm = Algorithm::Halftone;
+        p.halftone = HalftoneMode::Cmyk {
+            angles: [15.0, 75.0, 0.0, 45.0],
+        };
+        p.halftone_min_radius_ratio = 2.0;
+    });
+    refuse("halftone_max_dot_ratio", |p| {
+        p.algorithm = Algorithm::Halftone;
+        p.halftone = HalftoneMode::Cmyk {
+            angles: [15.0, 75.0, 0.0, 45.0],
+        };
+        p.halftone_max_dot_ratio = 20.0;
+    });
+    refuse("polygon_sides", |p| {
+        p.dot_shape = DotShape::RegularPolygon { sides: 2 }
+    });
+    refuse("ellipse_aspect", |p| {
+        p.dot_shape = DotShape::Ellipse {
+            aspect: 20.0,
+            angle_deg: 0.0,
+        }
+    });
+    // Le mode d'encre manquant est un cas à part : le message parle de
+    // l'algorithme, pas d'un champ.
+    let mut params = FilterParams {
+        algorithm: Algorithm::Halftone,
+        ..FilterParams::default()
+    };
+    assert!(
+        filter::validate_params(64, 64, &params)
+            .unwrap_err()
+            .to_string()
+            .contains("Halftone"),
+        "un halftone sans mode d'encre doit être refusé par son nom"
+    );
+
+    // Et la borne juste acceptée, pour qu'un contrôle élargi se voie.
+    accepte(|p| {
+        p.algorithm = Algorithm::Halftone;
+        p.halftone = HalftoneMode::Cmyk {
+            angles: [15.0, 75.0, 0.0, 45.0],
+        };
+        p.halftone_min_radius_ratio = 1.0;
+    });
 }
 
 #[test]
@@ -58,7 +138,7 @@ fn invalid_halftone_frequency_is_rejected() {
     let img = checkerboard(8, 8);
     let params = FilterParams {
         algorithm: Algorithm::Halftone,
-        halftone: pointimg::filter::HalftoneMode::Cmyk {
+        halftone: HalftoneMode::Cmyk {
             angles: [15.0, 75.0, 0.0, 45.0],
         },
         halftone_frequency: 0.0,

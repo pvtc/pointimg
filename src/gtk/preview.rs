@@ -514,9 +514,8 @@ pub(crate) fn update_status_labels(state: &Rc<RefCell<State>>, widgets: &Rc<Widg
     widgets.export_sizes.set_text(&sizes);
     if let Some(comparison) = crate::exports::comparison(state) {
         widgets.export_sizes.set_tooltip_text(Some(&format!(
-            "{comparison}\nTailles obtenues en encodant réellement le rendu dans \
-             chaque format.\n« — » : format non mesuré (image trop grande pour un WebP \
-             sans perte)."
+            "{comparison}\n{}",
+            pointimg::export::ExportSizes::explanation()
         )));
     } else {
         widgets.export_sizes.set_tooltip_text(None);

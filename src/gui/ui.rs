@@ -1689,7 +1689,6 @@ impl App {
         let stale = self.result_is_stale();
         let timing = self.last_compute_ms;
         let quick = !self.quality.is_full() && self.src_rgb.is_some();
-        let quick_stale = stale;
         let status = self.status.clone();
         // Taille d'export : mesurée sur le résultat définitif, encodage réel.
         let sizes = self.poll_export_sizes();
@@ -1728,17 +1727,14 @@ impl App {
                         let label = ui.small(format!("Export : {sizes_label}"));
                         if let Some(comparison) = &sizes_comparison {
                             label.on_hover_text(format!(
-                                "{comparison}\n\
-                                 Tailles obtenues en encodant réellement le rendu dans \
-                                 chaque format.\n\
-                                 « — » : format non mesuré (image trop grande pour un \
-                                 WebP sans perte)."
+                                "{comparison}\n{}",
+                                pointimg::export::ExportSizes::explanation()
                             ));
                         }
                     } else if sizes_measuring {
                         ui.small("Export : mesure…");
                     }
-                    if quick && quick_stale {
+                    if quick && stale {
                         ui.small(frontend::msg::FINALIZING);
                     } else if quick {
                         ui.small("aperçu rapide").on_hover_text(

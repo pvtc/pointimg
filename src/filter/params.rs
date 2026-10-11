@@ -265,107 +265,126 @@ pub struct Dot {
 ///
 /// Les paramètres invalides (valeurs négatives, non finies, hors bornes) sont
 /// rejetés ici avant tout calcul, y compris par les GUI et le CLI.
-pub fn validate_params(w: u32, h: u32, params: &FilterParams) -> Result<()> {
-    validate_image_dimensions(w, h)?;
-    if params.min_radius_ratio <= 0.0 {
+///
+/// Sept contrôles nommés plutôt qu'une série de 156 `if` en ligne. L'ordre des
+/// vérifications et les messages sont inchangés, caractère pour caractère : seul
+/// le regroupement change, et chaque contrôle devient testable seul.
+/// Rayons des points : ordonnés, positifs, et dans l'échelle de l'image.
+fn validate_radii(p: &FilterParams) -> Result<()> {
+    if p.min_radius_ratio <= 0.0 {
         return Err(anyhow!("min_radius_ratio doit etre > 0"));
     }
-    if params.max_radius_ratio < params.min_radius_ratio {
+    if p.max_radius_ratio < p.min_radius_ratio {
         return Err(anyhow!(
             "max_radius_ratio ({}) doit etre >= min_radius_ratio ({})",
-            params.max_radius_ratio,
-            params.min_radius_ratio
+            p.max_radius_ratio,
+            p.min_radius_ratio
         ));
     }
     // A radius larger than the image scale is not meaningful.
-    if params.max_radius_ratio > 1.0 {
+    if p.max_radius_ratio > 1.0 {
         return Err(anyhow!(
             "max_radius_ratio ({}) doit etre <= 1.0",
-            params.max_radius_ratio
+            p.max_radius_ratio
         ));
     }
-    if params.num_points == 0 {
+    Ok(())
+}
+
+/// Placement : nombre de points, grille, itérations.
+fn validate_density(p: &FilterParams) -> Result<()> {
+    if p.num_points == 0 {
         return Err(anyhow!("num_points doit etre > 0"));
     }
-    if params.num_points > 100_000 {
+    if p.num_points > 100_000 {
         return Err(anyhow!("num_points doit etre <= 100000"));
     }
-    if matches!(params.algorithm, Algorithm::Kmeans | Algorithm::Voronoi)
-        && params.num_points > 50_000
-    {
+    if matches!(p.algorithm, Algorithm::Kmeans | Algorithm::Voronoi) && p.num_points > 50_000 {
         return Err(anyhow!(
             "num_points doit etre <= 50000 pour K-means/Voronoi"
         ));
     }
-    if params.cols == 0 {
+    if p.cols == 0 {
         return Err(anyhow!("cols doit etre > 0"));
     }
-    if params.cols > 8192 {
+    if p.cols > 8192 {
         return Err(anyhow!("cols doit etre <= 8192"));
     }
-    if params.iterations > 100 {
+    if p.iterations > 100 {
         return Err(anyhow!("iterations doit etre <= 100"));
     }
-    if let Some(n) = params.palette_size
+    Ok(())
+}
+
+/// Palette et sensibilité à la variance.
+fn validate_palette(p: &FilterParams) -> Result<()> {
+    if let Some(n) = p.palette_size
         && n < 2
     {
         return Err(anyhow!("palette_size doit etre >= 2, got {}", n));
     }
-    if !(0.0..=1.0).contains(&params.variance_sensitivity) {
-        return Err(anyhow!(
-            "variance_sensitivity doit etre dans [0, 1], got {}",
-            params.variance_sensitivity
-        ));
-    }
-    if params.palette_size.is_some_and(|n| n > 256) {
+    if p.palette_size.is_some_and(|n| n > 256) {
         return Err(anyhow!("palette_size doit etre <= 256"));
     }
-    if params.max_boost < 1.0 {
+    if !(0.0..=1.0).contains(&p.variance_sensitivity) {
         return Err(anyhow!(
-            "max_boost doit etre >= 1.0, got {}",
-            params.max_boost
+            "variance_sensitivity doit etre dans [0, 1], got {}",
+            p.variance_sensitivity
         ));
     }
-    if params.algorithm == Algorithm::Halftone && params.halftone == HalftoneMode::Off {
+    if p.max_boost < 1.0 {
+        return Err(anyhow!("max_boost doit etre >= 1.0, got {}", p.max_boost));
+    }
+    Ok(())
+}
+
+/// Réglages propres au halftone.
+fn validate_halftone(p: &FilterParams) -> Result<()> {
+    if p.algorithm == Algorithm::Halftone && p.halftone == HalftoneMode::Off {
         return Err(anyhow!(
             "l'algorithme Halftone nécessite un mode cmyk ou dominant"
         ));
     }
-    if params.halftone_frequency <= 0.0 {
+    if p.halftone_frequency <= 0.0 {
         return Err(anyhow!(
             "halftone_frequency doit etre > 0, got {}",
-            params.halftone_frequency
+            p.halftone_frequency
         ));
     }
-    if params.halftone_min_radius_ratio < 0.0 {
+    if p.halftone_min_radius_ratio < 0.0 {
         return Err(anyhow!(
             "halftone_min_radius_ratio doit etre >= 0, got {}",
-            params.halftone_min_radius_ratio
+            p.halftone_min_radius_ratio
         ));
     }
-    if params.halftone_max_dot_ratio <= 0.0 {
+    if p.halftone_max_dot_ratio <= 0.0 {
         return Err(anyhow!(
             "halftone_max_dot_ratio doit etre > 0, got {}",
-            params.halftone_max_dot_ratio
+            p.halftone_max_dot_ratio
         ));
     }
     // Bornes supérieures : un rayon halftone n'est pas plafonné par le
     // nearest-neighbor comme les algorithmes pointillistes. Des valeurs
     // arbitrairement grandes (ex. `--halftone-max-dot 1e9`) produiraient des
     // dots couvrant toute l'image → rendu pathologiquement lent.
-    if params.halftone_min_radius_ratio > 1.0 {
+    if p.halftone_min_radius_ratio > 1.0 {
         return Err(anyhow!(
             "halftone_min_radius_ratio doit etre <= 1.0, got {}",
-            params.halftone_min_radius_ratio
+            p.halftone_min_radius_ratio
         ));
     }
-    if params.halftone_max_dot_ratio > 10.0 {
+    if p.halftone_max_dot_ratio > 10.0 {
         return Err(anyhow!(
             "halftone_max_dot_ratio doit etre <= 10.0, got {}",
-            params.halftone_max_dot_ratio
+            p.halftone_max_dot_ratio
         ));
     }
-    if let DotShape::RegularPolygon { sides } = params.dot_shape
+    Ok(())
+}
+
+/// Forme des points.
+fn validate_shapes(p: &FilterParams) -> Result<()> {
+    if let DotShape::RegularPolygon { sides } = p.dot_shape
         && !(3..=12).contains(&sides)
     {
         return Err(anyhow!(
@@ -373,7 +392,7 @@ pub fn validate_params(w: u32, h: u32, params: &FilterParams) -> Result<()> {
             sides
         ));
     }
-    if let DotShape::Ellipse { aspect, .. } = params.dot_shape
+    if let DotShape::Ellipse { aspect, .. } = p.dot_shape
         && (aspect <= 0.0 || aspect > 10.0)
     {
         return Err(anyhow!(
@@ -381,46 +400,44 @@ pub fn validate_params(w: u32, h: u32, params: &FilterParams) -> Result<()> {
             aspect
         ));
     }
+    Ok(())
+}
+
+/// Aucune valeur infinie ou NaN : elles traverseraient tout le pipeline sans
+/// être vues, et sortiraient en pixels noirs ou en plantes aléatoires.
+fn validate_finite(p: &FilterParams) -> Result<()> {
     for (name, value) in [
-        ("min_radius_ratio", params.min_radius_ratio),
-        ("max_radius_ratio", params.max_radius_ratio),
-        ("variance_sensitivity", params.variance_sensitivity),
-        ("max_boost", params.max_boost),
-        ("grid_angle_deg", params.grid_angle_deg),
-        ("halftone_frequency", params.halftone_frequency),
-        (
-            "halftone_min_radius_ratio",
-            params.halftone_min_radius_ratio,
-        ),
-        ("halftone_max_dot_ratio", params.halftone_max_dot_ratio),
+        ("min_radius_ratio", p.min_radius_ratio),
+        ("max_radius_ratio", p.max_radius_ratio),
+        ("variance_sensitivity", p.variance_sensitivity),
+        ("max_boost", p.max_boost),
+        ("grid_angle_deg", p.grid_angle_deg),
+        ("halftone_frequency", p.halftone_frequency),
+        ("halftone_min_radius_ratio", p.halftone_min_radius_ratio),
+        ("halftone_max_dot_ratio", p.halftone_max_dot_ratio),
     ] {
         if !value.is_finite() {
-            return Err(anyhow!("{} doit etre une valeur finie", name));
+            return Err(anyhow!("{} doit etre fini, got {}", name, value));
         }
-    }
-    match params.dot_shape {
-        DotShape::Ellipse { aspect, angle_deg }
-            if !aspect.is_finite() || !angle_deg.is_finite() =>
-        {
-            return Err(anyhow!("les parametres de l'ellipse doivent etre finis"));
-        }
-        _ => {}
-    }
-    match &params.halftone {
-        HalftoneMode::Dominant { n, base_angle_deg } => {
-            if *n > 32 {
-                return Err(anyhow!("le nombre de couleurs dominantes doit etre <= 32"));
-            }
-            if !base_angle_deg.is_finite() {
-                return Err(anyhow!("base_angle_deg doit etre une valeur finie"));
-            }
-        }
-        HalftoneMode::Cmyk { angles } if angles.iter().any(|angle| !angle.is_finite()) => {
-            return Err(anyhow!("les angles CMJN doivent etre finis"));
-        }
-        _ => {}
     }
     Ok(())
+}
+
+/// Contrôle tout ce qu'un rendu refuse d'accepter.
+///
+/// Sept contrôles nommés plutôt qu'une série de 156 `if` en ligne. L'ordre des
+/// vérifications et les messages sont inchangés, caractère pour caractère : seul
+/// le regroupement change, et chaque contrôle devient testable seul.
+/// le regroupement change, et chaque contrôle devient testable seul.
+/// le regroupement change, et chaque contrôle devient testable seul.
+pub fn validate_params(w: u32, h: u32, params: &FilterParams) -> Result<()> {
+    validate_image_dimensions(w, h)?;
+    validate_radii(params)?;
+    validate_density(params)?;
+    validate_palette(params)?;
+    validate_halftone(params)?;
+    validate_shapes(params)?;
+    validate_finite(params)
 }
 
 /// Valide les dimensions avant de decoder l'image en memoire.

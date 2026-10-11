@@ -257,22 +257,48 @@ pub(crate) fn choose_save_preset(
     );
 }
 
-fn save_preset(path: PathBuf, state: &Rc<RefCell<State>>, widgets: &Rc<Widgets>) {
-    let path = frontend::ensure_toml_extension(path);
-    let result = frontend::save_preset(&path, &state.borrow().params);
+/// Consigne le résultat d'une écriture : retient le dossier en cas de succès,
+/// et affiche le message correspondant.
+///
+/// Le bloc était recopié trois fois (preset, image, SVG) et les copies
+/// divergeaient déjà sur le texte d'erreur (« Erreur sauvegarde preset » vs
+/// « Erreur d'écriture SVG »). Un endroit unique évite qu'un changement de
+/// politique — retenir le dossier aussi en cas d'échec, par exemple — ne soit
+/// appliqué qu'à une copie.
+fn report_save(
+    result: Result<(), String>,
+    path: &std::path::Path,
+    on_ok: impl FnOnce() -> String,
+    on_err: impl FnOnce(&str) -> String,
+    state: &Rc<RefCell<State>>,
+    widgets: &Rc<Widgets>,
+) {
     let ok = result.is_ok();
     let message = match result {
-        Ok(()) => format!("Preset sauvegardé : {}", path.display()),
-        Err(e) => format!("Erreur sauvegarde preset : {e}"),
+        Ok(()) => on_ok(),
+        Err(e) => on_err(&e),
     };
     if ok {
-        remember_dir(state, &path);
+        remember_dir(state, path);
     }
+    let affichage = message;
     if ok {
-        preview::notify(state, widgets, &message);
+        preview::notify(state, widgets, &affichage);
     } else {
-        preview::notify_error(state, widgets, &message);
+        preview::notify_error(state, widgets, &affichage);
     }
+}
+
+fn save_preset(path: PathBuf, state: &Rc<RefCell<State>>, widgets: &Rc<Widgets>) {
+    let path = frontend::ensure_toml_extension(path);
+    report_save(
+        frontend::save_preset(&path, &state.borrow().params).map_err(|e| e.to_string()),
+        &path,
+        || format!("Preset sauvegardé : {}", path.display()),
+        |e| format!("Erreur sauvegarde preset : {e}"),
+        state,
+        widgets,
+    );
 }
 
 fn apply_preset(path: PathBuf, state: &Rc<RefCell<State>>, widgets: &Rc<Widgets>) {
@@ -315,17 +341,14 @@ pub(crate) fn save_result(path: PathBuf, state: &Rc<RefCell<State>>, widgets: &R
         }
         frontend::save_rgba_image(&path, img, st.params.transparent, st.params.bg_color)
     };
-    let ok = result.is_ok();
-    let message = match result {
-        Ok(()) => format!("Sauvegardé : {}", path.display()),
-        Err(e) => format!("Erreur de sauvegarde : {e}"),
-    };
-    if ok {
-        remember_dir(state, &path);
-        preview::notify(state, widgets, &message);
-    } else {
-        preview::notify_error(state, widgets, &message);
-    }
+    report_save(
+        result.map_err(|e| e.to_string()),
+        &path,
+        || format!("Sauvegardé : {}", path.display()),
+        |e| format!("Erreur de sauvegarde : {e}"),
+        state,
+        widgets,
+    );
 }
 
 pub(crate) fn save_svg(path: PathBuf, state: &Rc<RefCell<State>>, widgets: &Rc<Widgets>) {
@@ -347,17 +370,14 @@ pub(crate) fn save_svg(path: PathBuf, state: &Rc<RefCell<State>>, widgets: &Rc<W
             .map_err(|e| e.to_string())
             .and_then(|svg| frontend::atomic_text_write(&path, &svg).map_err(|e| e.to_string()))
     };
-    let ok = result.is_ok();
-    let message = match result {
-        Ok(()) => format!("SVG sauvegardé : {}", path.display()),
-        Err(e) => format!("Erreur d'écriture SVG : {e}"),
-    };
-    if ok {
-        remember_dir(state, &path);
-        preview::notify(state, widgets, &message);
-    } else {
-        preview::notify_error(state, widgets, &message);
-    }
+    report_save(
+        result,
+        &path,
+        || format!("SVG sauvegardé : {}", path.display()),
+        |e| format!("Erreur d'écriture SVG : {e}"),
+        state,
+        widgets,
+    );
 }
 
 /// Export sans dialogue : à côté de l'image source, en PNG.
