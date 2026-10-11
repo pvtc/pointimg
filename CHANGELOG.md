@@ -160,6 +160,16 @@ et ce projet adhère au [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
   jamais, et l'égalité est garantie par construction. (Constat, non corrigé :
   voir « ce qui reste ».)
 
+- **`validate_params` éclaté en sept contrôles nommés**, et les tests qui
+  manquaient : chaque contrôle doit nommer le champ qu'il refuse, et la borne
+  juste acceptée est vérifiée aussi. L'ordre des vérifications et les messages
+  sont inchangés. (`src/filter/params.rs`, `tests/pipeline.rs`)
+- **Déduplications restantes** : trois écritures atomiques en une (les copies
+  divergeaient déjà sur le type d'erreur et le traitement de l'échec), trois
+  blocs « rapport ou échec » en un, deux copies de la paire de rayons GTK en une
+  avec sa danse d'emprunts, et l'infobulle des tailles d'export écrite une seule
+  fois. (`src/frontend.rs`, `src/gtk/files.rs`, `src/gtk/wire.rs`, `src/export.rs`)
+
 ### Corrigé
 
 - **Navigation dans un dossier qui plantait (GTK)** : `load_image` empruntait

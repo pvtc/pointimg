@@ -45,8 +45,9 @@ pointimg/
 │   ├── filter/         — all logic, split by concern
 │   │   ├── mod.rs      — module root: public API (apply, apply_with_progress,
 │   │   │               compute_dots), re-exports, unit tests
-│   │   ├── params.rs   — Algorithm, DotShape, FilterParams, Dot, validate_params,
-│   │   │               to_toml_string / from_toml_str (presets)
+│   │   ├── params.rs   — Algorithm, DotShape, FilterParams, Dot,
+│   │   │               validate_params (sept controles nommes), to_toml_string /
+│   │   │               from_toml_str (presets)
 │   │   ├── density.rs  — compute_density_map / compute_density_image (SAT)
 │   │   ├── render.rs   — render, draw_dot, anti-aliasing (4×4 supersampling),
 │   │   │               point_in_regular_polygon, quantize_dots/quantize_palette_centers,
