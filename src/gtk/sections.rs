@@ -6,29 +6,24 @@ use std::rc::Rc;
 use adw::prelude::*;
 
 use pointimg::filter::{Algorithm, Dithering, DotShape, FilterParams, HalftoneMode, Screening};
-use pointimg::frontend::{Quality, view_index};
+use pointimg::frontend::{self, Quality, view_index};
 
 use crate::State;
 use crate::controls::Widgets;
 
+/// Position de l'algorithme dans la liste déroulante.
+///
+/// La table vit dans `frontend`, partagée avec egui. Le repli est le *premier*
+/// algorithme, donc cohérent avec la table : une liste décalée retombe sur
+/// « Grille » plutôt que sur `Halftone` — qui, de plus, exige un mode d'encre et
+/// faisait échouer le rendu suivant.
 pub(crate) fn algorithm_index(a: Algorithm) -> u32 {
-    match a {
-        Algorithm::Grid => 0,
-        Algorithm::Kmeans => 1,
-        Algorithm::Voronoi => 2,
-        Algorithm::Quadtree => 3,
-        Algorithm::Halftone => 4,
-    }
+    frontend::algorithm_index(a).unwrap_or(0)
 }
 
+/// Algorithme correspondant à une position. Voir [`algorithm_index`].
 pub(crate) fn algorithm_from_index(i: u32) -> Algorithm {
-    match i {
-        0 => Algorithm::Grid,
-        1 => Algorithm::Kmeans,
-        2 => Algorithm::Voronoi,
-        3 => Algorithm::Quadtree,
-        _ => Algorithm::Halftone,
-    }
+    frontend::algorithm_of(i).unwrap_or(frontend::ALGORITHMS[0])
 }
 
 /// Sous-titre du sélecteur de dithering quand aucun algorithme n'est signalé.
@@ -52,26 +47,16 @@ pub(crate) fn sync_dithering_note(dithering: Dithering, widgets: &Widgets) {
     widgets.dithering.set_tooltip_text(dithering.size_caveat());
 }
 
-/// Position de l'algorithme de dithering dans la liste déroulante.
+/// Position du tramage dans la liste déroulante. Table partagée avec egui.
 pub(crate) fn dithering_index(dithering: Dithering) -> u32 {
-    match dithering {
-        Dithering::Off => 0,
-        Dithering::FloydSteinberg => 1,
-        Dithering::Riemersma => 2,
-        Dithering::Bayer4 => 3,
-        Dithering::Bayer8 => 4,
-    }
+    frontend::dithering_index(dithering).unwrap_or(0)
 }
 
-/// Algorithme correspondant à une position de liste déroulante.
+/// Tramage correspondant à une position. Le repli est le premier de la table
+/// (« Aucun »), pas un `_ => Dithering::Off` qui apparaîtrait correct alors
+/// qu'une liste décalée vient de choisir à sa place.
 pub(crate) fn dithering_from_index(index: u32) -> Dithering {
-    match index {
-        1 => Dithering::FloydSteinberg,
-        2 => Dithering::Riemersma,
-        3 => Dithering::Bayer4,
-        4 => Dithering::Bayer8,
-        _ => Dithering::Off,
-    }
+    frontend::dithering_of(index).unwrap_or(frontend::DITHERINGS[0])
 }
 
 pub(crate) fn shape_index(s: &DotShape) -> u32 {
@@ -83,22 +68,15 @@ pub(crate) fn shape_index(s: &DotShape) -> u32 {
     }
 }
 
-/// Position du mode de qualité dans la liste déroulante.
+/// Position du mode de qualité dans la liste déroulante. Table partagée avec egui.
 pub(crate) fn quality_index(quality: Quality) -> u32 {
-    match quality {
-        Quality::Half => 0,
-        Quality::Quarter => 1,
-        Quality::Full => 2,
-    }
+    frontend::quality_index(quality).unwrap_or(0)
 }
 
-/// Mode de qualité correspondant à une position de liste déroulante.
+/// Mode de qualité correspondant à une position. Le repli est le premier de la
+/// table, pas `Full` : index inconnue ne veut pas dire « meilleure qualité ».
 pub(crate) fn quality_from_index(index: u32) -> Quality {
-    match index {
-        0 => Quality::Half,
-        1 => Quality::Quarter,
-        _ => Quality::Full,
-    }
+    frontend::quality_of(index).unwrap_or(frontend::QUALITIES[0])
 }
 
 /// Aide courte affichée en sous-titre du sélecteur d'algorithme.

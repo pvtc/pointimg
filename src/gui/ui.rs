@@ -23,6 +23,20 @@ use pointimg::frontend::{
 };
 
 /// Description courte d'un algorithme, affichée sous le sélecteur.
+/// Libellé d'un algorithme dans le sélecteur.
+///
+/// `match` total, sans `_` : ajouter une variante à `Algorithm` sans l'étiqueter
+/// ici est une erreur de compilation, pas une liste décalée.
+fn algorithm_label(algorithm: Algorithm) -> &'static str {
+    match algorithm {
+        Algorithm::Grid => "Grille",
+        Algorithm::Kmeans => "K-means",
+        Algorithm::Voronoi => "Voronoi (Lloyd)",
+        Algorithm::Quadtree => "Quadtree",
+        Algorithm::Halftone => "Halftone (rosette)",
+    }
+}
+
 fn algorithm_help(algorithm: Algorithm) -> &'static str {
     match algorithm {
         Algorithm::Grid => "Grille régulière : une cellule = un point. Rapide et prévisible.",
@@ -817,26 +831,23 @@ impl App {
     }
 
     fn show_algorithm_section(&mut self, ui: &mut egui::Ui) {
-        const ALGOS: [(&str, Algorithm); 5] = [
-            ("Grille", Algorithm::Grid),
-            ("K-means", Algorithm::Kmeans),
-            ("Voronoi (Lloyd)", Algorithm::Voronoi),
-            ("Quadtree", Algorithm::Quadtree),
-            ("Halftone (rosette)", Algorithm::Halftone),
-        ];
-        let current = ALGOS
-            .iter()
-            .find(|(_, algo)| *algo == self.params.algorithm)
-            .map(|(label, _)| *label)
-            .unwrap_or("Voronoi (Lloyd)");
+        // L'ordre vient de `frontend::ALGORITHMS`, partagé avec GTK — seule la
+        // liste est commune, les libellés restent propres à egui. Le repli est
+        // explicite plutôt qu'un `unwrap_or("Voronoi")` qui masquerait un algo
+        // absent de la table.
+        let current = algorithm_label(self.params.algorithm);
         ui.horizontal(|ui| {
             ui.label("Placement");
             egui::ComboBox::from_id_salt("algo_combo")
                 .selected_text(current)
                 .show_ui(ui, |ui| {
-                    for (label, algo) in ALGOS {
-                        ui.selectable_value(&mut self.params.algorithm, algo, label)
-                            .on_hover_text(algorithm_help(algo));
+                    for algo in frontend::ALGORITHMS {
+                        ui.selectable_value(
+                            &mut self.params.algorithm,
+                            algo,
+                            algorithm_label(algo),
+                        )
+                        .on_hover_text(algorithm_help(algo));
                     }
                 });
         });

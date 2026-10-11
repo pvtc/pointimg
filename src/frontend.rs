@@ -71,14 +71,92 @@ pub fn view_index(mode: ViewMode) -> u32 {
 }
 
 /// Mode correspondant à une position de liste déroulante.
+///
+/// Retombe sur le premier mode, explicitement, plutôt que via un `_ =>` qui
+/// masquerait une liste désynchronisée de [`VIEW_COUNT`].
 pub fn view_from_index(index: u32) -> ViewMode {
     match index {
         1 => ViewMode::Side,
         2 => ViewMode::ResultOnly,
         3 => ViewMode::SourceOnly,
         4 => ViewMode::DensityMap,
+        // Le zéro étant le premier mode, la règle et le cas limite coïncident.
         _ => ViewMode::Compare,
     }
+}
+
+// ─── Tables de variantes ────────────────────────────────────────────────────
+//
+// Les listes déroulantes des deux interfaces portent sur les mêmes enums. Chaque
+// sens de conversion était écrit dans chaque interface, avec un `_ =>` pour
+// « cas impossible » — et ces cas sont arrivés : `algorithm_from_index`
+// retombait sur `Halftone`, qui exige de plus un mode d'encre, donc une liste
+// désynchronisée de son enum produisait un rendu en échec ; `dithering_from_index`
+// retombait sur `Off`, donc une liste décalée désactivait le tramage sans le dire.
+//
+// Les tables ci-dessous sont la seule liste. Les deux sens en découlent, et un
+// index inconnu donne `None` : l'appelant décide explicitement quoi faire, au
+// lieu d'hériter d'une variante choisie par un `_`.
+
+/// Ordre des algorithmes de placement dans les listes déroulantes.
+pub const ALGORITHMS: [filter::Algorithm; 5] = [
+    filter::Algorithm::Grid,
+    filter::Algorithm::Kmeans,
+    filter::Algorithm::Voronoi,
+    filter::Algorithm::Quadtree,
+    filter::Algorithm::Halftone,
+];
+
+/// Position d'un algorithme. `None` s'il n'est pas dans la table — ce qui ne peut
+/// pas arriver pour une variante de l'enum, et qu'un test vérifie.
+pub fn algorithm_index(algorithm: filter::Algorithm) -> Option<u32> {
+    ALGORITHMS
+        .iter()
+        .position(|entree| *entree == algorithm)
+        .map(|index| index as u32)
+}
+
+/// Algorithme à cette position, ou `None` si la position n'existe pas.
+pub fn algorithm_of(index: u32) -> Option<filter::Algorithm> {
+    ALGORITHMS.get(index as usize).copied()
+}
+
+/// Ordre des algorithmes de tramage dans les listes déroulantes.
+pub const DITHERINGS: [filter::Dithering; 5] = [
+    filter::Dithering::Off,
+    filter::Dithering::FloydSteinberg,
+    filter::Dithering::Riemersma,
+    filter::Dithering::Bayer4,
+    filter::Dithering::Bayer8,
+];
+
+/// Position d'un tramage. Voir [`algorithm_index`].
+pub fn dithering_index(dithering: filter::Dithering) -> Option<u32> {
+    DITHERINGS
+        .iter()
+        .position(|entree| *entree == dithering)
+        .map(|index| index as u32)
+}
+
+/// Tramage à cette position, ou `None`.
+pub fn dithering_of(index: u32) -> Option<filter::Dithering> {
+    DITHERINGS.get(index as usize).copied()
+}
+
+/// Ordre des niveaux de qualité.
+pub const QUALITIES: [Quality; 3] = [Quality::Half, Quality::Quarter, Quality::Full];
+
+/// Position d'un niveau de qualité. Voir [`algorithm_index`].
+pub fn quality_index(quality: Quality) -> Option<u32> {
+    QUALITIES
+        .iter()
+        .position(|entree| *entree == quality)
+        .map(|index| index as u32)
+}
+
+/// Niveau de qualité à cette position, ou `None`.
+pub fn quality_of(index: u32) -> Option<Quality> {
+    QUALITIES.get(index as usize).copied()
 }
 
 /// Résolution de calcul choisie par l'utilisateur.
@@ -839,6 +917,55 @@ mod tests {
         assert!(generation_is_current(&generation, 7));
         generation.store(8, Ordering::Release);
         assert!(!generation_is_current(&generation, 7));
+    }
+
+    /// Chaque table doit contenir chaque variante de son enum, une seule fois,
+    /// et les deux sens de conversion doivent s'accorder. Ajouter une variante
+    /// sans l'inscrire fait échouer ce test — c'est le seul garde-fou contre une
+    /// liste décalée, qui choisissait auparavant en silence via un `_ =>`.
+    #[test]
+    fn les_tables_couvrent_toutes_leurs_variantes() {
+        use filter::{Algorithm, Dithering};
+        for algorithm in [
+            Algorithm::Grid,
+            Algorithm::Kmeans,
+            Algorithm::Voronoi,
+            Algorithm::Quadtree,
+            Algorithm::Halftone,
+        ] {
+            let index = algorithm_index(algorithm).expect("variante absente de la table");
+            assert_eq!(algorithm_of(index), Some(algorithm), "aller-retour cassé");
+            // Une seule occurrence : deux fois la même variante décalerait tout.
+            assert_eq!(
+                ALGORITHMS.iter().filter(|a| **a == algorithm).count(),
+                1,
+                "{algorithm:?} figure plus d'une fois"
+            );
+        }
+        for dithering in [
+            Dithering::Off,
+            Dithering::FloydSteinberg,
+            Dithering::Riemersma,
+            Dithering::Bayer4,
+            Dithering::Bayer8,
+        ] {
+            let index = dithering_index(dithering).expect("variante absente de la table");
+            assert_eq!(dithering_of(index), Some(dithering), "aller-retour cassé");
+            assert_eq!(
+                DITHERINGS.iter().filter(|d| **d == dithering).count(),
+                1,
+                "{dithering:?} figure plus d'une fois"
+            );
+        }
+        for quality in [Quality::Half, Quality::Quarter, Quality::Full] {
+            let index = quality_index(quality).expect("variante absente de la table");
+            assert_eq!(quality_of(index), Some(quality), "aller-retour cassé");
+            assert_eq!(QUALITIES.iter().filter(|q| **q == quality).count(), 1);
+        }
+        // Et un index hors bornes ne renvoie rien, au lieu de choisir.
+        assert_eq!(algorithm_of(99), None);
+        assert_eq!(dithering_of(99), None);
+        assert_eq!(quality_of(99), None);
     }
 
     #[test]
