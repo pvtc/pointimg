@@ -290,13 +290,21 @@ fn separate_cmyk_linear(src: &Rgb32FImage, angles: [f32; 4]) -> Vec<InkChannel> 
 /// Le centre le plus proche ne dépend que de la couleur : dédupliquer évite de
 /// répéter `n` multiplications par pixel (gain important sur les images
 /// graphiques/plates), sans changer le résultat.
+///
+/// L'ordre d'apparition et l'index de chaque couleur sont conservés.
+///
+/// Une table à adressage ouvert maison a été essayée ici, l'idée étant que
+/// SipHash coûte 20 à 50 ns par pixel. Elle ne changeait **rien** (1,23 s sur une
+/// photo 900×700, des deux côtés) : le coût du mode `Dominant` est ailleurs, dans
+/// le tramage. Soixante lignes de table pour 0 % de gain ne se gardent pas, la
+/// `HashMap` de la bibliothèque reste donc en place.
 fn unique_pixel_colors(src: &RgbImage) -> (Vec<[u8; 3]>, Vec<u32>) {
     use std::collections::HashMap;
     let n_pixels = (src.width() as usize) * (src.height() as usize);
+    let mut unique: Vec<[u8; 3]> = Vec::new();
+    let mut mapping: Vec<u32> = Vec::with_capacity(n_pixels);
     // Plafond de capacité : évite de réserver des millions d'entrées d'un coup.
-    let mut index_of: HashMap<[u8; 3], u32> = HashMap::with_capacity(n_pixels.min(1 << 16));
-    let mut unique = Vec::new();
-    let mut mapping = Vec::with_capacity(n_pixels);
+    let mut index_of = HashMap::with_capacity(n_pixels.min(1 << 16));
     for p in src.pixels() {
         let color = [p[0], p[1], p[2]];
         let idx = *index_of.entry(color).or_insert_with(|| {

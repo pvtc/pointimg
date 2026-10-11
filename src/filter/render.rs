@@ -123,6 +123,11 @@ fn draw_sorted_bands_rgb(dst: &mut RgbImage, sorted: &[&Dot], shape: DotShape) {
                     dot.radius,
                     shape,
                     (y0 as u32, y1 as u32),
+                    // `impl FnMut` plutôt que `&mut dyn FnMut` : la fermeture
+                    // est monomorphisée avec l'appel, donc `(py - y0) * stride`
+                    // est remonté hors de la boucle sur `px` et l'appel n'est
+                    // plus indirect. Sortie identique, un appel en moins par
+                    // pixel mélangé.
                     &mut |px: u32, py: u32, cov: u32| {
                         let off = (py as usize - y0) * stride + px as usize * 3;
                         blend_rgb_band(band, off, color, cov);
@@ -164,7 +169,7 @@ fn draw_dot_clipped(
     r_f: f32,
     shape: DotShape,
     y_clip: (u32, u32),
-    blend: &mut dyn FnMut(u32, u32, u32),
+    blend: &mut impl FnMut(u32, u32, u32),
 ) {
     let bbox = match shape {
         DotShape::Ellipse { aspect, .. } => {

@@ -38,8 +38,12 @@ where
             .collect();
 
     let power = 1.0 + params.variance_sensitivity * 3.0;
+    // Parallèle : un `powf` par pixel sur 8,4 Mpx valait ~100 ms d'un seul
+    // thread, pour un résultat où chaque élément est indépendant. L'ordre de la
+    // collecte est conservé (`into_par_iter().collect()` préserve l'index), donc
+    // le vecteur est identique à la version série.
     let lloyd_weights: Vec<f64> = density
-        .iter()
+        .par_iter()
         .map(|&d| (d as f64).powf(power as f64))
         .collect();
 
