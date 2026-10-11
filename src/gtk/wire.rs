@@ -431,8 +431,25 @@ where
 }
 
 /// Branche l'ensemble des signaux.
+///
+/// Huit groupes, une fonction chacun : chaque section portait déjà son titre
+/// en commentaire, mais les 500 lignes formaient un bloc unique où retrouver
+/// un branchement demandait de le descendre en entier.
 pub(crate) fn wire(state: &St, widgets: &Wi, window: &adw::ApplicationWindow) {
-    // ── Boutons de l'en-tête et de l'accueil ─────────────────────────────────
+    wire_header_buttons(state, widgets, window);
+    wire_presets(state, widgets);
+    wire_algorithm(state, widgets);
+    wire_quality(state, widgets);
+    wire_halftone(state, widgets);
+    wire_shape(state, widgets);
+    wire_render(state, widgets);
+    wire_display(state, widgets);
+
+    preview::connect_scroll_sync(widgets);
+}
+
+/// Signaux du groupe « Boutons de l'en-tête et de l'accueil ».
+fn wire_header_buttons(state: &St, widgets: &Wi, window: &adw::ApplicationWindow) {
     for button in [&widgets.open, &widgets.open_empty] {
         let (s, w) = clone_state_widgets(state, widgets);
         let window = window.clone();
@@ -489,8 +506,10 @@ pub(crate) fn wire(state: &St, widgets: &Wi, window: &adw::ApplicationWindow) {
             .button
             .connect_clicked(move |_| actions::reset_section(target, &s, &w));
     }
+}
 
-    // ── Presets ─────────────────────────────────────────────────────────────
+/// Signaux du groupe « Presets ».
+fn wire_presets(state: &St, widgets: &Wi) {
     {
         let (s, w) = clone_state_widgets(state, widgets);
         widgets.preset_combo.connect_selected_notify(move |_| {
@@ -521,8 +540,10 @@ pub(crate) fn wire(state: &St, widgets: &Wi, window: &adw::ApplicationWindow) {
             actions::apply_preset(index, &s, &w);
         });
     }
+}
 
-    // ── Algorithme ──────────────────────────────────────────────────────────
+/// Signaux du groupe « Algorithme ».
+fn wire_algorithm(state: &St, widgets: &Wi) {
     {
         let (s, w) = clone_state_widgets(state, widgets);
         widgets.algo.connect_selected_notify(move |row| {
@@ -625,8 +646,10 @@ pub(crate) fn wire(state: &St, widgets: &Wi, window: &adw::ApplicationWindow) {
         set_iterations,
         None,
     );
+}
 
-    // ── Qualité de l'aperçu ─────────────────────────────────────────────────
+/// Signaux du groupe « Qualité de l'aperçu ».
+fn wire_quality(state: &St, widgets: &Wi) {
     {
         let (s, w) = clone_state_widgets(state, widgets);
         widgets.quality.connect_selected_notify(move |row| {
@@ -645,8 +668,10 @@ pub(crate) fn wire(state: &St, widgets: &Wi, window: &adw::ApplicationWindow) {
             }
         });
     }
+}
 
-    // ── Halftone ────────────────────────────────────────────────────────────
+/// Signaux du groupe « Halftone ».
+fn wire_halftone(state: &St, widgets: &Wi) {
     {
         let (s, w) = clone_state_widgets(state, widgets);
         widgets.halftone_mode.connect_selected_notify(move |row| {
@@ -748,8 +773,10 @@ pub(crate) fn wire(state: &St, widgets: &Wi, window: &adw::ApplicationWindow) {
         set_halftone_max_dot,
         Some(sync_halftone_radii),
     );
+}
 
-    // ── Forme des points ────────────────────────────────────────────────────
+/// Signaux du groupe « Forme des points ».
+fn wire_shape(state: &St, widgets: &Wi) {
     {
         let (s, w) = clone_state_widgets(state, widgets);
         widgets.shape.connect_selected_notify(move |row| {
@@ -841,8 +868,10 @@ pub(crate) fn wire(state: &St, widgets: &Wi, window: &adw::ApplicationWindow) {
             actions::on_params_changed(&s, &w);
         });
     }
+}
 
-    // ── Rendu ───────────────────────────────────────────────────────────────
+/// Signaux du groupe « Rendu ».
+fn wire_render(state: &St, widgets: &Wi) {
     {
         let (s, w) = clone_state_widgets(state, widgets);
         let button = w.bg_button.clone();
@@ -890,8 +919,10 @@ pub(crate) fn wire(state: &St, widgets: &Wi, window: &adw::ApplicationWindow) {
             actions::on_params_changed(&s, &w);
         });
     }
+}
 
-    // ── Affichage ───────────────────────────────────────────────────────────
+/// Signaux du groupe « Affichage ».
+fn wire_display(state: &St, widgets: &Wi) {
     {
         let (s, w) = clone_state_widgets(state, widgets);
         widgets.view_mode.connect_selected_notify(move |drop| {
