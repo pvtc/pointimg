@@ -74,7 +74,7 @@ fn chaque_controle_nomme_le_champ_quil_refuse() {
     });
     // Le mode d'encre manquant est un cas à part : le message parle de
     // l'algorithme, pas d'un champ.
-    let mut params = FilterParams {
+    let params = FilterParams {
         algorithm: Algorithm::Halftone,
         ..FilterParams::default()
     };

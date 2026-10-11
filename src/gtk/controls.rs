@@ -198,6 +198,7 @@ pub(crate) struct ComparePane {
 #[derive(Clone)]
 pub(crate) struct WindowWidgets {
     pub window_title: adw::WindowTitle,
+    pub menu: gtk::MenuButton,
     pub split: adw::OverlaySplitView,
     pub panel_toggle: gtk::ToggleButton,
     pub open: gtk::Button,
@@ -381,17 +382,28 @@ const QUALITIES: [&str; 3] = ["Rapide (1/2)", "Rapide (1/4)", "Pleine résolutio
 ///
 /// `adw::ButtonContent` impose le contenu (icône + libellé) : `set_label` suivi de
 /// `set_icon_name` sur un GtkButton ne garde que l'icône.
-fn header_bar(
-    window_title: adw::WindowTitle,
-    menu: gtk::MenuButton,
-    open: gtk::Button,
-    open_folder: gtk::Button,
-    export: gtk::MenuButton,
-    redo: gtk::Button,
-    undo: gtk::Button,
-    cancel: gtk::Button,
-    progress: gtk::ProgressBar,
-) -> (adw::HeaderBar, gtk::ToggleButton) {
+///
+/// Elle prend `&Widgets` et non neuf paramètres : les champs qu'elle touche sont
+/// tous dans les sections `window` et `presets`, et un dixième bouton n'ajoute
+/// pas un paramètre de plus.
+fn header_bar(widgets: &Widgets) -> adw::HeaderBar {
+    let Widgets {
+        window:
+            WindowWidgets {
+                window_title,
+                menu,
+                panel_toggle,
+                open,
+                progress,
+                cancel,
+                undo,
+                redo,
+                export,
+                ..
+            },
+        presets: PresetWidgets { open_folder, .. },
+        ..
+    } = widgets.clone();
     // `adw::ButtonContent` impose le contenu (icône + libellé) : `set_label`
     // suivi de `set_icon_name` sur un GtkButton ne garde que l'icône.
     set_button_content(&open, "document-open-symbolic", "Ouvrir…");
@@ -400,14 +412,6 @@ fn header_bar(
     open_folder.set_tooltip_text(Some(
         "Ouvrir un dossier et passer d'une image à l'autre avec ← et → (Ctrl+Maj+O)",
     ));
-    // Révèle le panneau de réglages quand il est replié (fenêtre étroite) :
-    // le bouton n'existe que dans ce cas, cf. le point de rupture plus bas.
-    // Révèle le panneau de réglages quand il est replié (fenêtre étroite) :
-    // le bouton n'existe que dans ce cas, cf. le point de rupture plus bas.
-    let panel_toggle = gtk::ToggleButton::new();
-    panel_toggle.set_icon_name("sidebar-show-symbolic");
-    panel_toggle.set_tooltip_text(Some("Afficher les réglages"));
-    panel_toggle.set_visible(false);
     progress.set_show_text(true);
     progress.set_valign(gtk::Align::Center);
     progress.set_size_request(200, -1);
@@ -444,7 +448,7 @@ fn header_bar(
     header.pack_end(&cancel);
     header.pack_end(&progress);
 
-    (header, panel_toggle)
+    header
 }
 
 /// Compose la barre d'état : trois mesures, un badge de qualité, un message.
@@ -501,6 +505,14 @@ pub(crate) fn build() -> (adw::ToastOverlay, Rc<Widgets>) {
     let export = gtk::MenuButton::new();
     let menu = gtk::MenuButton::new();
     menu.set_menu_model(Some(&crate::wire::menu_model()));
+    // Révèle le panneau de réglages quand il est replié (fenêtre étroite) : le
+    // bouton n'existe que dans ce cas, cf. le point de rupture plus bas. Créé ici
+    // et non dans `header_bar` parce que c'est un champ de `Widgets`, donc il doit
+    // exister avant le littéral.
+    let panel_toggle = gtk::ToggleButton::new();
+    panel_toggle.set_icon_name("sidebar-show-symbolic");
+    panel_toggle.set_tooltip_text(Some("Afficher les réglages"));
+    panel_toggle.set_visible(false);
     let toast_overlay = adw::ToastOverlay::new();
     let shortcuts = adw::Window::new();
 
@@ -998,18 +1010,6 @@ pub(crate) fn build() -> (adw::ToastOverlay, Rc<Widgets>) {
     // ── En-tête ──────────────────────────────────────────────────────────────
     // Par valeur : un widget GTK est un `Arc`, le clone ne copie rien. Les
     // valeurs sont reprises ensuite dans `Widgets`, sans double possession.
-    let (header, panel_toggle) = header_bar(
-        window_title.clone(),
-        menu.clone(),
-        open.clone(),
-        open_folder.clone(),
-        export.clone(),
-        redo.clone(),
-        undo.clone(),
-        cancel.clone(),
-        progress.clone(),
-    );
-
     // ── Aperçu ───────────────────────────────────────────────────────────────
     let preview_toolbar = gtk::Box::new(gtk::Orientation::Horizontal, 8);
     preview_toolbar.set_margin_top(6);
@@ -1094,17 +1094,11 @@ pub(crate) fn build() -> (adw::ToastOverlay, Rc<Widgets>) {
     // ── Barre d'état ─────────────────────────────────────────────────────────
     let status_bar = status_bar(&memory, &export_sizes, &timing, &quality_badge, &status);
 
-    let toolbar = adw::ToolbarView::new();
-    toolbar.add_top_bar(&header);
-    toolbar.set_content(Some(&split));
-    toolbar.add_bottom_bar(&status_bar);
-
-    toast_overlay.set_child(Some(&toolbar));
-
     let toast_overlay_for_return = toast_overlay.clone();
     let widgets = Widgets {
         window: WindowWidgets {
             window_title,
+            menu,
             split,
             panel_toggle,
             open,
@@ -1212,6 +1206,16 @@ pub(crate) fn build() -> (adw::ToastOverlay, Rc<Widgets>) {
             status,
         },
     };
+
+    // L'assemblage final vient après le littéral : `header_bar` et la barre
+    // d'état prennent `&Widgets`, qui n'existe qu'ici.
+    let header = header_bar(&widgets);
+
+    let toolbar = adw::ToolbarView::new();
+    toolbar.add_top_bar(&header);
+    toolbar.set_content(Some(&widgets.window.split));
+    toolbar.add_bottom_bar(&status_bar);
+    widgets.window.toast_overlay.set_child(Some(&toolbar));
 
     (toast_overlay_for_return, Rc::new(widgets))
 }
