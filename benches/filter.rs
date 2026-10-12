@@ -1,6 +1,6 @@
-//! Benches criterion pour les algorithmes de pointimg.
+//! Criterion benches for the pointimg algorithms.
 //!
-//! Lance avec : `cargo bench` (compile puis exécute criterion).
+//! Run with: `cargo bench` (compiles then runs criterion).
 
 use criterion::{Criterion, criterion_group, criterion_main};
 use image::RgbImage;
@@ -8,8 +8,8 @@ use pointimg::filter::{self, Algorithm, FilterParams};
 use std::hint::black_box;
 use std::sync::atomic::AtomicBool;
 
-/// Image de test 400×400 : damier multi-couleurs + dégradé pour avoir
-/// une densité de détail variée.
+/// 400×400 test image: multi-color checkerboard + gradient to get
+/// a varied density of detail.
 fn bench_image() -> RgbImage {
     let (w, h) = (400u32, 400u32);
     RgbImage::from_fn(w, h, |x, y| {

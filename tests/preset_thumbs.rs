@@ -1,14 +1,14 @@
-//! Les vignettes de presets ne doivent pas dériver des presets eux-mêmes.
+//! The preset thumbnails must not drift away from the presets themselves.
 //!
-//! Elles sont produites par `cargo run --example preset_thumbnails`, qui rend
-//! `filter::builtin_presets()` sur une image d'exemple. Rien n'oblige à les
-//! régénérer ensuite : un preset modifié laisserait une vignette qui montre
-//! l'ancien réglage, sans rien signale à l'utilisateur.
+//! They are produced by `cargo run --example preset_thumbnails`, which renders
+//! `filter::builtin_presets()` on a sample image. Nothing forces one to
+//! regenerate them afterwards: a modified preset would leave a thumbnail that
+//! shows the old setting, without signalling anything to the user.
 //!
-//! Ce test vérifie qu'il y a exactement une vignette par preset, et dans le
-//! bon ordre. Il ne compare pas le contenu — cela demanderait de rendre les
-//! presets dans le test, ce qui prendrait bien trop de temps — mais un décalage
-//! d'index ou un preset ajouté se voit.
+//! This test checks that there is exactly one thumbnail per preset, and in the
+//! right order. It does not compare the content - that would require rendering
+//! the presets in the test, which would take far too long - but a shifted
+//! index or an added preset shows up.
 
 use pointimg::filter::builtin_presets;
 use pointimg::frontend::preset_thumbnail;
@@ -35,8 +35,8 @@ fn les_vignettes_sont_des_images_lisibles_et_petites() {
         let chemin = preset_thumbnail(index).expect("vérifié par le test précédent");
         let image =
             image::open(&chemin).unwrap_or_else(|e| panic!("{} illisible : {e}", chemin.display()));
-        // Assez grand pour un écran HiDPI dans une vignette d'une quarantaine
-        // de pixels, assez petit pour que le dossier reste léger.
+        // Big enough for a HiDPI screen in a thumbnail of some forty
+        // pixels, small enough for the folder to stay light.
         assert!(
             image.width() >= 200 && image.height() >= 150,
             "{} : {}×{} est trop petit pour une vignette",
@@ -44,11 +44,11 @@ fn les_vignettes_sont_des_images_lisibles_et_petites() {
             image.width(),
             image.height()
         );
-        // Garde-fou grossier : une vignette qui ferait plusieurs mégaoctets
-        // serait un rendu complet laissé à la place. La borne est haute parce
-        // que les presets stochastiques (stippling fin, trame FM) produisent du
-        // bruit, que le PNG ne compresse pas — ils pèsent ~130 Ko contre ~27 Ko
-        // pour un preset graphique.
+        // Crude guard rail: a thumbnail that ran to several megabytes would
+        // be a full rendering left in its place. The bound is high because
+        // the stochastic presets (fine stippling, FM screening) produce noise,
+        // which PNG does not compress - they weigh ~130 KB against ~27 KB
+        // for a graphic preset.
         let poids = std::fs::metadata(&chemin).map(|m| m.len()).unwrap_or(0);
         assert!(
             poids < 400 * 1024,

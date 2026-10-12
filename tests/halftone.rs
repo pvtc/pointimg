@@ -1,4 +1,4 @@
-//! Tests d'intégration du mode halftone (rosette CMYK + couleurs dominantes).
+//! Integration tests for the halftone mode (CMYK rosette + dominant colors).
 
 use image::RgbImage;
 use pointimg::filter::{self, FilterParams, HalftoneMode, Screening};
@@ -16,16 +16,16 @@ fn checkerboard(w: u32, h: u32) -> RgbImage {
 
 #[test]
 fn halftone_cmyk_preserves_dimensions() {
-    // Image avec zones saturées Cyan/Magenta/Jaune/Noir pour bien activer les 4 canaux.
+    // Image with saturated Cyan/Magenta/Yellow/Black zones to activate all 4 channels.
     let img = RgbImage::from_fn(64, 64, |x, y| match (x / 16, y / 16) {
-        (0, 0) | (3, 3) => image::Rgb([0, 0, 0]), // noir → canal K
-        (1, 0) | (2, 3) => image::Rgb([0, 255, 255]), // cyan pur
-        (2, 0) | (1, 3) => image::Rgb([255, 0, 255]), // magenta pur
-        (3, 0) | (0, 3) => image::Rgb([255, 255, 0]), // jaune pur
-        (0, 1) | (3, 2) => image::Rgb([255, 0, 0]), // rouge (magenta+jaune) → M+Y
-        (1, 1) | (2, 2) => image::Rgb([0, 255, 0]), // vert (cyan+jaune) → C+Y
-        (2, 1) | (1, 2) => image::Rgb([0, 0, 255]), // bleu (cyan+magenta) → C+M
-        _ => image::Rgb([128, 128, 128]),         // neutre → active K
+        (0, 0) | (3, 3) => image::Rgb([0, 0, 0]), // black → K channel
+        (1, 0) | (2, 3) => image::Rgb([0, 255, 255]), // pure cyan
+        (2, 0) | (1, 3) => image::Rgb([255, 0, 255]), // pure magenta
+        (3, 0) | (0, 3) => image::Rgb([255, 255, 0]), // pure yellow
+        (0, 1) | (3, 2) => image::Rgb([255, 0, 0]), // red (magenta+yellow) → M+Y
+        (1, 1) | (2, 2) => image::Rgb([0, 255, 0]), // green (cyan+yellow) → C+Y
+        (2, 1) | (1, 2) => image::Rgb([0, 0, 255]), // blue (cyan+magenta) → C+M
+        _ => image::Rgb([128, 128, 128]),         // neutral → activates K
     });
     let params = FilterParams {
         halftone: HalftoneMode::Cmyk {
@@ -38,7 +38,7 @@ fn halftone_cmyk_preserves_dimensions() {
     let (out, dots) = filter::apply_with_progress(&img, &params, &cancel, |_, _, _| {}).unwrap();
     assert_eq!(out.dimensions(), (64, 64), "dimensions conservées");
     assert!(!dots.is_empty(), "halftone CMYK doit émettre des dots");
-    // 4 canaux → au moins 4 couleurs distinctes (C, M, Y, K).
+    // 4 channels → at least 4 distinct colors (C, M, Y, K).
     use std::collections::HashSet;
     let colors: HashSet<_> = dots.iter().map(|d| d.color).collect();
     assert!(
@@ -73,7 +73,7 @@ fn halftone_dominant_emits_n_channels() {
     assert_eq!(out.dimensions(), (60, 60));
     use std::collections::HashSet;
     let colors: HashSet<_> = dots.iter().map(|d| d.color).collect();
-    // Les centres k-means se rapprochent des 3 couleurs source ; on accepte ≥ 2.
+    // The k-means centers come close to the 3 source colors; we accept ≥ 2.
     assert!(
         colors.len() >= 2,
         "Dominant-3 doit produire ≥ 2 canaux distincts, got {}",
@@ -96,7 +96,7 @@ fn halftone_fm_screening_produces_content() {
     let (out, dots) = filter::apply_with_progress(&img, &params, &cancel, |_, _, _| {}).unwrap();
     assert_eq!(out.dimensions(), (50, 50));
     assert!(!dots.is_empty(), "FM doit émettre des dots");
-    // FM doit contenir au moins 1 couleur d'encre (vrai sur imagen contrastée).
+    // FM must contain at least 1 ink color (true on a contrasted image).
     use std::collections::HashSet;
     let colors: HashSet<_> = dots.iter().map(|d| d.color).collect();
     assert!(!colors.is_empty(), "FM doit avoir au moins 1 couleur");
@@ -126,7 +126,7 @@ fn gamma_corrected_cmyk_halftone_produces_content() {
 
 #[test]
 fn halftone_off_path_unchanged() {
-    // S'assure que HalftoneMode::Off retombe sur le pipeline historique.
+    // Make sure HalftoneMode::Off falls back to the historical pipeline.
     let img = checkerboard(32, 32);
     let params = FilterParams {
         algorithm: pointimg::filter::Algorithm::Grid,
@@ -138,7 +138,7 @@ fn halftone_off_path_unchanged() {
     let cancel = AtomicBool::new(false);
     let (out, dots) = filter::apply_with_progress(&img, &params, &cancel, |_, _, _| {}).unwrap();
     assert_eq!(out.dimensions(), (32, 32));
-    // Grid 8 cols → au moins 50 dots pour 32×32.
+    // Grid 8 cols → at least 50 dots for 32×32.
     assert!(
         dots.len() >= 50,
         "Mode Off Grid 8 cols devrait produire ~64 dots, got {}",
@@ -148,8 +148,8 @@ fn halftone_off_path_unchanged() {
 
 #[test]
 fn apply_dynamic_gamma_cmyk_halftone_does_not_panic() {
-    // Régression : le chemin gamma+halftone d'`apply_dynamic` empruntait une
-    // route interne qui atteignait `unreachable!()`.
+    // Regression: the gamma+halftone path of `apply_dynamic` went through an
+    // internal route that reached `unreachable!()`.
     use pointimg::filter::Algorithm;
     let img = RgbImage::from_fn(32, 32, |x, y| {
         if (x + y) % 2 == 0 {
@@ -174,8 +174,8 @@ fn apply_dynamic_gamma_cmyk_halftone_does_not_panic() {
 
 #[test]
 fn apply_gamma_dominant_halftone_does_not_panic() {
-    // Régression : `apply` en gamma routerait seul le CMJN vers `apply_rgba`, et
-    // le mode dominant atteindrait `unreachable!()`.
+    // Regression: `apply` in gamma would route CMYK alone to `apply_rgba`, and
+    // the dominant mode would reach `unreachable!()`.
     use pointimg::filter::Algorithm;
     let img = RgbImage::from_fn(32, 32, |x, y| match (x / 16 + y / 16) % 3 {
         0 => image::Rgb([255, 0, 0]),
@@ -198,8 +198,8 @@ fn apply_gamma_dominant_halftone_does_not_panic() {
 
 #[test]
 fn apply_with_progress_cached_halftone_does_not_panic() {
-    // Régression : le chemin « cached » envoyait le halftone à
-    // `apply_with_progress_inner`, qui ne le gère pas (`unreachable!()`).
+    // Regression: the "cached" path sent halftone to
+    // `apply_with_progress_inner`, which does not handle it (`unreachable!()`).
     use pointimg::filter::Algorithm;
     let img = RgbImage::from_fn(16, 16, |_, _| image::Rgb([0, 255, 255]));
     let density = vec![1.0f32; 16 * 16];

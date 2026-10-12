@@ -1,4 +1,4 @@
-//! Tests de validité du rendu SVG via l'API publique.
+//! Tests for the validity of the SVG rendering through the public API.
 
 use pointimg::filter::{self, Algorithm, Dot, DotShape, FilterParams};
 use std::sync::atomic::AtomicBool;

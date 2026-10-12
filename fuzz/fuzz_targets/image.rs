@@ -25,8 +25,8 @@ fuzz_target!(|data: &[u8]| {
     let rgb = pointimg::filter::flatten_to_rgb(&image, [255, 255, 255]);
     let _ = pointimg::filter::compute_density_image(&rgb, 0.7);
 
-    // Réduire l'image avant le pipeline complet : libFuzzer doit rester rapide,
-    // et les chemins de rendu/SVG/halftone ne dépendent pas de la résolution.
+    // Shrink the image before the full pipeline: libFuzzer must stay fast,
+    // and the render/SVG/halftone paths do not depend on the resolution.
     let small = image::imageops::resize(
         &rgb,
         rgb.width().min(64),
@@ -52,7 +52,7 @@ fuzz_target!(|data: &[u8]| {
         if let Ok((_, dots)) =
             filter::apply_with_progress(&small, &params, &cancel, |_, _, _| {})
         {
-            // Couvre aussi le rendu SVG (formes, coordonnées, palette).
+            // Also covers SVG rendering (shapes, coordinates, palette).
             let _ = filter::render_svg_from_dots(
                 small.width(),
                 small.height(),
@@ -62,7 +62,7 @@ fuzz_target!(|data: &[u8]| {
         }
     }
 
-    // Halftone dominant + FM (séparation k-means, screening stochastique).
+    // Dominant halftone + FM (k-means separation, stochastic screening).
     let halftone = FilterParams {
         algorithm: Algorithm::Halftone,
         halftone: HalftoneMode::Dominant {

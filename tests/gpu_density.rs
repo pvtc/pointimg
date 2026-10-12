@@ -1,9 +1,9 @@
-//! Parité CPU/GPU de la density map (feature `gpu`).
+//! CPU/GPU parity of the density map (feature `gpu`).
 //!
-//! Le test se désactive proprement si aucun adaptateur GPU n'est disponible
-//! (CI sans GPU, drivers absents) : il vérifie d'abord `gpu_available()`.
-//! Il compare directement `gpu::compute_density_map_raw` au chemin CPU, sans
-//! dépendre de la variable d'environnement d'opt-in `POINTIMG_GPU`.
+//! The test disables itself cleanly if no GPU adapter is available
+//! (CI without a GPU, missing drivers): it first checks `gpu_available()`.
+//! It compares `gpu::compute_density_map_raw` directly against the CPU path,
+//! without depending on the `POINTIMG_GPU` opt-in environment variable.
 
 use image::RgbImage;
 use pointimg::filter::{compute_density_map_cpu, gpu};

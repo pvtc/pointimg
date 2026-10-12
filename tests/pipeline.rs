@@ -1,7 +1,7 @@
-//! Tests d'intégration du pipeline complet via l'API publique.
+//! Integration tests for the complete pipeline through the public API.
 //!
-//! Ces tests ne touchent que l'API publique de `pointimg::filter`, contrairement
-//! aux tests unitaires dans `src/filter/mod.rs` qui inspectent les internals.
+//! These tests only touch the public API of `pointimg::filter`, unlike
+//! the unit tests in `src/filter/mod.rs` which inspect the internals.
 
 use pointimg::filter::{self, Algorithm, DotShape, FilterParams, HalftoneMode};
 use std::sync::atomic::AtomicBool;
@@ -16,12 +16,12 @@ fn checkerboard(w: u32, h: u32) -> image::RgbImage {
     })
 }
 
-/// Chaque contrôle de `validate_params` doit mentionner le champ qu'il refuse.
+/// Each check in `validate_params` must mention the field it rejects.
 ///
-/// `validate_params` a été découpé en sept fonctions ; ces tests vérifient que le
-/// découpage n'a pas fusionné deux contrôles ni perdu un message. La borne
-/// *juste acceptée* est testée avec, pour qu'un contrôle devenu trop large se
-/// voie.
+/// `validate_params` has been split into seven functions; these tests check
+/// that the split neither merged two checks nor lost a message. The boundary
+/// that is *just accepted* is tested too, so that a check which has become too
+/// loose shows up.
 #[test]
 fn chaque_controle_nomme_le_champ_quil_refuse() {
     fn refuse(nom: &str, corps: impl FnOnce(&mut FilterParams)) {
@@ -72,8 +72,8 @@ fn chaque_controle_nomme_le_champ_quil_refuse() {
             angle_deg: 0.0,
         }
     });
-    // Le mode d'encre manquant est un cas à part : le message parle de
-    // l'algorithme, pas d'un champ.
+    // The missing ink mode is a special case: the message talks about
+    // the algorithm, not about a field.
     let params = FilterParams {
         algorithm: Algorithm::Halftone,
         ..FilterParams::default()
@@ -86,7 +86,7 @@ fn chaque_controle_nomme_le_champ_quil_refuse() {
         "un halftone sans mode d'encre doit être refusé par son nom"
     );
 
-    // Et la borne juste acceptée, pour qu'un contrôle élargi se voie.
+    // And the boundary that is just accepted, so that a loosened check shows up.
     accepte(|p| {
         p.algorithm = Algorithm::Halftone;
         p.halftone = HalftoneMode::Cmyk {
@@ -253,8 +253,8 @@ fn compute_dots_matches_apply_in_count() {
     let (_, dots_apply) =
         filter::apply_with_progress(&img, &params, &cancel, |_, _, _| {}).expect("ok");
     let dots_compute = filter::compute_dots(&img, &params).expect("ok");
-    // Quadtree est déterministe (pas de RNG), donc les deux chemins doivent
-    // produire le même nombre de dots.
+    // Quadtree is deterministic (no RNG), so both paths must produce the same
+    // number of dots.
     assert_eq!(
         dots_apply.len(),
         dots_compute.len(),
@@ -271,7 +271,7 @@ fn flatten_to_rgb_composites_alpha_on_bg() {
     let dyn_img = DynamicImage::ImageRgba8(rgba);
     let rgb_white = filter::flatten_to_rgb(&dyn_img, [255, 255, 255]);
     let p = rgb_white.get_pixel(0, 0);
-    // alpha 128/255 sur fond blanc → rouge atténué vers blanc
+    // alpha 128/255 on a white background → red faded toward white
     assert!(p[0] > 128, "R composite doit etre > 128, got {}", p[0]);
     assert!(
         p[1] > 0 && p[1] < 200,
@@ -289,7 +289,7 @@ fn compute_density_image_dimensions_match_source() {
 
 #[test]
 fn zero_iterations_voronoi_produces_dots() {
-    // iterations=0 est valide : seeds bruts, pas de relaxation Lloyd
+    // iterations=0 is valid: raw seeds, no Lloyd relaxation
     let img = checkerboard(48, 48);
     let params = FilterParams {
         algorithm: Algorithm::Voronoi,
@@ -307,7 +307,7 @@ fn zero_iterations_voronoi_produces_dots() {
 
 #[test]
 fn apply_rgba_transparent_produces_alpha_channel() {
-    // Image 80x80 blanche unie → dots blancs, mais le fond transparent.
+    // Solid white 80x80 image → white dots, but a transparent background.
     let img = image::RgbImage::from_pixel(80, 80, image::Rgb([255, 255, 255]));
     let params = FilterParams {
         algorithm: Algorithm::Grid,
@@ -319,7 +319,7 @@ fn apply_rgba_transparent_produces_alpha_channel() {
     };
     let (dst, _dots) = filter::apply_rgba(&img, &params).expect("ok");
     assert_eq!(dst.dimensions(), (80, 80), "dimensions conservées");
-    // Compter les pixels transparents vs opaques/partiels.
+    // Count the transparent pixels versus the opaque/partial ones.
     let mut transparent = 0u32;
     let mut covered = 0u32;
     for px in dst.pixels() {
@@ -329,9 +329,9 @@ fn apply_rgba_transparent_produces_alpha_channel() {
             covered += 1;
         }
     }
-    // cell = 8px, r ≤ 0.02 * 80 = 1.6px, et capped à cell/2*0.8 = 3.2px.
-    // Tous les dots ont un rayon très petit, donc il doit y avoir beaucoup de
-    // pixels entre les dots qui restent transparents.
+    // cell = 8px, r <= 0.02 * 80 = 1.6px, and capped at cell/2*0.8 = 3.2px.
+    // All the dots have a very small radius, so there should be many pixels
+    // between the dots that stay transparent.
     assert!(
         transparent > 0,
         "doit avoir au moins un pixel transparent (entre les dots), got {transparent}"
@@ -450,9 +450,9 @@ fn presets_reject_unknown_format_versions() {
 
 #[test]
 fn gamma_correction_makes_mixed_midtones_brighter() {
-    // Image moitié noire, moitié blanche : la moyenne perceptuelle (linéaire)
-    // ≈ 188 (sRGB), alors que la moyenne naïve sRGB = 128. La correction gamma
-    // doit donc produire une dot color significativement plus claire.
+    // Image half black, half white: the perceptual (linear) mean
+    // ~= 188 (sRGB), whereas the naive sRGB mean = 128. The gamma correction
+    // must therefore produce a significantly lighter colored dot.
     let img = image::RgbImage::from_fn(16, 16, |x, _y| {
         if x < 8 {
             image::Rgb([0, 0, 0])
@@ -462,7 +462,7 @@ fn gamma_correction_makes_mixed_midtones_brighter() {
     });
     let params_gamma = FilterParams {
         algorithm: Algorithm::Grid,
-        cols: 1, // un seul dot couvrant toute l'image
+        cols: 1, // a single dot covering the whole image
         gamma_correct: true,
         rng_seed: Some(1),
         ..FilterParams::default()
@@ -478,7 +478,7 @@ fn gamma_correction_makes_mixed_midtones_brighter() {
         filter::apply_with_progress(&img, &params_no_gamma, &cancel, |_, _, _| {}).unwrap();
     let avg_gamma = dots_g[0].color[0] as i32;
     let avg_no_gamma = dots_ng[0].color[0] as i32;
-    // Attente : 127-128 sans gamma (moyenne sRGB), ~188 avec gamma (linéaire).
+    // Expected: 127-128 without gamma (sRGB mean), ~188 with gamma (linear).
     assert!(
         (120..=128).contains(&avg_no_gamma),
         "sans gamma, moyenne sRGB de (0,255) ≈ 127-128, got {avg_no_gamma}"

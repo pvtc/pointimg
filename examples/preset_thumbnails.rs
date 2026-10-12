@@ -1,16 +1,16 @@
-//! Génère les vignettes des presets dans `assets/presets/`.
+//! Generates the preset thumbnails in `assets/presets/`.
 //!
-//! Chaque vignette est le rendu d'une image d'exemple par un preset intégré.
-//! La même image sert pour tous : comparer deux presets n'a de sens que sur la
-//! même source.
+//! Each thumbnail is the rendering of a sample image by a built-in preset.
+//! The same image serves for all of them: comparing two presets only makes
+//! sense on the same source.
 //!
-//! Les vignettes sont générées depuis `filter::builtin_presets()` lui-même, et
-//! non depuis des options de ligne de commande recopiées — un preset modifié
-//! donnerait une vignette à jour sans qu'aucune option puisse en diverger. Un
-//! test (`src/preset_thumbs.rs`) vérifie qu'il y a bien une vignette par
+//! The thumbnails are generated from `filter::builtin_presets()` itself, and
+//! not from hand-copied command line options - a modified preset would give an
+//! up-to-date thumbnail without any option being able to diverge from it. A
+//! test (`src/preset_thumbs.rs`) checks that there is indeed one thumbnail per
 //! preset.
 //!
-//! Usage : `cargo run --example preset_thumbnails`
+//! Usage: `cargo run --example preset_thumbnails`
 
 use std::path::{Path, PathBuf};
 
@@ -20,17 +20,17 @@ use image::{
 };
 use pointimg::filter::{self, FilterParams};
 
-/// Taille de la vignette. Assez grand pour un écran HiDPI dans une liste de
-/// ~48 px, assez petit pour que les neuf fichiers restent légers.
+/// Thumbnail size. Big enough for a HiDPI screen in a list of ~48 px,
+/// small enough for the nine files to stay light.
 const LARGEUR: u32 = 240;
 const HAUTEUR: u32 = 180;
 
-/// Image source.
+/// Source image.
 ///
-/// Un portrait, et non un paysage : le pointillisme se juge sur un visage, et
-/// c'est le seul exemple du dépôt où l'on voit ce qu'un preset fait d'un sujet
-/// reconnaissable. La scène volcanique, plus contrastée, donnait des vignettes
-/// presque noires — la Rosette CMJN surtout.
+/// A portrait, not a landscape: pointillism is judged on a face, and
+/// this is the only sample in the repository where one sees what a preset does
+/// with a recognizable subject. The more contrasted volcanic scene gave
+/// almost black thumbnails - the CMYK Rosette most of all.
 const SOURCE: &str = "assets/examples/pexels-kofishelbyfotos-38152015.jpg";
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -61,24 +61,24 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     Ok(())
 }
 
-/// Applique un preset. Le mode rapide est désactivé : une vignette doit
-/// montrer le rendu final, pas un aperçu.
+/// Applies a preset. The fast mode is disabled: a thumbnail must
+/// show the final rendering, not a preview.
 fn filtre(src: &RgbImage, params: &FilterParams) -> Result<RgbImage, Box<dyn std::error::Error>> {
-    // Les presets sont validés par la bibliothèque ; un échec ici signalerait
-    // un preset cassé, pas une vignette mal rendue.
+    // The presets are validated by the library; a failure here would signal a
+    // broken preset, not a badly rendered thumbnail.
     filter::validate_params(src.width(), src.height(), params)
         .map_err(|e| format!("preset invalide : {e}"))?;
     Ok(filter::apply(src, params)?)
 }
 
-/// Redimensionne en roster le ratio demandé, puis à la taille.
+/// Resizes by cropping the requested ratio, then to the target size.
 ///
-/// Un recadrage plutôt qu'un étirement : la vignette montre le même cadrage que
-/// l'utilisateur verra, et un portrait déformé ferait juger le preset à tort.
+/// A crop rather than a stretch: the thumbnail shows the same framing the
+/// user will see, and a distorted portrait would make the preset judged unfairly.
 ///
-/// L'ancrage vertical est au tiers haut plutôt qu'au milieu. La source étant
-/// un portrait vertical, un recadrage centré couperait le visage en deux ;
-/// l'ancrage au tiers le garde entier dans le cadre.
+/// The vertical anchor is the upper third rather than the middle. As the
+/// source is a vertical portrait, a centered crop would cut the face in two;
+/// the upper-third anchor keeps it whole inside the frame.
 fn redimensionner(
     src: &RgbImage,
     largeur: u32,
@@ -97,7 +97,7 @@ fn redimensionner(
     Ok(image::DynamicImage::ImageRgba8(reduit).to_rgb8())
 }
 
-/// Nom de fichier : minuscules, sans accents ni espaces.
+/// File name: lowercase, without accents or spaces.
 fn fichier_sur(nom: &str) -> String {
     nom.to_lowercase()
         .chars()
@@ -117,8 +117,8 @@ fn fichier_sur(nom: &str) -> String {
         .to_string()
 }
 
-/// Racine du dépôt, déduite du répertoire du binaire d'exemple
-/// (`target/<profil>/examples/preset_thumbnails`).
+/// Repository root, deduced from the directory of the example binary
+/// (`target/<profile>/examples/preset_thumbnails`).
 fn racine_du_projet() -> Result<PathBuf, Box<dyn std::error::Error>> {
     let exe = std::env::current_exe()?;
     let mut chemin: &Path = exe.as_path();

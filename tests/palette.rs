@@ -1,4 +1,4 @@
-//! Quantification de palette : le rendu SVG réduit le nombre de couleurs.
+//! Palette quantization: the SVG rendering reduces the number of colors.
 
 use pointimg::filter::{self, Algorithm, DotShape, FilterParams};
 use std::sync::atomic::AtomicBool;
@@ -13,7 +13,7 @@ fn gradient_rgb(w: u32, h: u32) -> image::RgbImage {
     })
 }
 
-/// Compte les valeurs `fill="#rrggbb"` distinctes dans un SVG.
+/// Counts the distinct `fill="#rrggbb"` values in an SVG.
 fn distinct_fill_colors(svg: &str) -> usize {
     svg.lines()
         .filter_map(|l| {

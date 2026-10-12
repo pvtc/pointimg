@@ -1,19 +1,19 @@
-//! Le chemin sans aperçus doit rendre exactement ce que rend le chemin direct.
+//! The preview-less path must render exactly what the direct path renders.
 //!
-//! `apply_with_iteration_counts` a été introduit pour la CLI, qui n'affichait
-//! jamais les images que `apply_with_progress` lui rendait à chaque itération
-//! de Lloyd. Supprimer ce travail ne doit pas changer un seul pixel.
+//! `apply_with_iteration_counts` was introduced for the CLI, which never
+//! displayed the images that `apply_with_progress` returned to it at each
+//! Lloyd iteration. Dropping that work must not change a single pixel.
 //!
-//! Le test compare donc les deux fonctions sur les algorithmes itératifs, en
-//! balayant les réglages qui pilotent la progression.
+//! The test therefore compares the two functions on the iterative algorithms,
+//! sweeping the settings that drive progression.
 
 use pointimg::filter::{self, Algorithm, FilterParams, HalftoneMode};
 use std::sync::atomic::AtomicBool;
 
 fn source(w: u32, h: u32) -> image::RgbImage {
-    // Un dégradé bruité plutôt qu'un damier : le Lloyd a besoin de variance
-    // pour déplacer les points, sinon toute itération est un no-op et le test
-    // ne prouverait rien.
+    // A noisy gradient rather than a checkerboard: Lloyd needs variance
+    // to move the points, otherwise every iteration is a no-op and the test
+    // would not prove anything.
     image::RgbImage::from_fn(w, h, |x, y| {
         let t = (x * 7 + y * 13) % 97;
         image::Rgb([
@@ -31,18 +31,18 @@ fn base(algorithm: Algorithm) -> FilterParams {
     }
 }
 
-/// Compare les deux chemins, pixel par pixel et point par point.
+/// Compares the two paths, pixel by pixel and dot by dot.
 fn identique(algorithm: Algorithm, iterations: usize, variance: f32) {
     let src = source(96, 72);
     let mut params = base(algorithm);
     params.iterations = iterations;
     params.variance_sensitivity = variance;
-    // La graine est fixée : sans elle (`rng_seed: None`) l'échantillonnage
-    // initial tire de l'horloge, et deux appels *doivent* différer — c'est
-    // documenté. Comparer exige donc une graine explicite.
+    // The seed is fixed: without it (`rng_seed: None`) the initial sampling
+    // pulls from the clock, and two calls *must* differ - this is documented.
+    // Comparing therefore requires an explicit seed.
     params.rng_seed = Some(42);
-    // Un nombre de points faible garde le test court, sans changer la nature du
-    // chemin : la boucle de Lloyd tourne toujours.
+    // A small number of points keeps the test short without changing the nature
+    // of the path: the Lloyd loop still runs.
     params.num_points = 120;
 
     let cancel = AtomicBool::new(false);
@@ -53,15 +53,15 @@ fn identique(algorithm: Algorithm, iterations: usize, variance: f32) {
         })
         .expect("chemin sans aperçus");
 
-    // L'image elle-même : `apply` est le chemin direct historique, celui que
-    // la CLI utilisait déjà par ailleurs.
+    // The image itself: `apply` is the historical direct path, the one the
+    // CLI already used elsewhere.
     assert_eq!(
         image, attendu,
         "{algorithm:?} it={iterations} var={variance} : image différente"
     );
 
-    // Les points séparément, parce qu'une égalité d'image ne dit pas *où* le
-    // calcul a divergé si un jour il diverge.
+    // The dots separately, because an image equality does not say *where* the
+    // computation diverged if it ever diverges.
     let (_img_direct, dots_direct) =
         filter::apply_with_progress(&src, &params, &cancel, |_iter, _total, _preview| {})
             .expect("chemin avec aperçus");
@@ -120,8 +120,8 @@ fn le_chemin_sans_apercus_annonce_la_progression_attendue() {
     );
 }
 
-/// Le halftone n'a pas de boucle de Lloyd : le chemin sans aperçus doit rendre
-/// le même résultat en une seule annonce.
+/// Halftone has no Lloyd loop: the preview-less path must render the same
+/// result with a single announcement.
 #[test]
 fn le_halftone_passe_aussi_par_le_chemin_sans_apercus() {
     let src = source(48, 48);

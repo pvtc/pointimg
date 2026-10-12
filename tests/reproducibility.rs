@@ -1,15 +1,15 @@
-//! Reproductibilité : même graine → mêmes dots ; graines différentes → différents.
+//! Reproducibility: same seed → same dots; different seeds → different.
 
 use pointimg::filter::FilterParams;
 use pointimg::filter::{self, Algorithm, Dot};
 use std::sync::atomic::AtomicBool;
 
-/// Image à densité uniforme : un damier.
+/// Image of uniform density: a checkerboard.
 ///
-/// Les 80 graines s'y déplacent toutes entre une et cinq itérations, donc le
-/// test a des dents. Ce qu'il ne couvre pas, en revanche, c'est le *poids* de
-/// Lloyd — `lloyd_weights` y vaut partout la même valeur, donc aucune erreur de
-/// calcul de ce poids ne se verrait. D'où `noisy` plus bas.
+/// The 80 seeds all move between one and five iterations on it, so the
+/// test has teeth. What it does not cover, however, is the *weight* of
+/// Lloyd - `lloyd_weights` is the same value everywhere there, so no error in
+/// computing that weight would show up. Hence `noisy` below.
 fn checkerboard(w: u32, h: u32) -> image::RgbImage {
     image::RgbImage::from_fn(w, h, |x, y| {
         if (x + y) % 2 == 0 {
@@ -20,7 +20,7 @@ fn checkerboard(w: u32, h: u32) -> image::RgbImage {
     })
 }
 
-/// Image à densité réellement variable, pour exercer les poids de Lloyd.
+/// Image with genuinely variable density, to exercise the Lloyd weights.
 fn noisy(w: u32, h: u32) -> image::RgbImage {
     image::RgbImage::from_fn(w, h, |x, y| {
         let t = (x * 7 + y * 13) % 97;
@@ -36,7 +36,7 @@ fn dots_for(seed: Option<u64>) -> Vec<Dot> {
     dots_from(&checkerboard(60, 60), seed, 0.0)
 }
 
-/// Même reproductibilité, mais sur une image à densité variable.
+/// Same reproducibility, but on an image with variable density.
 fn dots_noisy(seed: Option<u64>) -> Vec<Dot> {
     dots_from(&noisy(60, 60), seed, 0.7)
 }
@@ -69,8 +69,8 @@ fn same_seed_produces_identical_dots() {
     }
 }
 
-/// Les poids de Lloyd (`density^power`) ne sont pas constants sur cette image :
-/// une erreur de calcul de ce poids déplacerait les graines.
+/// The Lloyd weights (`density^power`) are not constant on this image:
+/// an error in computing that weight would move the seeds.
 #[test]
 fn meme_graine_sur_image_a_variance_donne_les_memes_points() {
     let a = dots_noisy(Some(42));
@@ -82,8 +82,8 @@ fn meme_graine_sur_image_a_variance_donne_les_memes_points() {
         assert_eq!(da.color, db.color, "color identique");
         assert_eq!(da.radius.to_bits(), db.radius.to_bits(), "radius identique");
     }
-    // La variance doit faire une différence, sinon le nouveau test n'en serait
-    // pas un : à poids uniforme, les deux images donneraient le même résultat.
+    // Variance must make a difference, otherwise the new test would not be
+    // one: with uniform weights, both images would give the same result.
     let sans = dots_for(Some(42));
     assert_ne!(
         sans[0].x.to_bits(),
@@ -97,7 +97,7 @@ fn different_seeds_produce_different_dots() {
     let a = dots_for(Some(1));
     let b = dots_for(Some(2));
     assert_eq!(a.len(), b.len());
-    // Au moins un dot doit différer en position/color.
+    // At least one dot must differ in position/color.
     let any_diff = a.iter().zip(b.iter()).any(|(da, db)| {
         da.x.to_bits() != db.x.to_bits() || da.y.to_bits() != db.y.to_bits() || da.color != db.color
     });
