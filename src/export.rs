@@ -1,51 +1,50 @@
-//! Taille réelle d'un export, format par format.
+//! Real size of an export, format by format.
 //!
-//! Le point d'appui de Halftone — « la même image, mais plus légère » — ne se
-//! constate que si l'on compare la taille du fichier exporté à celle de la
-//! source. Aucune formule ne donne cette taille de façon fiable : la taille
-//! d'un PNG ou d'un WebP dépend de l'entropie du rendu, donc de l'image, des
-//! réglages et du format.
+//! The point of Halftone — "the same image, but lighter" — only shows up if
+//! the exported file size is compared with the source one. No formula gives
+//! that size reliably: the size of a PNG or of a WebP depends on the entropy
+//! of the render, hence on the image, the settings and the format.
 //!
-//! On encode donc réellement l'image, dans le même chemin de code que
-//! l'export ([`crate::frontend::encode_rgba_image`]), et on rapporte le nombre
-//! d'octets obtenu. C'est exact, et cela coûte une compression complète par
-//! format — d'où les deux garde-fous ci-dessous.
+//! The image is therefore really encoded, through the same code path as the
+//! export ([`crate::frontend::encode_rgba_image`]), and the number of bytes
+//! obtained is reported. That is exact, and it costs one full compression per
+//! format — hence the two safeguards below.
 //!
-//! - Les formats rapides sont toujours mesurés (PNG, JPEG, TIFF, BMP).
-//! - Le WebP **sans perte** est bien plus lent à encoder (libwebp, méthode 4) :
-//!   au-delà de [`WEBP_MEASURE_LIMIT`] pixels il n'est pas mesuré, et
-//!   l'interface affiche « — » plutôt qu'un chiffre inventé.
+//! - The fast formats are always measured (PNG, JPEG, TIFF, BMP).
+//! - Lossless WebP is much slower to encode (libwebp, method 4): beyond
+//!   [`WEBP_MEASURE_LIMIT`] pixels it is not measured, and the interface
+//!   displays a "—" rather than an invented figure.
 //!
-//! Les mesures sont produites dans un thread de travail, en parallèle avec
-//! rayon, et invalidées par un compteur de génération quand l'utilisateur
-//! continue de régler l'image.
+//! The measurements are produced in a worker thread, in parallel with rayon,
+//! and invalidated by a generation counter when the user keeps on adjusting
+//! the image.
 
 use image::RgbaImage;
 use rayon::prelude::*;
 
 use crate::frontend::{encode_rgba_extension, format_bytes};
 
-/// Au-delà de ce nombre de pixels, le WebP sans perte n'est pas mesuré
-/// (l'encodage prend alors plusieurs secondes pour une seule image).
+/// Beyond this number of pixels, lossless WebP is not measured (encoding then
+/// takes several seconds for a single image).
 pub const WEBP_MEASURE_LIMIT: u64 = 4_000_000;
 
-/// Formats d'export proposés à l'utilisateur, dans l'ordre du dialogue.
+/// Export formats offered to the user, in dialog order.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum ExportFormat {
-    /// PNG, sans perte, avec alpha — le format par défaut.
+    /// PNG, lossless, with alpha — the default format.
     Png,
-    /// WebP **sans perte** (c'est ce que produit l'export), avec alpha.
+    /// WebP **lossless** (this is what the export produces), with alpha.
     WebP,
-    /// JPEG : l'alpha est composé sur le fond.
+    /// JPEG: alpha is composited onto the background.
     Jpeg,
-    /// TIFF, sans perte, avec alpha — très lourd, rarement utile ici.
+    /// TIFF, lossless, with alpha — very heavy, rarely useful here.
     Tiff,
-    /// BMP, sans compression, sans alpha.
+    /// BMP, uncompressed, without alpha.
     Bmp,
 }
 
 impl ExportFormat {
-    /// Tous les formats, dans l'ordre d'affichage.
+    /// All the formats, in display order.
     pub const ALL: [ExportFormat; 5] = [
         ExportFormat::Png,
         ExportFormat::WebP,
@@ -54,7 +53,7 @@ impl ExportFormat {
         ExportFormat::Bmp,
     ];
 
-    /// Extension du fichier exporté, sans le point.
+    /// Extension of the exported file, without the dot.
     pub fn extension(self) -> &'static str {
         match self {
             ExportFormat::Png => "png",
@@ -65,7 +64,7 @@ impl ExportFormat {
         }
     }
 
-    /// Nom court affiché dans l'interface.
+    /// Short name displayed in the interface.
     pub fn label(self) -> &'static str {
         match self {
             ExportFormat::Png => "PNG",
@@ -76,28 +75,28 @@ impl ExportFormat {
         }
     }
 
-    /// Format par défaut de l'export (celui du bouton et du dialogue).
+    /// Default format of the export (the one of the button and of the dialog).
     pub fn default_export() -> Self {
         ExportFormat::Png
     }
 
-    /// Vrai si le format est mesuré systématiquement.
+    /// True when the format is measured systematically.
     fn is_cheap(self) -> bool {
         !matches!(self, ExportFormat::WebP)
     }
 }
 
-/// Taille d'un export, mesurée par encodage réel.
+/// Size of an export, measured by real encoding.
 #[derive(Clone, Debug, Default)]
 pub struct ExportSizes {
-    /// Octets par format ; `None` quand le format n'a pas été mesuré.
+    /// Bytes per format; `None` when the format was not measured.
     pub sizes: Vec<(ExportFormat, Option<u64>)>,
-    /// Taille du fichier source, si elle est connue.
+    /// Size of the source file, when it is known.
     pub source: Option<u64>,
 }
 
 impl ExportSizes {
-    /// Taille mesurée d'un format, si elle l'a été.
+    /// Measured size of a format, if it was measured.
     pub fn get(&self, format: ExportFormat) -> Option<u64> {
         self.sizes
             .iter()
@@ -105,10 +104,10 @@ impl ExportSizes {
             .and_then(|(_, size)| *size)
     }
 
-    /// Gain en pourcentage par rapport à la source (négatif = plus léger).
+    /// Gain in percent relative to the source (negative = lighter).
     ///
-    /// `None` si la source ou le format n'a pas été mesuré, ou si le gain est
-    /// indéterminé (source vide).
+    /// `None` when the source or the format was not measured, or when the gain
+    /// is undetermined (empty source).
     pub fn gain_percent(&self, format: ExportFormat) -> Option<f64> {
         let (source, output) = (self.source?, self.get(format)?);
         if source == 0 {
@@ -117,7 +116,7 @@ impl ExportSizes {
         Some((1.0 - output as f64 / source as f64) * 100.0)
     }
 
-    /// Rendu de la ligne d'information : « PNG 2,1 Mo · WebP — · JPEG 380 Ko ».
+    /// Rendering of the information line: "PNG 2.1 MB · WebP — · JPEG 380 kB".
     pub fn summary(&self) -> String {
         let mut parts = Vec::new();
         for format in ExportFormat::ALL {
@@ -130,23 +129,24 @@ impl ExportSizes {
         parts.join(" · ")
     }
 
-    /// Explication affichée sous la comparaison, dans l'infobulle.
+    /// Explanation displayed under the comparison, in the tooltip.
     ///
-    /// Le texte était écrit deux fois, une par interface, et une correction
-    /// d'un côté ne serait pas arrivée de l'autre. Ce n'est pas un widget : c'est
-    /// l'explication d'une donnée produite ici, donc elle part son logique avec.
+    /// The text used to be written twice, once per interface, and a correction
+    /// on one side would not have arrived from the other. This is not a
+    /// widget: it is the explanation of a datum produced here, so it shares
+    /// its logic with it.
     pub fn explanation() -> &'static str {
         "Tailles obtenues en encodant réellement le rendu dans chaque format.\n\
          « — » : format non mesuré (image trop grande pour un WebP sans perte)."
     }
 
-    /// Rendu de la comparaison avec la source, pour l'infobulle du bouton
-    /// d'export : « source 8,4 Mo · PNG −75 % ».
+    /// Rendering of the comparison with the source, for the tooltip of the
+    /// export button: "source 8.4 MB · PNG −75 %".
     pub fn comparison(&self, format: ExportFormat) -> Option<String> {
         let source = self.source?;
         let mut text = format!("source {}", format_bytes(source));
         if let Some(gain) = self.gain_percent(format) {
-            // `gain` est positif quand l'export est plus léger.
+            // `gain` is positive when the export is lighter.
             let rounded = gain.round() as i64;
             text.push_str(&format!(
                 " · {} {}{}",
@@ -160,11 +160,11 @@ impl ExportSizes {
     }
 }
 
-/// Mesure la taille d'un export pour chaque format, en encodant réellement
-/// l'image.
+/// Measures the size of an export for each format, by really encoding the
+/// image.
 ///
-/// `pixels` sert à décider si le WebP sans perte est mesuré ; les appelants le
-/// déduisent de l'image, mais le paramètre permet de tester sans.allouer.
+/// `pixels` is used to decide whether lossless WebP is measured; callers deduce
+/// it from the image, but the parameter allows testing without allocating.
 pub fn measure_export_sizes(
     img: &RgbaImage,
     transparent: bool,
@@ -193,8 +193,8 @@ mod tests {
     use super::*;
     use image::{Rgba, RgbaImage};
 
-    /// Image dont on connaît la taille encodée : 4×4 pixels unis, donc chaque
-    /// format produit un fichier déterministe.
+    /// Image whose encoded size is known: 4×4 solid pixels, so every format
+    /// produces a deterministic file.
     fn flat_image(w: u32, h: u32) -> RgbaImage {
         RgbaImage::from_pixel(w, h, Rgba([10, 20, 30, 255]))
     }
@@ -213,8 +213,8 @@ mod tests {
 
     #[test]
     fn measured_sizes_match_a_real_save() {
-        // La mesure doit tomber sur la taille du fichier réellement écrit :
-        // c'est tout l'intérêt de partager le chemin d'encodage.
+        // The measurement must land on the size of the file really written:
+        // that is the whole point of sharing the encoding path.
         let img = flat_image(24, 18);
         let dir = std::env::temp_dir().join(format!("pointimg-export-{}", std::process::id()));
         std::fs::create_dir_all(&dir).unwrap();
@@ -237,8 +237,8 @@ mod tests {
 
     #[test]
     fn alpha_survives_png_and_is_composited_in_jpeg() {
-        // Le même rendu transparent, dans les deux chemins : le PNG conserve
-        // l'alpha, le JPEG compose sur le fond.
+        // The same transparent render, through the two paths: PNG keeps the
+        // alpha, JPEG composites onto the background.
         let img = RgbaImage::from_pixel(8, 8, Rgba([0, 0, 0, 0]));
         let png = encode_rgba_extension("png", &img, true, [255, 255, 255]).unwrap();
         let jpeg = encode_rgba_extension("jpg", &img, true, [255, 255, 255]).unwrap();
@@ -254,7 +254,7 @@ mod tests {
 
     #[test]
     fn webp_is_skipped_above_the_measure_limit() {
-        // 2000×2001 pixels : au-delà de la limite, on n'encode pas le WebP.
+        // 2000×2001 pixels: beyond the limit, WebP is not encoded.
         let img = flat_image(2000, 2001);
         let sizes = measure_export_sizes(&img, false, [255; 3], None);
         assert_eq!(sizes.get(ExportFormat::WebP), None);

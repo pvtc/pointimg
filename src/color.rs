@@ -8,15 +8,15 @@ use image::{DynamicImage, ImageDecoder, ImageReader, Limits, RgbImage, RgbaImage
 use moxcms::{ColorProfile, Layout, TransformOptions};
 use std::path::Path;
 
-/// Décode un fichier image et le convertit vers l'espace sRGB.
+/// Decodes an image file and converts it to sRGB space.
 ///
-/// `profile_spec` vaut `auto` (profil embarqué, sinon sRGB), `srgb`,
-/// `display-p3` ou un chemin vers un fichier `.icc`. L'image est réduite aux
-/// limites du pipeline avant la transformation ICC.
+/// `profile_spec` is one of `auto` (embedded profile, otherwise sRGB), `srgb`,
+/// `display-p3` or a path to an `.icc` file. The image is brought down to the
+/// pipeline limits before the ICC transform.
 ///
-/// Retourne `(image, was_converted, was_resized)` : les deux booléens
-/// indiquent si une conversion colorimétrique a réellement eu lieu et si
-/// l'image a été redimensionnée.
+/// Returns `(image, was_converted, was_resized)`: the two booleans tell whether
+/// a colorimetric conversion actually took place and whether the image was
+/// resized.
 pub fn decode_to_srgb(path: &Path, profile_spec: &str) -> Result<(DynamicImage, bool, bool)> {
     let mut reader = ImageReader::open(path)
         .with_context(|| format!("Impossible de lire '{}'", path.display()))?
@@ -38,17 +38,17 @@ pub fn decode_to_srgb(path: &Path, profile_spec: &str) -> Result<(DynamicImage, 
     // several full-size working buffers at once.
     let (image, was_resized) = crate::filter::resize_to_limits(image);
     let profile = profile_from_spec(profile_spec, embedded.as_deref())?;
-    // Une conversion réelle n'a lieu que si un profil embarqué existe ou si un
-    // profil source non-sRGB est demandé. Avec le défaut `auto` sans profil
-    // embarqué, l'image est déjà sRGB : ne pas annoncer une conversion.
+    // A real conversion only happens when an embedded profile exists or when a
+    // non-sRGB source profile is requested. With the default `auto` and no
+    // embedded profile the image is already sRGB: do not report a conversion.
     let spec = profile_spec.to_ascii_lowercase();
     let uses_non_srgb = !matches!(spec.as_str(), "auto" | "srgb");
     let was_converted = embedded.is_some() || uses_non_srgb;
     convert_to_srgb(image, &profile).map(|image| (image, was_converted, was_resized))
 }
 
-/// Résout le profil de sortie. `srgb`/`auto` renvoient `None` (aucun tagging) ;
-/// sinon le fichier ICC est lu et renvoyé avec les octets à embarquer.
+/// Resolves the output profile. `srgb`/`auto` return `None` (no tagging);
+/// otherwise the ICC file is read and returned with the bytes to embed.
 pub fn output_profile_from_spec(spec: &str) -> Result<Option<(ColorProfile, Vec<u8>)>> {
     if spec.eq_ignore_ascii_case("srgb") || spec.eq_ignore_ascii_case("auto") {
         return Ok(None);
@@ -60,8 +60,8 @@ pub fn output_profile_from_spec(spec: &str) -> Result<Option<(ColorProfile, Vec<
     Ok(Some((profile, bytes)))
 }
 
-/// Construit un `ColorProfile` depuis une spécification : `auto` (profil
-/// embarqué si présent), `srgb`, `display-p3` ou un chemin `.icc`.
+/// Builds a `ColorProfile` from a specification: `auto` (embedded profile when
+/// present), `srgb`, `display-p3` or an `.icc` path.
 pub fn profile_from_spec(spec: &str, embedded: Option<&[u8]>) -> Result<ColorProfile> {
     match spec.to_ascii_lowercase().as_str() {
         "auto" => match embedded {
@@ -85,7 +85,7 @@ fn convert_to_srgb(image: DynamicImage, profile: &ColorProfile) -> Result<Dynami
     convert_image(image, profile, &destination)
 }
 
-/// Convertit une image de l'espace sRGB vers `profile`.
+/// Converts an image from sRGB space to `profile`.
 pub fn convert_from_srgb(image: DynamicImage, profile: &ColorProfile) -> Result<DynamicImage> {
     let source = ColorProfile::new_srgb();
     convert_image(image, &source, profile)
@@ -107,9 +107,9 @@ fn convert_image(
     }
 }
 
-/// Pixels traités par appel de transformation ICC. Borne le pic mémoire des
-/// buffers `f32` intermédiaires au lieu de réserver deux buffers pleine image
-/// (24 octets/pixel pour RGB, 32 pour RGBA).
+/// Pixels handled per ICC transform call. Caps the peak memory of the
+/// intermediate `f32` buffers instead of reserving two full-image buffers
+/// (24 bytes/pixel for RGB, 32 for RGBA).
 const COLOR_CHUNK_PIXELS: usize = 64 * 1024;
 
 fn transform_rgb(
@@ -134,9 +134,9 @@ fn transform_rgb_chunked(
             TransformOptions::default(),
         )
         .map_err(|e| anyhow!("Impossible de créer la transformation colorimétrique : {e:?}"))?;
-    // `saturating_mul` : permet d'utiliser `usize::MAX` comme « tout d'un coup »
-    // dans les tests sans déborder ; le plafond par `source.len()` évite une
-    // capacité de vecteur absurde.
+    // `saturating_mul`: lets the tests use `usize::MAX` as "all at once"
+    // without overflowing; the cap by `source.len()` avoids an absurd vector
+    // capacity.
     let chunk_len = chunk_pixels
         .max(1)
         .saturating_mul(3)
@@ -238,8 +238,8 @@ mod tests {
         });
         let srgb = ColorProfile::new_srgb();
         let p3 = ColorProfile::new_display_p3();
-        // Un chunk minuscule force de nombreux appels ; `usize::MAX` fait tout
-        // d'un coup. Les deux doivent produire exactement les mêmes octets.
+        // A tiny chunk forces many calls; `usize::MAX` does everything in one
+        // go. The two must produce exactly the same bytes.
         let chunked = transform_rgb_chunked(&source, &srgb, &p3, 1).unwrap();
         let single = transform_rgb_chunked(&source, &srgb, &p3, usize::MAX).unwrap();
         assert_eq!(chunked.as_raw(), single.as_raw());

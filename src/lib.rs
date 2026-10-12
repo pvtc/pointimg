@@ -1,10 +1,10 @@
 //! # pointimg
 //!
-//! Filtre pointilliste : transforme une image en composition de points
-//! colorés (stippling Voronoï, k-means, grille, quadtree, ou trame
-//! halftone multi-canaux type rosette CMJN).
+//! Pointillist filter: turns an image into a composition of colored dots
+//! (Voronoi stippling, k-means, grid, quadtree, or a multi-channel halftone
+//! screen of the CMYK rosette kind).
 //!
-//! ## Utilisation minimale
+//! ## Minimal usage
 //!
 //! ```
 //! use image::RgbImage;
@@ -20,22 +20,22 @@
 //! assert_eq!(dst.dimensions(), (64, 64));
 //! ```
 //!
-//! ## Les entrées principales
+//! ## The main entry points
 //!
-//! - [`filter::apply`] / [`filter::apply_dynamic`] : image filtrée à partir d'un
-//!   `RgbImage` ou d'une `DynamicImage` (RGBA, niveaux de gris, etc.).
-//! - [`filter::compute_dots`] : les dots seuls (sans rendu), pour un export
-//!   SVG ([`filter::render_svg_from_dots`]) ou un rendu RGBA
+//! - [`filter::apply`] / [`filter::apply_dynamic`]: a filtered image from an
+//!   `RgbImage` or a `DynamicImage` (RGBA, grayscale, etc.).
+//! - [`filter::compute_dots`]: the dots alone (without rendering), for an SVG
+//!   export ([`filter::render_svg_from_dots`]) or an RGBA render
 //!   ([`filter::render_rgba`]).
-//! - [`filter::apply_with_progress`] : variante itérative avec callback de
-//!   progression et token d'annulation (utilisée par la GUI).
-//! - [`filter::FilterParams`] : tous les réglages, sérialisables en presets
-//!   TOML via [`filter::FilterParams::to_toml_string`].
+//! - [`filter::apply_with_progress`]: iterative variant with a progress
+//!   callback and a cancellation token (used by the GUI).
+//! - [`filter::FilterParams`]: all the settings, serializable as TOML presets
+//!   via [`filter::FilterParams::to_toml_string`].
 //!
-//! ## Reproductibilité
+//! ## Reproducibility
 //!
-//! Fixer [`filter::FilterParams::rng_seed`] rend le placement des dots
-//! déterministe pour un même couple (image, paramètres).
+//! Setting [`filter::FilterParams::rng_seed`] makes dot placement
+//! deterministic for a given (image, parameters) pair.
 
 #![warn(missing_docs)]
 

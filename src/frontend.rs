@@ -1,12 +1,12 @@
-//! Helpers partagés entre les binaires (CLI, egui et GTK4).
+//! Helpers shared between the binaries (CLI, egui and GTK4).
 //!
-//! Les binaires `pointimg`, `pointimg-gui` et `pointimg-gtk` sont des crates
-//! distinctes et ne peuvent pas partager du code `pub(crate)`. Ce module expose
-//! donc les helpers communs — formatage, normalisation des chemins de sortie,
-//! écritures atomiques, export RGBA et presets — depuis la bibliothèque.
+//! The `pointimg`, `pointimg-gui` and `pointimg-gtk` binaries are distinct
+//! crates and cannot share `pub(crate)` code. This module therefore exposes
+//! the common helpers — formatting, normalization of the output paths, atomic
+//! writes, RGBA export and presets — from the library.
 //!
-//! Il est public parce que les binaires en ont besoin, mais il ne fait pas
-//! partie de l'API stable de `pointimg`.
+//! It is public because the binaries need it, but it is not part of the stable
+//! API of `pointimg`.
 
 use crate::filter::{self, FilterParams};
 use image::{RgbImage, RgbaImage};
@@ -14,20 +14,20 @@ use std::io::Cursor;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
 
-// ─── Éléments partagés par les deux interfaces ───────────────────────────────
+// ─── Elements shared by the two interfaces ───────────────────────────────────
 
-/// Extensions d'images acceptées par les deux interfaces (ouverture, dossier,
-/// glisser-déposer).
-/// Extensions reconnues par les interfaces.
+/// Image extensions accepted by the two interfaces (opening, folder,
+/// drag-and-drop).
+/// Extensions recognized by the interfaces.
 ///
-/// `gif` figure ici parce que la CLI l'acceptait déjà (`main.rs` tenait sa
-/// propre liste, en avance d'une entrée) et que `image::open` le décode :
-/// un GIF animé donne son premier plan, ce qui est exactement la promesse
-/// d'un rendu sur image fixe. Une seule liste, donc plus de divergence
-/// possible entre les interfaces et la CLI.
+/// `gif` appears here because the CLI already accepted it (`main.rs` kept its
+/// own list, one entry ahead) and because `image::open` decodes it: an animated
+/// GIF gives its first frame, which is exactly the promise of a still-image
+/// render. A single list, so no more divergence possible between the
+/// interfaces and the CLI.
 pub const IMAGE_EXTENSIONS: [&str; 8] = ["png", "jpg", "jpeg", "webp", "bmp", "gif", "tif", "tiff"];
 
-/// Vrai si le chemin pointe vers un fichier image connu des interfaces.
+/// True when the path points to an image file known to the interfaces.
 pub fn is_supported_image(path: &Path) -> bool {
     path.extension()
         .and_then(|extension| extension.to_str())
@@ -35,31 +35,31 @@ pub fn is_supported_image(path: &Path) -> bool {
         .unwrap_or(false)
 }
 
-/// Décrit une image pour l'interface (« 1400×1050 · 1,5 Mpx »).
+/// Describes an image for the interface ("1400×1050 · 1.5 Mpx").
 pub fn describe_image_size(width: u32, height: u32) -> String {
     let megapixels = f64::from(width) * f64::from(height) / 1_000_000.0;
     format!("{width}×{height} · {megapixels:.1} Mpx")
 }
 
-/// Mode d'affichage de la zone d'aperçu, commun aux deux interfaces.
+/// Display mode of the preview area, common to both interfaces.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum ViewMode {
-    /// Source et résultat superposés, séparés par un curseur.
+    /// Source and result overlaid, separated by a slider.
     Compare,
-    /// Source et résultat côte à côte.
+    /// Source and result side by side.
     Side,
-    /// Résultat seul.
+    /// Result only.
     ResultOnly,
-    /// Source seule.
+    /// Source only.
     SourceOnly,
-    /// Carte de détail local.
+    /// Local detail map.
     DensityMap,
 }
 
-/// Nombre de modes d'affichage (cyclés par `Tab` et par le menu).
+/// Number of display modes (cycled by `Tab` and by the menu).
 pub const VIEW_COUNT: u32 = 5;
 
-/// Position du mode dans les listes déroulantes.
+/// Position of the mode in the dropdown lists.
 pub fn view_index(mode: ViewMode) -> u32 {
     match mode {
         ViewMode::Compare => 0,
@@ -70,35 +70,36 @@ pub fn view_index(mode: ViewMode) -> u32 {
     }
 }
 
-/// Mode correspondant à une position de liste déroulante.
+/// Mode matching a dropdown list position.
 ///
-/// Retombe sur le premier mode, explicitement, plutôt que via un `_ =>` qui
-/// masquerait une liste désynchronisée de [`VIEW_COUNT`].
+/// Falls back on the first mode explicitly, rather than through a `_ =>` that
+/// would hide a list that got out of sync with [`VIEW_COUNT`].
 pub fn view_from_index(index: u32) -> ViewMode {
     match index {
         1 => ViewMode::Side,
         2 => ViewMode::ResultOnly,
         3 => ViewMode::SourceOnly,
         4 => ViewMode::DensityMap,
-        // Le zéro étant le premier mode, la règle et le cas limite coïncident.
+        // Zero being the first mode, the rule and the boundary case coincide.
         _ => ViewMode::Compare,
     }
 }
 
-// ─── Tables de variantes ────────────────────────────────────────────────────
+// ─── Variant tables ──────────────────────────────────────────────────────────
 //
-// Les listes déroulantes des deux interfaces portent sur les mêmes enums. Chaque
-// sens de conversion était écrit dans chaque interface, avec un `_ =>` pour
-// « cas impossible » — et ces cas sont arrivés : `algorithm_from_index`
-// retombait sur `Halftone`, qui exige de plus un mode d'encre, donc une liste
-// désynchronisée de son enum produisait un rendu en échec ; `dithering_from_index`
-// retombait sur `Off`, donc une liste décalée désactivait le tramage sans le dire.
+// The dropdown lists of the two interfaces span the same enums. Each
+// conversion direction used to be written in every interface, with a `_ =>`
+// for the "impossible case" — and those cases did happen:
+// `algorithm_from_index` fell back on `Halftone`, which moreover requires an
+// ink mode, so a list got out of sync with its enum and produced a failed
+// render; `dithering_from_index` fell back on `Off`, so a shifted list
+// disabled dithering without saying so.
 //
-// Les tables ci-dessous sont la seule liste. Les deux sens en découlent, et un
-// index inconnu donne `None` : l'appelant décide explicitement quoi faire, au
-// lieu d'hériter d'une variante choisie par un `_`.
+// The tables below are the only list. Both directions follow from them, and
+// an unknown index gives `None`: the caller decides explicitly what to do,
+// instead of inheriting a variant chosen by a `_`.
 
-/// Ordre des algorithmes de placement dans les listes déroulantes.
+/// Order of the placement algorithms in the dropdown lists.
 pub const ALGORITHMS: [filter::Algorithm; 5] = [
     filter::Algorithm::Grid,
     filter::Algorithm::Kmeans,
@@ -107,8 +108,8 @@ pub const ALGORITHMS: [filter::Algorithm; 5] = [
     filter::Algorithm::Halftone,
 ];
 
-/// Position d'un algorithme. `None` s'il n'est pas dans la table — ce qui ne peut
-/// pas arriver pour une variante de l'enum, et qu'un test vérifie.
+/// Position of an algorithm. `None` if it is not in the table — which cannot
+/// happen for an enum variant, and which a test verifies.
 pub fn algorithm_index(algorithm: filter::Algorithm) -> Option<u32> {
     ALGORITHMS
         .iter()
@@ -116,12 +117,12 @@ pub fn algorithm_index(algorithm: filter::Algorithm) -> Option<u32> {
         .map(|index| index as u32)
 }
 
-/// Algorithme à cette position, ou `None` si la position n'existe pas.
+/// Algorithm at that position, or `None` if the position does not exist.
 pub fn algorithm_of(index: u32) -> Option<filter::Algorithm> {
     ALGORITHMS.get(index as usize).copied()
 }
 
-/// Ordre des algorithmes de tramage dans les listes déroulantes.
+/// Order of the dithering algorithms in the dropdown lists.
 pub const DITHERINGS: [filter::Dithering; 5] = [
     filter::Dithering::Off,
     filter::Dithering::FloydSteinberg,
@@ -130,7 +131,7 @@ pub const DITHERINGS: [filter::Dithering; 5] = [
     filter::Dithering::Bayer8,
 ];
 
-/// Position d'un tramage. Voir [`algorithm_index`].
+/// Position of a dithering. See [`algorithm_index`].
 pub fn dithering_index(dithering: filter::Dithering) -> Option<u32> {
     DITHERINGS
         .iter()
@@ -138,15 +139,15 @@ pub fn dithering_index(dithering: filter::Dithering) -> Option<u32> {
         .map(|index| index as u32)
 }
 
-/// Tramage à cette position, ou `None`.
+/// Dithering at that position, or `None`.
 pub fn dithering_of(index: u32) -> Option<filter::Dithering> {
     DITHERINGS.get(index as usize).copied()
 }
 
-/// Ordre des niveaux de qualité.
+/// Order of the quality levels.
 pub const QUALITIES: [Quality; 3] = [Quality::Half, Quality::Quarter, Quality::Full];
 
-/// Position d'un niveau de qualité. Voir [`algorithm_index`].
+/// Position of a quality level. See [`algorithm_index`].
 pub fn quality_index(quality: Quality) -> Option<u32> {
     QUALITIES
         .iter()
@@ -154,24 +155,24 @@ pub fn quality_index(quality: Quality) -> Option<u32> {
         .map(|index| index as u32)
 }
 
-/// Niveau de qualité à cette position, ou `None`.
+/// Quality level at that position, or `None`.
 pub fn quality_of(index: u32) -> Option<Quality> {
     QUALITIES.get(index as usize).copied()
 }
 
-/// Résolution de calcul choisie par l'utilisateur.
+/// Compute resolution chosen by the user.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum Quality {
-    /// Aperçu à 1/2 puis finale automatique au repos.
+    /// Preview at 1/2 then automatic final render at rest.
     Half,
-    /// Aperçu à 1/4 puis finale automatique au repos.
+    /// Preview at 1/4 then automatic final render at rest.
     Quarter,
-    /// Toujours en pleine résolution.
+    /// Always at full resolution.
     Full,
 }
 
 impl Quality {
-    /// Facteur de sous-échantillonnage appliqué à l'image source.
+    /// Downsampling factor applied to the source image.
     pub fn scale(self) -> f32 {
         match self {
             Quality::Half => 0.5,
@@ -180,38 +181,37 @@ impl Quality {
         }
     }
 
-    /// Le mode correspond-il à un calcul en pleine résolution ?
+    /// Does the mode correspond to a full-resolution computation?
     pub fn is_full(self) -> bool {
         self == Quality::Full
     }
 }
 
-/// Répartition d'une valeur le long d'un curseur.
+/// Distribution of a value along a slider.
 ///
-/// Une course linéaire serait inexploitable sur les plages de réglages de
-/// pointimg : le rayon minimum (0,0005) et le maximum (1,0) sont séparés de
-/// trois ordres de grandeur, et la plage du halftone (0 → 10) est à dominante
-/// zéro. Les deux interfaces s'en servent pour placer la poignée — et pour
-/// déduire la valeur d'un clic sur le rail, GTK n'ayant pas de curseur
-/// logarithmique.
+/// A linear track would be unusable on the setting ranges of pointimg:
+/// the minimum radius (0.0005) and the maximum one (1.0) are three orders of
+/// magnitude apart, and the halftone range (0 → 10) is dominated by zero.
+/// Both interfaces use it to place the handle — and to deduce the value of a
+/// click on the rail, GTK having no logarithmic slider.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum Curve {
-    /// Proportionnelle à la plage, pour les plages déjà homogènes (0 → 1).
+    /// Proportional to the range, for already uniform ranges (0 → 1).
     Linear,
-    /// Logarithme, pour les plages entièrement positives (0,0005 → 1,0).
+    /// Logarithm, for entirely positive ranges (0.0005 → 1.0).
     Log,
-    /// Racine, pour les plages qui commencent à 0 (0 → 10) : le logarithme y
-    /// est indéfini, et le linéaire confine les valeurs utiles dans le premier
-    /// dixième du rail.
+    /// Square root, for ranges that start at 0 (0 → 10): the logarithm is
+    /// undefined there, and the linear one confines the useful values to the
+    /// first tenth of the rail.
     Sqrt,
 }
 
 impl Curve {
-    /// Position relative (0 → 1) d'une valeur à l'intérieur de la plage.
+    /// Relative position (0 → 1) of a value inside the range.
     ///
-    /// Les valeurs hors plage sont ramenées dans les bornes — y compris une
-    /// valeur négative ou nulle passée à [`Curve::Log`], pour laquelle le
-    /// logarithme serait indéfini.
+    /// Values outside the range are brought back inside the bounds — including
+    /// a negative or zero value passed to [`Curve::Log`], for which the
+    /// logarithm would be undefined.
     pub fn position(self, value: f64, start: f64, end: f64) -> f64 {
         let t = match self {
             Curve::Linear => (value - start) / (end - start),
@@ -221,7 +221,7 @@ impl Curve {
         t.clamp(0.0, 1.0)
     }
 
-    /// Valeur de la plage correspondant à une position relative (0 → 1).
+    /// Value of the range matching a relative position (0 → 1).
     pub fn value(self, position: f64, start: f64, end: f64) -> f64 {
         let t = position.clamp(0.0, 1.0);
         match self {
@@ -233,11 +233,11 @@ impl Curve {
     }
 }
 
-/// Image d'exemple proposée dans l'état d'accueil.
+/// Sample image offered in the welcome state.
 ///
-/// Cherche les quelques images livrées avec le projet à côté du binaire (usage
-/// depuis les sources) ; renvoie `None` pour une installation qui ne les
-/// contient pas, auquel cas l'interface masque le bouton.
+/// Looks for the few images shipped with the project next to the binary (use
+/// from the sources); returns `None` for an installation that does not
+/// contain them, in which case the interface hides the button.
 pub fn sample_image() -> Option<PathBuf> {
     const NAMES: [&str; 3] = [
         "pexels-ruyan-ayten-153760-4190725.jpg",
@@ -271,15 +271,15 @@ pub fn sample_image() -> Option<PathBuf> {
     None
 }
 
-/// Vignette du preset `index`, si elle est présente.
+/// Thumbnail of the preset `index`, if it is present.
 ///
-/// Les vignettes sont générées par `cargo run --example preset_thumbnails`, qui
-/// rend chaque preset intégré sur une image d'exemple. Elles sont optionnelles :
-/// une installation sans le dossier `assets/presets` affiche simplement les
-/// listes sans image.
+/// The thumbnails are generated by `cargo run --example preset_thumbnails`,
+/// which renders each built-in preset on a sample image. They are optional:
+/// an installation without the `assets/presets` folder simply displays the
+/// lists without an image.
 ///
-/// Ce n'est qu'une *recherche de fichier* : chaque interface décide ensuite de
-/// ses propres widgets — une grille dans egui, des `ActionRow` dans GTK.
+/// This is only a *file lookup*: each interface then decides on its own
+/// widgets — a grid in egui, `ActionRow`s in GTK.
 pub fn preset_thumbnail(index: usize) -> Option<PathBuf> {
     let prefix = format!("{index:02}-");
     let dir = asset_dir("presets")?;
@@ -288,7 +288,7 @@ pub fn preset_thumbnail(index: usize) -> Option<PathBuf> {
     for chemin in entree.flatten() {
         let nom = chemin.file_name().to_string_lossy().into_owned();
         if nom.starts_with(&prefix) && nom.ends_with(".png") {
-            // Un seul fichier par préfixe : le premier convient.
+            // A single file per prefix: the first one will do.
             if trouvee.is_none() {
                 trouvee = Some(chemin.path());
             }
@@ -297,12 +297,12 @@ pub fn preset_thumbnail(index: usize) -> Option<PathBuf> {
     trouvee
 }
 
-/// Tire une graine aléatoire.
+/// Draws a random seed.
 ///
-/// Les deux interfaces en ont besoin pour « Varier la graine », et la formule
-/// identique des deux côtés (`RandomState` sur l'horloge) : une graine tirée
-/// différemment d'une interface à l'autre n'aurait aucun sens, et deux copies
-/// laissent la place à une divergence.
+/// Both interfaces need it for "Varier la graine", and the identical formula
+/// on both sides (`RandomState` on the clock): a seed drawn differently
+/// from one interface to the next would make no sense, and two copies leave
+/// room for a divergence.
 pub fn random_seed() -> u64 {
     use std::collections::hash_map::RandomState;
     use std::hash::{BuildHasher, Hasher};
@@ -316,12 +316,12 @@ pub fn random_seed() -> u64 {
     hasher.finish()
 }
 
-/// Nom de fichier d'export dérivé de l'image source : `photo.jpg` →
+/// Export file name derived from the source image: `photo.jpg` →
 /// `photo-pointimg.png`.
 ///
-/// La formule était écrite à cinq endroits (deux `default_name`, deux exports
-/// rapides, un SVG rapide). Le repli `pointimg.<ext>` est explicitement parachuté
-/// : une image sans nom ne doit pas faire échouer l'export.
+/// The formula used to be written in five places (two `default_name`, two
+/// quick exports, a quick SVG). The `pointimg.<ext>` fallback is explicitly
+/// parachuted in: an image with no name must not make the export fail.
 pub fn derived_export_name(src: Option<&Path>, extension: &str) -> String {
     src.and_then(|path| path.file_stem())
         .and_then(|stem| stem.to_str())
@@ -329,68 +329,68 @@ pub fn derived_export_name(src: Option<&Path>, extension: &str) -> String {
         .unwrap_or_else(|| format!("pointimg.{extension}"))
 }
 
-/// Index du preset intégré correspondant exactement à ces réglages.
+/// Index of the built-in preset matching these settings exactly.
 ///
-/// C'est la question « ai-je personnalisé un preset ? », posée trois fois dans
-/// chaque interface. Une seule définition évite qu'un quatrième appel
-/// réinvente la comparaison.
+/// This is the question "ai-je personnalisé un preset ?", asked three
+/// times in each interface. A single definition prevents a fourth call from
+/// reinventing the comparison.
 pub fn matching_preset_index(params: &filter::FilterParams) -> Option<usize> {
     filter::builtin_presets()
         .iter()
         .position(|preset| preset.params == *params)
 }
 
-/// Bornes du zoom d'aperçu. Même étendue des deux côtés : à quoi bon proposer
-/// 8× d'un côté et 32× de l'autre pour le même geste de molette ?
-/// Plus petit zoom d'aperçu : 2 % de la taille réelle.
+/// Bounds of the preview zoom. Same span on both sides: why offer
+/// 8× on one side and 32× on the other for the same wheel gesture?
+/// Smallest preview zoom: 2 % of the real size.
 pub const ZOOM_MIN: f32 = 0.02;
-/// Plus grand zoom d'aperçu : 16×.
+/// Largest preview zoom: 16×.
 pub const ZOOM_MAX: f32 = 16.0;
 
-/// Facteur de zoom au clavier et aux boutons.
+/// Zoom factor for the keyboard and the buttons.
 ///
-/// Le zoom à la molette reste propre à GTK (egui n'en a pas), donc son facteur
-/// n'est pas ici — il n'y a rien à partager tant qu'il n'existe pas d'un côté.
+/// Wheel zoom remains specific to GTK (egui has none), so its factor is not
+/// here — there is nothing to share as long as it does not exist on one side.
 pub const ZOOM_STEP: f32 = 1.25;
 
-/// Messages affichés par les deux interfaces, mot pour mot.
+/// Messages displayed by the two interfaces, word for word.
 ///
-/// Ce ne sont pas des widgets : ce sont des chaînes. Les dupliquer garantit
-/// qu'un jour l'une dira « Rien à annuler. » et l'autre « Aucune annulation
-/// possible », pour la même action. Chaque interface choisit ensuite son
-/// moyen de l'afficher (ligne d'état d'un côté, notification éphémère de
-/// l'autre).
+/// These are not widgets: they are strings. Duplicating them guarantees that
+/// one day one will say "Rien à annuler." and the other "Aucune annulation
+/// possible", for the same action. Each interface then chooses its way of
+/// displaying it (status line on one side, ephemeral notification on the
+/// other).
 pub mod msg {
-    /// Un calcul est en cours.
+    /// A computation is in progress.
     pub const COMPUTING: &str = "Calcul en cours…";
-    /// Le rendu affiché date d'avant le dernier réglage.
+    /// The displayed render predates the last setting change.
     pub const STALE: &str = "aperçu obsolète — recalcul en cours";
-    /// La passe en pleine résolution suit l'aperçu réduit.
+    /// The full-resolution pass follows the reduced preview.
     pub const FINALIZING: &str = "pleine résolution…";
-    /// Aucun état précédent à restaurer.
+    /// No previous state to restore.
     pub const NOTHING_TO_UNDO: &str = "Rien à annuler.";
-    /// Une annulation vient d'être appliquée.
+    /// An undo has just been applied.
     pub const UNDONE: &str = "Annulé.";
-    /// Aucun état annulé à rétablir.
+    /// No undone state to redo.
     pub const NOTHING_TO_REDO: &str = "Rien à rétablir.";
-    /// Un rétablissement vient d'être appliqué.
+    /// A redo has just been applied.
     pub const REDONE: &str = "Rétabli.";
-    /// Les réglages sont déjà ceux par défaut.
+    /// The settings are already the default ones.
     pub const ALREADY_DEFAULT: &str = "Réglages déjà par défaut.";
-    /// Aucune image n'est chargée.
+    /// No image is loaded.
     pub const OPEN_FIRST: &str = "Ouvrez d'abord une image.";
-    /// Aucun rendu à copier.
+    /// No render to copy.
     pub const NOTHING_TO_COPY: &str = "Aucun résultat à copier.";
-    /// Le rendu est dans le presse-papiers.
+    /// The render is in the clipboard.
     pub const COPIED: &str = "Image copiée dans le presse-papiers.";
-    /// L'utilisateur a renoncé à écrire par-dessus un fichier.
+    /// The user gave up on overwriting a file.
     pub const SAVE_CANCELLED: &str = "Sauvegarde annulée.";
 }
 
-/// Cherche un dossier d'assets près du binaire puis du répertoire courant.
+/// Looks for an assets folder near the binary then in the current directory.
 ///
-/// Même recherche que [`sample_image`] : une exécution depuis les sources
-/// trouve `assets/`, une installation trouve un dossier voisin du binaire.
+/// Same search as [`sample_image`]: a run from the sources finds `assets/`, an
+/// installation finds a folder next to the binary.
 fn asset_dir(nom: &str) -> Option<PathBuf> {
     let exe = std::env::current_exe().ok()?;
     let mut roots: Vec<PathBuf> = Vec::new();
@@ -415,12 +415,13 @@ fn asset_dir(nom: &str) -> Option<PathBuf> {
     None
 }
 
-/// Sous-échantillonne une image pour un aperçu rapide.
+/// Subsamples an image for a quick preview.
 ///
-/// Même filtre (`Triangle`) et même arrondi des deux côtés : deux aperçus de la
-/// même image doivent montrer les mêmes pixels, sinon comparer ce que produit
-/// un réglage d'une interface à l'autre n'aurait pas de sens. L'échelle >= 1 et
-/// la passe de finalisation renvoient l'image telle quelle (clone compris).
+/// Same filter (`Triangle`) and same rounding on both sides: two previews of
+/// the same image must show the same pixels, otherwise comparing what a
+/// setting produces in one interface against the other would make no sense.
+/// The scale >= 1 and the finalization pass return the image as is (clone
+/// included).
 pub fn downsample(src: &RgbImage, scale: f32) -> RgbImage {
     if scale >= 1.0 {
         return src.clone();
@@ -436,11 +437,11 @@ pub fn downsample(src: &RgbImage, scale: f32) -> RgbImage {
     )
 }
 
-/// Images d'un dossier, triées par nom, ou l'erreur qui explique pourquoi vide.
+/// Images of a folder, sorted by name, or the error that explains why empty.
 ///
-/// Le balayage était écrit deux fois, jusqu'aux messages d'erreur — un dossier
-/// sans image devait expliciter la même chose dans les deux interfaces. Seul le
-/// moyen d'afficher reste propre à chacune.
+/// The scan used to be written twice, down to the error messages — a folder
+/// without an image had to state the same thing in the two interfaces. Only
+/// the way of displaying it remains specific to each one.
 pub fn collect_folder_images(dir: &Path) -> Result<Vec<PathBuf>, FolderError> {
     let Ok(entries) = std::fs::read_dir(dir) else {
         return Err(FolderError::Unreadable(dir.to_path_buf()));
@@ -457,12 +458,12 @@ pub fn collect_folder_images(dir: &Path) -> Result<Vec<PathBuf>, FolderError> {
     Ok(images)
 }
 
-/// Pourquoi un dossier n'a pas donné d'images.
+/// Why a folder gave no images.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum FolderError {
-    /// Le dossier n'a pas pu être lu.
+    /// The folder could not be read.
     Unreadable(PathBuf),
-    /// Le dossier est lisible mais ne contient aucune image reconnue.
+    /// The folder is readable but contains no recognized image.
     Empty(PathBuf),
 }
 
@@ -475,19 +476,19 @@ impl std::fmt::Display for FolderError {
     }
 }
 
-// ─── Damier de transparence ────────────────────────────────────────────────
+// ─── Transparency checker ────────────────────────────────────────────────────
 
-/// Côté d'une case du damier de transparence, en pixels.
+/// Side of one cell of the transparency checker, in pixels.
 pub const CHECKER_SIZE: u32 = 8;
-/// Gris clair d'une case.
+/// Light gray of a cell.
 pub const CHECKER_LIGHT: f32 = 200.0;
-/// Gris foncé d'une case.
+/// Dark gray of a cell.
 pub const CHECKER_DARK: f32 = 240.0;
 
-/// Gris du damier sous le pixel `(x, y)`.
+/// Checker gray under the pixel `(x, y)`.
 ///
-/// Les deux interfaces et le panneau de comparaison partagent la même
-/// définition : elles doivent afficher le même damier pour la même image.
+/// The two interfaces and the comparison panel share the same definition:
+/// they must display the same checker for the same image.
 #[inline]
 pub fn checker_shade(x: u32, y: u32) -> f32 {
     if (x / CHECKER_SIZE + y / CHECKER_SIZE).is_multiple_of(2) {
@@ -497,11 +498,12 @@ pub fn checker_shade(x: u32, y: u32) -> f32 {
     }
 }
 
-/// Composite un pixel RGBA sur le damier, et renvoie le `[r, g, b]` opaque.
+/// Composites an RGBA pixel on the checker, and returns the opaque
+/// `[r, g, b]`.
 ///
-/// L'ordre des octets en sortie appartient à chaque interface : egui empile des
-/// `Color32`, GTK des octets R8g8b8a8, cairo du BGRX. La *couleur*, elle, est
-/// unique — c'est la seule chose que ce module impose.
+/// The order of the bytes on output belongs to each interface: egui stacks
+/// `Color32`s, GTK R8g8b8a8 bytes, cairo BGRX. The *color* itself is unique —
+/// it is the only thing this module imposes.
 #[inline]
 pub fn composite_on_checker(pixel: [u8; 4], x: u32, y: u32) -> [u8; 3] {
     let alpha = f32::from(pixel[3]) / 255.0;
@@ -514,9 +516,9 @@ pub fn composite_on_checker(pixel: [u8; 4], x: u32, y: u32) -> [u8; 3] {
     ]
 }
 
-// ─── Formatage ───────────────────────────────────────────────────────────────
+// ─── Formatting ──────────────────────────────────────────────────────────────
 
-/// Formate une durée en millisecondes de façon lisible.
+/// Formats a duration in milliseconds in a readable way.
 pub fn format_duration(ms: u64) -> String {
     if ms < 1000 {
         format!("{ms}ms")
@@ -528,7 +530,7 @@ pub fn format_duration(ms: u64) -> String {
     }
 }
 
-/// Formate une taille mémoire en octets de façon lisible.
+/// Formats a memory size in bytes in a readable way.
 pub fn format_memory(bytes: u64) -> String {
     if bytes >= 1024 * 1024 * 1024 {
         format!("{:.1} Go", bytes as f64 / (1024.0 * 1024.0 * 1024.0))
@@ -537,9 +539,9 @@ pub fn format_memory(bytes: u64) -> String {
     }
 }
 
-/// Formate une taille de fichier avec la précision utile : « 381 Ko »,
-/// « 2,1 Mo ». [`format_memory`] reste en unités entières pour les estimations
-/// de mémoire, où le chiffre est de toute façon approximatif.
+/// Formats a file size with the useful precision: "381 kB", "2.1 MB".
+/// [`format_memory`] stays in whole units for the memory estimates, where the
+/// figure is approximate anyway.
 pub fn format_bytes(bytes: u64) -> String {
     const KO: f64 = 1024.0;
     const MO: f64 = 1024.0 * 1024.0;
@@ -556,13 +558,13 @@ pub fn format_bytes(bytes: u64) -> String {
     }
 }
 
-/// Vrai si la génération de worker attendue est toujours la génération courante.
+/// True when the expected worker generation is still the current generation.
 pub fn generation_is_current(generation: &AtomicU64, expected: u64) -> bool {
     generation.load(Ordering::Acquire) == expected
 }
 
-/// Décrit en une phrase le changement de paramètres le plus notable, pour les
-/// libellés d'undo/redo.
+/// Describes in one sentence the most notable parameter change, for the
+/// undo/redo labels.
 pub fn describe_parameter_change(before: &FilterParams, after: &FilterParams) -> String {
     if before.algorithm != after.algorithm {
         return format!(
@@ -600,7 +602,7 @@ pub fn describe_parameter_change(before: &FilterParams, after: &FilterParams) ->
     "Paramètres modifiés".to_string()
 }
 
-// ─── Chemins de sortie ───────────────────────────────────────────────────────
+// ─── Output paths ────────────────────────────────────────────────────────────
 
 fn with_allowed_extension(mut path: PathBuf, default_ext: &str, allowed: &[&str]) -> PathBuf {
     let keep = path
@@ -614,8 +616,8 @@ fn with_allowed_extension(mut path: PathBuf, default_ext: &str, allowed: &[&str]
     path
 }
 
-/// Normalise l'extension d'un chemin de sortie image : une extension reconnue
-/// est conservée, sinon `default_ext` est appliquée.
+/// Normalizes the extension of an image output path: a recognized extension
+/// is kept, otherwise `default_ext` is applied.
 pub fn ensure_image_extension(path: PathBuf, default_ext: &str) -> PathBuf {
     with_allowed_extension(
         path,
@@ -624,17 +626,17 @@ pub fn ensure_image_extension(path: PathBuf, default_ext: &str) -> PathBuf {
     )
 }
 
-/// Force l'extension `.svg` (un export SVG ne doit pas atterrir dans un `.png`).
+/// Forces the `.svg` extension (an SVG export must not land in a `.png`).
 pub fn ensure_svg_extension(path: PathBuf) -> PathBuf {
     with_allowed_extension(path, "svg", &["svg"])
 }
 
-/// Force l'extension `.toml` (presets).
+/// Forces the `.toml` extension (presets).
 pub fn ensure_toml_extension(path: PathBuf) -> PathBuf {
     with_allowed_extension(path, "toml", &["toml"])
 }
 
-/// Vrai si le format de sortie (déduit de l'extension) préserve l'alpha.
+/// True when the output format (deduced from the extension) preserves alpha.
 pub fn extension_preserves_alpha(path: &Path) -> bool {
     matches!(
         path.extension()
@@ -645,10 +647,10 @@ pub fn extension_preserves_alpha(path: &Path) -> bool {
     )
 }
 
-// ─── Conversions d'images ────────────────────────────────────────────────────
+// ─── Image conversions ───────────────────────────────────────────────────────
 
-/// Compose une image RGBA sur un fond opaque (formats sans alpha : JPEG, BMP).
-/// Arrondit au lieu de tronquer, comme le compositing du CLI.
+/// Composites an RGBA image on an opaque background (formats without alpha:
+/// JPEG, BMP). Rounds instead of truncating, like the CLI's compositing.
 pub fn flatten_rgba_on_bg(img: &RgbaImage, bg: [u8; 3]) -> RgbImage {
     let (w, h) = img.dimensions();
     RgbImage::from_fn(w, h, |x, y| {
@@ -663,7 +665,7 @@ pub fn flatten_rgba_on_bg(img: &RgbaImage, bg: [u8; 3]) -> RgbImage {
     })
 }
 
-/// Convertit une `RgbImage` en `RgbaImage` opaque (alpha = 255 partout).
+/// Converts an `RgbImage` into an opaque `RgbaImage` (alpha = 255 everywhere).
 pub fn rgb_to_rgba_opaque(img: &RgbImage) -> RgbaImage {
     let (w, h) = img.dimensions();
     let mut out = RgbaImage::new(w, h);
@@ -673,9 +675,9 @@ pub fn rgb_to_rgba_opaque(img: &RgbImage) -> RgbaImage {
     out
 }
 
-// ─── Écritures atomiques ─────────────────────────────────────────────────────
+// ─── Atomic writes ───────────────────────────────────────────────────────────
 
-/// Chemin temporaire adjacent à `path`, unique par processus/appel.
+/// Temporary path adjacent to `path`, unique per process/call.
 pub fn temporary_path(path: &Path) -> PathBuf {
     static NEXT_TEMP_ID: AtomicU64 = AtomicU64::new(0);
     let name = path
@@ -696,7 +698,7 @@ pub fn temporary_path(path: &Path) -> PathBuf {
     ))
 }
 
-/// Remplace `to` par `from` (supprime la cible d'abord sous Windows).
+/// Replaces `to` with `from` (removes the target first on Windows).
 pub fn replace_file(from: &Path, to: &Path) -> std::io::Result<()> {
     #[cfg(windows)]
     if to.exists() {
@@ -705,16 +707,16 @@ pub fn replace_file(from: &Path, to: &Path) -> std::io::Result<()> {
     std::fs::rename(from, to)
 }
 
-/// Écrit dans un fichier temporaire, puis remplace la cible atomiquement.
-/// Le temporaire est supprimé en cas d'échec, dans les deux phases.
+/// Writes to a temporary file, then replaces the target atomically.
+/// The temporary file is deleted in case of failure, in both phases.
 ///
-/// Le squelette était recopié trois fois (image, octets, texte). Les copies
-/// différaient par le type d'erreur qu'elles renvoient — `image::ImageError` pour
-/// les deux premières, `std::io::Error` pour le texte — et seule la première
-/// rapportait l'erreur d'écriture telle quelle : un changement de ce nettoyage
-/// (par exemple retenir le dossier d'un échec) ne serait appliqué qu'à une copie.
-/// Le type d'erreur est donc un paramètre, et les trois entrées publiques
-/// gardent leur signature.
+/// The skeleton used to be copied three times (image, bytes, text). The
+/// copies differed by the type of error they return — `image::ImageError`
+/// for the first two, `std::io::Error` for text — and only the first one
+/// reported the write error as is: a change of this cleanup (for example
+/// keeping the folder of a failure) would not be applied to more than one
+/// copy. The type of error is therefore a parameter, and the three public
+/// entry points keep their signature.
 fn atomic_write<E, F>(
     path: &Path,
     write: F,
@@ -735,8 +737,8 @@ where
     Ok(())
 }
 
-/// Écrit une image via un fichier temporaire puis un remplacement atomique.
-/// Le fichier temporaire est supprimé en cas d'erreur.
+/// Writes an image via a temporary file then an atomic replacement.
+/// The temporary file is deleted in case of error.
 pub fn atomic_image_save<F>(path: &Path, save: F) -> image::ImageResult<()>
 where
     F: FnOnce(&Path) -> image::ImageResult<()>,
@@ -744,7 +746,7 @@ where
     atomic_write(path, save, image::ImageError::IoError)
 }
 
-/// Écrit des octets via un fichier temporaire puis un remplacement atomique.
+/// Writes bytes via a temporary file then an atomic replacement.
 pub fn atomic_bytes_write(path: &Path, bytes: &[u8]) -> image::ImageResult<()> {
     atomic_write(
         path,
@@ -753,35 +755,35 @@ pub fn atomic_bytes_write(path: &Path, bytes: &[u8]) -> image::ImageResult<()> {
     )
 }
 
-/// Écrit du texte via un fichier temporaire puis un remplacement atomique.
+/// Writes text via a temporary file then an atomic replacement.
 pub fn atomic_text_write(path: &Path, contents: &str) -> std::io::Result<()> {
     atomic_write(path, |tmp| std::fs::write(tmp, contents), |error| error)
 }
 
-// ─── Export de haut niveau ───────────────────────────────────────────────────
+// ─── High-level export ───────────────────────────────────────────────────────
 
-/// Sauvegarde un résultat RGBA en respectant les capacités du format :
-/// PNG/WebP/TIFF préservent l'alpha ; JPEG/BMP compositent sur `bg` quand le
-/// rendu est transparent, sinon convertissent simplement en RGB.
+/// Saves an RGBA result while respecting the capabilities of the format:
+/// PNG/WebP/TIFF preserve alpha; JPEG/BMP composite on `bg` when the
+/// render is transparent, otherwise simply convert to RGB.
 pub fn save_rgba_image(
     path: &Path,
     img: &RgbaImage,
     transparent: bool,
     bg: [u8; 3],
 ) -> image::ImageResult<()> {
-    // L'export passe par l'encodage en mémoire : c'est le même code que
-    // [`measure_export_sizes`], donc la taille annoncée est celle du fichier
-    // réellement écrit.
+    // The export goes through in-memory encoding: it is the same code as
+    // [`measure_export_sizes`], so the announced size is that of the file
+    // really written.
     let bytes = encode_rgba_image(path, img, transparent, bg)?;
     atomic_bytes_write(path, &bytes)
 }
 
-/// Encode un résultat RGBA dans le format désigné par l'extension de `path`,
-/// en mémoire.
+/// Encodes an RGBA result in the format designated by the extension of
+/// `path`, in memory.
 ///
-/// Formats sans alpha (JPEG, BMP) : composition sur `bg` quand le rendu est
-/// transparent, simple conversion en RGB sinon. Formats avec alpha (PNG, WebP,
-/// TIFF) : image conservée telle quelle.
+/// Formats without alpha (JPEG, BMP): compositing on `bg` when the render is
+/// transparent, simple conversion to RGB otherwise. Formats with alpha (PNG,
+/// WebP, TIFF): image kept as is.
 pub fn encode_rgba_image(
     path: &Path,
     img: &RgbaImage,
@@ -795,8 +797,8 @@ pub fn encode_rgba_image(
     encode_rgba_extension(extension, img, transparent, bg)
 }
 
-/// Idem, à partir de la seule extension (sans le point) : c'est ce dont la
-/// mesure des tailles a besoin, puisqu'aucun chemin n'est encore choisi.
+/// Same thing, from the extension alone (without the dot): this is what
+/// the measurement of the sizes needs, since no path has been chosen yet.
 pub fn encode_rgba_extension(
     extension: &str,
     img: &RgbaImage,
@@ -819,7 +821,7 @@ pub fn encode_rgba_extension(
     Ok(buffer)
 }
 
-/// Format `image` correspondant à une extension (sans le point).
+/// `image` format matching an extension (without the dot).
 fn image_format(extension: &str) -> image::ImageResult<image::ImageFormat> {
     match extension.to_ascii_lowercase().as_str() {
         "png" => Ok(image::ImageFormat::Png),
@@ -838,13 +840,13 @@ fn format_preserves_alpha(extension: &str) -> bool {
     matches!(extension, "png" | "webp" | "tif" | "tiff")
 }
 
-/// Sérialise `params` en TOML et l'écrit de façon atomique.
+/// Serializes `params` as TOML and writes it atomically.
 pub fn save_preset(path: &Path, params: &FilterParams) -> Result<(), String> {
     let contents = params.to_toml_string().map_err(|e| e.to_string())?;
     atomic_text_write(path, &contents).map_err(|e| e.to_string())
 }
 
-/// Lit et désérialise un preset TOML.
+/// Reads and deserializes a TOML preset.
 pub fn load_preset(path: &Path) -> Result<FilterParams, String> {
     let contents = std::fs::read_to_string(path).map_err(|e| e.to_string())?;
     FilterParams::from_toml_str(&contents).map_err(|e| e.to_string())
@@ -881,15 +883,15 @@ mod tests {
 
     #[test]
     fn log_curve_spreads_small_values() {
-        // 0,06 dans 0,0005 → 1,0 : à mi-chemin des trois ordres de grandeur,
-        // là où le linéaire la collerait au bord du curseur.
+        // 0.06 in 0.0005 → 1.0: halfway up the three orders of magnitude,
+        // where the linear one would glue it to the edge of the slider.
         let position = Curve::Log.position(0.06, 0.0005, 1.0);
         assert!((0.55..=0.7).contains(&position), "position : {position}");
     }
 
     #[test]
     fn sqrt_curve_uses_the_first_tenth() {
-        // 0,85 sur 0 → 10 : 29 % du curseur au lieu de 8 %.
+        // 0.85 on 0 → 10: 29 % of the slider instead of 8 %.
         let position = Curve::Sqrt.position(0.85, 0.0, 10.0);
         assert!((0.28..=0.3).contains(&position), "position : {position}");
     }
@@ -924,10 +926,10 @@ mod tests {
         assert!(!generation_is_current(&generation, 7));
     }
 
-    /// Chaque table doit contenir chaque variante de son enum, une seule fois,
-    /// et les deux sens de conversion doivent s'accorder. Ajouter une variante
-    /// sans l'inscrire fait échouer ce test — c'est le seul garde-fou contre
-    /// une liste décalée, qu'un `_ =>` laisserait passer en silence.
+    /// Every table must contain every variant of its enum, exactly once,
+    /// and the two directions of the conversions must agree. Adding a variant
+    /// without listing it makes this test fail — it is the only safeguard
+    /// against a shifted list, which a `_ =>` would let through in silence.
     #[test]
     fn les_tables_couvrent_toutes_leurs_variantes() {
         use filter::{Algorithm, Dithering};
@@ -940,7 +942,7 @@ mod tests {
         ] {
             let index = algorithm_index(algorithm).expect("variante absente de la table");
             assert_eq!(algorithm_of(index), Some(algorithm), "aller-retour cassé");
-            // Une seule occurrence : deux fois la même variante décalerait tout.
+            // A single occurrence: twice the same variant would shift everything.
             assert_eq!(
                 ALGORITHMS.iter().filter(|a| **a == algorithm).count(),
                 1,
@@ -967,7 +969,7 @@ mod tests {
             assert_eq!(quality_of(index), Some(quality), "aller-retour cassé");
             assert_eq!(QUALITIES.iter().filter(|q| **q == quality).count(), 1);
         }
-        // Et un index hors bornes ne renvoie rien, au lieu de choisir.
+        // And an out-of-bounds index returns nothing, instead of choosing.
         assert_eq!(algorithm_of(99), None);
         assert_eq!(dithering_of(99), None);
         assert_eq!(quality_of(99), None);
@@ -1048,7 +1050,7 @@ mod tests {
     fn flatten_composites_on_background() {
         let img = RgbaImage::from_pixel(1, 1, image::Rgba([255, 0, 0, 128]));
         let flat = flatten_rgba_on_bg(&img, [255, 255, 255]);
-        // Rouge à 50% sur blanc → rose clair, jamais tronqué vers le bas.
+        // Red at 50% on white → light pink, never truncated downwards.
         assert_eq!(flat.get_pixel(0, 0)[0], 255);
         assert!(flat.get_pixel(0, 0)[1] >= 127);
     }
@@ -1076,15 +1078,17 @@ mod tests {
         let _ = std::fs::remove_file(path);
     }
 
-    /// Le damier alterne sur une période de deux cases, et le composite suit
-    /// l'alpha : opaque = le pixel, transparent = le gris de la case.
+    /// The checker alternates over a period of two cells, and the composite
+    /// follows the alpha: opaque = the pixel, transparent = the gray of the
+    /// cell.
     #[test]
     fn le_damier_alterne_et_suit_lalpha() {
-        // Sur une même ligne, la couleur de fond change d'une case à l'autre.
+        // Along the same row, the background color changes from one cell to
+        // the next.
         assert_eq!(checker_shade(0, 0), CHECKER_LIGHT);
         assert_eq!(checker_shade(CHECKER_SIZE, 0), CHECKER_DARK);
         assert_eq!(checker_shade(0, 0), checker_shade(2 * CHECKER_SIZE, 0));
-        // Et sur une colonne aussi : la formule combine les deux axes.
+        // And along a column too: the formula combines both axes.
         assert_eq!(
             checker_shade(0, 0),
             checker_shade(CHECKER_SIZE, CHECKER_SIZE)
@@ -1094,32 +1098,32 @@ mod tests {
             checker_shade(0, CHECKER_SIZE)
         );
 
-        // Opaque : le pixel lui-même, le damier ne se voit pas.
+        // Opaque: the pixel itself, the checker does not show through.
         assert_eq!(
             composite_on_checker([10, 200, 30, 255], 0, 0),
             [10, 200, 30],
             "un pixel opaque ne dépend pas du damier"
         );
-        // Transparent : exactement le gris de la case.
+        // Transparent: exactly the gray of the cell.
         assert_eq!(composite_on_checker([9, 9, 9, 0], 0, 0).len(), 3);
         assert_eq!(
             composite_on_checker([9, 9, 9, 0], CHECKER_SIZE, 0),
             [CHECKER_DARK as u8, CHECKER_DARK as u8, CHECKER_DARK as u8]
         );
-        // Semi-transparent : entre les deux, quel que soit le canal.
+        // Semi-transparent: between the two, whatever the channel.
         let demi = composite_on_checker([0, 0, 0, 128], 0, 0);
         assert!(
             demi[0] > 0 && demi[0] < CHECKER_LIGHT as u8,
             "un pixel à moitié opaque doit tomber entre le noir et le gris clair, pas à {}",
             demi[0]
         );
-        // Les trois canaux subissent le même traitement.
+        // The three channels undergo the same treatment.
         assert_eq!(demi[0], demi[1]);
         assert_eq!(demi[1], demi[2]);
     }
 
-    /// Le nom d'export dérivé donne la même chose avec ou sans fichier source,
-    /// et replie proprement quand il n'y en a pas.
+    /// The derived export name gives the same thing with or without a source
+    /// file, and falls back cleanly when there is none.
     #[test]
     fn le_nom_derive_suit_le_repli() {
         use std::path::Path;
@@ -1128,16 +1132,15 @@ mod tests {
             "vacances-pointimg.png"
         );
         assert_eq!(derived_export_name(None, "svg"), "pointimg.svg");
-        // Un nom de fichier sans extension : le tronc suffit.
+        // A file name without extension: the stem is enough.
         assert_eq!(
             derived_export_name(Some(Path::new("/tmp/photo")), "png"),
             "photo-pointimg.png"
         );
     }
 
-    /// Un dossier lisible mais sans image connue n'est pas « illisible » : les
-    /// deux messages sont distincts, et les deux interfaces les affichent tels
-    /// quels.
+    /// A readable folder with no known image is not "unreadable": the
+    /// two messages are distinct, and the two interfaces display them as is.
     #[test]
     fn un_dossier_vide_se_distingue_dun_dossier_illisible() {
         let dir = std::env::temp_dir().join(format!(
@@ -1166,8 +1169,8 @@ mod tests {
         let _ = std::fs::remove_dir_all(&dir);
     }
 
-    /// Le sous-échantillonnage respecte l'échelle demandée, et ne bouge pas
-    /// quand l'échelle ne réduit rien.
+    /// Downsampling respects the requested scale, and does not move
+    /// when the scale does not reduce anything.
     #[test]
     fn le_sous_echantillonnage_respecte_lechelle() {
         let img = image::RgbImage::new(200, 100);
@@ -1175,12 +1178,12 @@ mod tests {
         assert_eq!(downsample(&img, 2.0).dimensions(), (200, 100));
         let reduit = downsample(&img, 0.5);
         assert_eq!(reduit.dimensions(), (100, 50));
-        // Jamais de dimension nulle, même à une échelle absurde.
+        // Never a zero dimension, even at an absurd scale.
         assert_eq!(downsample(&img, 0.0001).dimensions(), (1, 1));
     }
 
-    /// Les trois écritures atomiques partagent le même nettoyage : un temporaire
-    /// ne doit jamais survivre à un échec, et le remplacement doit avoir lieu.
+    /// The three atomic writes share the same cleanup: a temporary
+    /// must never survive a failure, and the replacement must have happened.
     #[test]
     fn les_ecritures_atomiques_nettoyent_leur_temporaire() {
         let dir = std::env::temp_dir().join(format!(
@@ -1202,11 +1205,12 @@ mod tests {
             "le temporaire a disparu après le remplacement"
         );
 
-        // Écrasement : la remplacement doit avoir lieu, pas seulement la création.
+        // Overwriting: the replacement must have happened, not only the
+        // creation.
         atomic_text_write(&cible, "au revoir").expect("réécriture");
         assert_eq!(std::fs::read_to_string(&cible).unwrap(), "au revoir");
 
-        // Échec d'écriture : `write` échoue, donc rien ne doit rester.
+        // Write failure: `write` fails, so nothing must remain.
         let vide = dir.join("vide.bin");
         let echec: image::ImageResult<()> = atomic_write(
             &vide,

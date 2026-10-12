@@ -24,148 +24,150 @@ struct Args {
     #[arg(short, long)]
     input: Option<String>,
 
-    /// Fichier de sortie. Pattern supporté en batch : `{n}` (index),
-    /// `{stem}` (nom source sans ext.), `{name}` (nom source complet).
+    /// Output file. Pattern supported in batch: `{n}` (index),
+    /// `{stem}` (source name without ext.), `{name}` (full source name).
     #[arg(short, long, default_value = "output.png")]
     output: String,
 
-    /// Algorithme de placement des points
+    /// Point placement algorithm
     #[arg(short, long, value_enum, default_value_t = Algorithm::Voronoi)]
     algorithm: Algorithm,
 
-    /// Nombre de points (kmeans / voronoi / quadtree)
+    /// Number of points (kmeans / voronoi / quadtree)
     #[arg(short, long, default_value_t = 800)]
     num_points: usize,
 
-    /// Nombre de colonnes (grid uniquement)
+    /// Number of columns (grid only)
     #[arg(short, long, default_value_t = 80)]
     cols: u32,
 
-    /// Rayon minimum : fraction de min(largeur, hauteur)
+    /// Minimum radius: fraction of min(width, height)
     #[arg(long, default_value_t = 0.003)]
     min_radius: f32,
 
-    /// Rayon maximum : fraction de min(largeur, hauteur)
+    /// Maximum radius: fraction of min(width, height)
     #[arg(long, default_value_t = 0.06)]
     max_radius: f32,
 
     #[arg(short, long, default_value = "white")]
     bg: String,
 
-    /// Forme des points
+    /// Shape of the dots
     #[arg(long, value_enum, default_value_t = ShapeArg::Circle)]
     shape: ShapeArg,
 
-    /// Ratio largeur/hauteur pour l'ellipse (ex. 1.5)
+    /// Width/height ratio for the ellipse (e.g. 1.5)
     #[arg(long, default_value_t = 1.5, requires_if("ellipse", "shape"))]
     ellipse_aspect: f32,
 
-    /// Angle de rotation en degres pour l'ellipse
+    /// Rotation angle in degrees for the ellipse
     #[arg(long, default_value_t = 0.0, requires_if("ellipse", "shape"))]
     ellipse_angle: f32,
 
-    /// Nombre de cotes pour le polygone regulier (3-12)
+    /// Number of sides for the regular polygon (3-12)
     #[arg(long, default_value_t = 6, requires_if("polygon", "shape"))]
     polygon_sides: u8,
 
-    /// Nombre d'iterations (kmeans / voronoi)
+    /// Number of iterations (kmeans / voronoi)
     #[arg(long, default_value_t = 10)]
     iterations: usize,
 
-    /// Sensibilite a la variance (0.0 = ignoree, 1.0 = forte redistribution)
+    /// Variance sensitivity (0.0 = ignored, 1.0 = strong redistribution)
     #[arg(long, default_value_t = 0.7)]
     variance_sensitivity: f32,
 
-    /// Multiplicateur max de rayon dans les zones uniformes
+    /// Maximum radius multiplier in uniform areas
     #[arg(long, default_value_t = 2.5)]
     max_boost: f32,
 
-    /// Graine RNG pour resultats reproductibles
+    /// RNG seed for reproducible results
     #[arg(long)]
     seed: Option<u64>,
 
-    /// Nombre de couleurs pour la quantification de palette
+    /// Number of colors for palette quantization
     #[arg(long)]
     palette: Option<usize>,
 
-    /// Exporter en SVG au lieu de PNG/JPEG
+    /// Export as SVG instead of PNG/JPEG
     #[arg(long)]
     svg: bool,
 
-    /// Correction gamma des moyennes de couleur des dots (espace linéaire)
+    /// Gamma correction of the average colors of the dots (linear space)
     #[arg(long)]
     gamma: bool,
 
-    /// Dithering sur la palette quantifiée. Sans valeur : Floyd-Steinberg
-    /// (effet « offset print »). Alternatives : riemersma, bayer4, bayer8, off.
+    /// Dithering on the quantized palette. Without a value: Floyd-Steinberg
+    /// (the "offset print" effect). Alternatives: riemersma, bayer4, bayer8, off.
     ///
-    /// `Option` pour que l'absence de l'option soit acceptée : avec
-    /// `num_args = 0..=1`, un type simple rendrait l'argument obligatoire.
+    /// `Option` so that omitting the option is accepted: with
+    /// `num_args = 0..=1`, a plain type would make the argument mandatory.
     #[arg(long, value_name = "MODE", num_args = 0..=1, default_missing_value = "floyd-steinberg", value_enum)]
     dithering: Option<Dithering>,
 
-    /// Aperçu rapide : sous-échantillonne l'image à WxH max avant le pipeline
-    /// (préserve l'aspect ratio). Format : `--preview 200x150`.
+    /// Quick preview: subsamples the image to WxH max before the pipeline
+    /// (preserves the aspect ratio). Format: `--preview 200x150`.
     #[arg(long, value_name = "WxH")]
     preview: Option<String>,
 
-    /// Profil ICC d'entrée : auto (profil embarqué), srgb, display-p3 ou chemin .icc.
+    /// Input ICC profile: auto (embedded profile), srgb, display-p3 or an
+    /// .icc path.
     #[arg(long, default_value = "auto")]
     input_profile: String,
 
-    /// Profil ICC de sortie : sRGB par défaut ou chemin vers un fichier .icc.
+    /// Output ICC profile: sRGB by default or a path to an .icc file.
     #[arg(long, default_value = "srgb")]
     output_profile: String,
 
-    /// Angle de rotation de la grille (degrés), effet "halftone screen" (Grid uniquement)
+    /// Grid rotation angle (degrees), "halftone screen" effect (Grid only)
     #[arg(long, default_value_t = 0.0)]
     grid_angle: f32,
 
-    /// Mode halftone : `cmyk` (rosette 4 canaux), `dominant-N` (N couleurs via
-    /// k-means, ex: `dominant-6`). Désactivé par défaut. Active automatiquement
-    /// l'algorithme Halftone (ignore num_points, cols, iterations, etc.).
+    /// Halftone mode: `cmyk` (4-channel rosette), `dominant-N` (N colors via
+    /// k-means, e.g.: `dominant-6`). Off by default. Automatically activates
+    /// the Halftone algorithm (ignores num_points, cols, iterations, etc.).
     #[arg(long, default_value = "off")]
     halftone: String,
 
-    /// Screening AM (grille rotationnée) ou FM (blue noise stochastique)
+    /// AM screening (rotated grid) or FM (stochastic blue noise)
     #[arg(long, default_value = "am")]
     screening: String,
 
-    /// Fréquence de trame AM (cells per min(W,H)) — ex: 60 = ~60 dots par le petit côté
+    /// AM screening frequency (cells per min(W,H)) — e.g.: 60 = ~60 dots on the
+    /// short side
     #[arg(long, default_value_t = 60.0)]
     halftone_freq: f32,
 
-    /// Rayon minimum du dot halftone (fraction de min(W,H))
+    /// Minimum radius of the halftone dot (fraction of min(W,H))
     #[arg(long, default_value_t = 0.002)]
     halftone_min_radius: f32,
 
-    /// Rayon maximum du dot halftone (fraction du step de trame)
+    /// Maximum radius of the halftone dot (fraction of the screening step)
     #[arg(long, default_value_t = 0.85)]
     halftone_max_dot: f32,
 
-    /// Niveau de verbosité (`-v` = info, `-vv` = debug). Par défaut : warnings seulement.
+    /// Verbosity level (`-v` = info, `-vv` = debug). By default: warnings only.
     #[arg(short = 'v', long = "verbose", action = clap::ArgAction::Count)]
     verbose: u8,
 
-    /// Supprime les messages d'information (warnings seulement).
+    /// Removes the information messages (warnings only).
     #[arg(short = 'q', long = "quiet")]
     quiet: bool,
 
-    /// Charger les FilterParams depuis un fichier TOML (remplace tous les flags individuels).
+    /// Load the FilterParams from a TOML file (replaces every individual flag).
     #[arg(long, value_name = "FILE")]
     preset: Option<PathBuf>,
 
-    /// Sauvegarder les FilterParams actuels dans un fichier TOML.
+    /// Save the current FilterParams to a TOML file.
     #[arg(long, value_name = "FILE")]
     save_preset: Option<PathBuf>,
 
-    /// Nombre de fichiers traités en parallèle en mode batch (0 = tous les CPUs).
-    /// 1 = séquentiel (défaut, conserve la progression par itération).
+    /// Number of files processed in parallel in batch mode (0 = all the CPUs).
+    /// 1 = sequential (default, preserves the progress by iteration).
     #[arg(long, default_value_t = 1, value_name = "N")]
     jobs: usize,
 }
 
-/// Parse `--halftone` : `off`, `cmyk`, ou `dominant-N` (ex `dominant-6`).
+/// Parses `--halftone`: `off`, `cmyk`, or `dominant-N` (e.g. `dominant-6`).
 fn parse_halftone(s: &str) -> anyhow::Result<HalftoneMode> {
     let s = s.to_lowercase();
     if s == "off" || s.is_empty() {
@@ -173,7 +175,7 @@ fn parse_halftone(s: &str) -> anyhow::Result<HalftoneMode> {
     }
     if s == "cmyk" {
         return Ok(HalftoneMode::Cmyk {
-            angles: [15.0, 75.0, 0.0, 45.0], // Cyan, Magenta, Jaune, Noir
+            angles: [15.0, 75.0, 0.0, 45.0], // Cyan, Magenta, Yellow, Black
         });
     }
     if let Some(rest) = s.strip_prefix("dominant-") {
@@ -193,7 +195,7 @@ fn parse_halftone(s: &str) -> anyhow::Result<HalftoneMode> {
     );
 }
 
-/// Parse `--screening` : `am` (grille rotationnée) ou `fm` (blue noise).
+/// Parses `--screening`: `am` (rotated grid) or `fm` (blue noise).
 fn parse_screening(s: &str) -> anyhow::Result<Screening> {
     match s.to_lowercase().as_str() {
         "am" => Ok(Screening::Am),
@@ -202,8 +204,8 @@ fn parse_screening(s: &str) -> anyhow::Result<Screening> {
     }
 }
 
-/// Parse une couleur de fond : "white", "black", "transparent" (alias "none"),
-/// ou "#rrggbb" / "rrggbb". Retourne `(bg_color, transparent)`.
+/// Parses a background color: "white", "black", "transparent" (alias "none"),
+/// or "#rrggbb" / "rrggbb". Returns `(bg_color, transparent)`.
 fn parse_bg_color(s: &str) -> anyhow::Result<([u8; 3], bool)> {
     match s.to_lowercase().as_str() {
         "white" => Ok(([255, 255, 255], false)),
@@ -229,24 +231,24 @@ fn parse_bg_color(s: &str) -> anyhow::Result<([u8; 3], bool)> {
 }
 
 impl Args {
-    /// Construit `FilterParams` depuis les flags CLI. Centralise le mapping
-    /// flag-par-flag afin que `main()` ne fasse que router (presets, batch,
-    /// process_one). Les valeurs invalides (`--bg`, `--halftone`, `--screening`)
-    /// sont rejetées ici via les parseurs dédiés.
+    /// Builds `FilterParams` from the CLI flags. Centralizes the
+    /// flag-by-flag mapping so that `main()` only has to route (presets, batch,
+    /// process_one). The invalid values (`--bg`, `--halftone`, `--screening`)
+    /// are rejected here through the dedicated parsers.
     fn to_filter_params(&self) -> Result<FilterParams> {
         let (bg_color, transparent) = parse_bg_color(&self.bg)?;
         let halftone = parse_halftone(&self.halftone)?;
         let screening = parse_screening(&self.screening)?;
-        // Si --halftone est spécifié (≠ Off), on force algorithm = Halftone.
-        // Inversement, si --algorithm halftone est choisi sans --halftone
-        // explicite, on active le mode cmyk par défaut (voir plus bas) au lieu
-        // de produire un algorithme vide.
+        // If --halftone is specified (≠ Off), algorithm is forced to Halftone.
+        // Conversely, if --algorithm halftone is chosen without an explicit
+        // --halftone, the default cmyk mode is activated (see below) instead of
+        // producing an empty algorithm.
         let algorithm = if halftone != HalftoneMode::Off {
             Algorithm::Halftone
         } else {
             self.algorithm
         };
-        // --algorithm halftone sans --halftone explicite → défaut cmyk.
+        // --algorithm halftone without an explicit --halftone → cmyk default.
         let halftone = if algorithm == Algorithm::Halftone && halftone == HalftoneMode::Off {
             HalftoneMode::Cmyk {
                 angles: [15.0, 75.0, 0.0, 45.0],
@@ -294,8 +296,8 @@ impl Args {
 fn main() -> Result<()> {
     let args = Args::parse();
 
-    // Configuration des logs selon --verbose / --quiet. RUST_LOG peut toujours
-    // surcharger ces niveaux (parse_default_env).
+    // Log configuration according to --verbose / --quiet. RUST_LOG can still
+    // override these levels (parse_default_env).
     let level = if args.quiet {
         LevelFilter::Warn
     } else {
@@ -315,13 +317,13 @@ fn main() -> Result<()> {
 
     log::info!("pointimg {}", env!("CARGO_PKG_VERSION"));
 
-    // Construction des FilterParams depuis les flags CLI. Centralisée dans
-    // `Args::to_filter_params` pour aérer `main()` (le reste du main ne fait que
-    // router : presets, batch, process_one).
+    // Building of the FilterParams from the CLI flags. Centralized in
+    // `Args::to_filter_params` to lighten `main()` up (the rest of main only
+    // has to route: presets, batch, process_one).
     let mut params = args.to_filter_params()?;
 
-    // Preset TOML : chargé depuis un fichier, surcharge les flags.
-    // Sauvegardé dans un fichier (sortie anticipée après écriture).
+    // TOML preset: loaded from a file, overrides the flags.
+    // Saved to a file (early exit after writing).
     if let Some(ref preset_path) = args.preset {
         let txt = std::fs::read_to_string(preset_path)
             .with_context(|| format!("Impossible de lire le preset '{}'", preset_path.display()))?;
@@ -337,14 +339,14 @@ fn main() -> Result<()> {
         std::fs::write(save_path, &txt)
             .with_context(|| format!("Impossible d'écrire '{}'", save_path.display()))?;
         println!("Preset sauvegardé : {}", save_path.display());
-        // Si --save-preset est fourni sans --input, on sort après l'écriture
-        // (pas de pipeline à exécuter).
+        // If --save-preset is given without --input, exit after the write
+        // (no pipeline to run).
         if args.input.is_none() {
             return Ok(());
         }
     }
 
-    // Expansion des entrées : fichier unique, glob (`*`, `?`, `[`), ou dossier.
+    // Expansion of the inputs: single file, glob (`*`, `?`, `[`), or folder.
     let input_str = args.input.as_deref().ok_or_else(|| {
         anyhow::anyhow!("--input est requis sauf si --save-preset seul est fourni (utilise --help)")
     })?;
@@ -379,10 +381,10 @@ fn main() -> Result<()> {
         );
     }
     let failures = if parallel {
-        // En parallèle, la progression par itération serait entremêlée sur
-        // stderr : on la coupe et on laisse chaque fichier rendre sa ligne de
-        // résultat atomiquement.
-        // `--jobs 0` laisse rayon choisir le nombre de threads (tous les CPUs).
+        // In parallel, the progress by iteration would be interleaved on
+        // stderr: it is cut off and each file is left to render its result line
+        // atomically.
+        // `--jobs 0` lets rayon choose the number of threads (all the CPUs).
         let pool = rayon::ThreadPoolBuilder::new()
             .num_threads(args.jobs)
             .build()
@@ -421,7 +423,8 @@ fn main() -> Result<()> {
             if let Err(e) = process_one(input_path, &out, &params, &args, preview_size, true) {
                 log::error!("échec '{}': {}", input_path.display(), e);
                 failures += 1;
-                // Continue le batch : on ne stoppe pas toute la file pour un fichier défectueux.
+                // Continue the batch: the whole queue is not stopped for one
+                // defective file.
             }
         }
         failures
@@ -433,12 +436,14 @@ fn main() -> Result<()> {
     Ok(())
 }
 
-/// Nombre de CPUs disponibles (via le pool global rayon, qui lit `available_parallelism`).
+/// Number of CPUs available (through rayon's global pool, which reads
+/// `available_parallelism`).
 fn num_cpus_hint() -> usize {
     rayon::current_num_threads()
 }
 
-/// Parse `"WxH"` (case-insensitive) en `(u32, u32)`. Ex : `"200x150"` → `(200, 150)`.
+/// Parses `"WxH"` (case-insensitive) into `(u32, u32)`.
+/// E.g.: `"200x150"` → `(200, 150)`.
 fn parse_preview_size(s: &str) -> Result<(u32, u32)> {
     let (w, h) = s
         .split_once(['x', 'X', '×'])
@@ -455,8 +460,9 @@ fn parse_preview_size(s: &str) -> Result<(u32, u32)> {
     Ok((w, h))
 }
 
-/// Sous-échantillonne `src` pour qu'elle tienne dans `max_w × max_h` en préservant
-/// l'aspect ratio. Retourne `src` inchangée si elle est déjà plus petite ou `None`.
+/// Subsamples `src` so that it fits inside `max_w × max_h` while preserving
+/// the aspect ratio. Returns `src` unchanged if it is already smaller, or
+/// `None`.
 fn downscale_for_preview(src: &image::DynamicImage, max_w: u32, max_h: u32) -> image::DynamicImage {
     let (w, h) = src.dimensions();
     if w <= max_w && h <= max_h {
@@ -479,10 +485,11 @@ fn downscale_for_preview(src: &image::DynamicImage, max_w: u32, max_h: u32) -> i
     ))
 }
 
-/// Énumère les fichiers d'entrée depuis :
-/// - un glob (`*`, `?`, `[` présent) via `glob::glob` ;
-/// - un dossier (liste les fichiers image) ;
-/// - sinon un chemin unique (renvoyé tel quel même s'il n'existe pas — l'erreur viendra à l'open).
+/// Enumerates the input files from:
+/// - a glob (`*`, `?`, `[` present) via `glob::glob`;
+/// - a folder (lists the image files);
+/// - otherwise a single path (returned as is even if it does not exist —
+///   the error will come at open).
 fn expand_inputs(input: &str) -> Result<Vec<PathBuf>> {
     let has_glob_chars = input.contains('*') || input.contains('?') || input.contains('[');
     if has_glob_chars {
@@ -498,9 +505,9 @@ fn expand_inputs(input: &str) -> Result<Vec<PathBuf>> {
     }
     let p = PathBuf::from(input);
     if p.is_dir() {
-        // La liste vient de la bibliothèque : elle était recopiée ici, en
-        // avance d'une entrée (`gif`) sur celle des interfaces. Un dossier
-        // listait donc des fichiers que les interfaces refusaient.
+        // The list comes from the library: it used to be copied here, one entry
+        // (`gif`) ahead of the one the interfaces have. A folder therefore
+        // listed files that the interfaces refused.
         let mut out = Vec::new();
         for entry in std::fs::read_dir(&p)? {
             let entry = entry?;
@@ -515,16 +522,16 @@ fn expand_inputs(input: &str) -> Result<Vec<PathBuf>> {
     Ok(vec![p])
 }
 
-/// Calcule le chemin de sortie à partir d'un pattern `--output`, d'un chemin d'entrée
-/// et de l'index dans le batch.
+/// Computes the output path from an `--output` pattern, an input path
+/// and the index in the batch.
 ///
-/// Substitutions reconnues :
-///   `{n}`    → numéro du fichier (0-padded, largeur = nb de digits du total)
-///   `{stem}` → nom du fichier sans extension (`photo.jpg` → `photo`)
-///   `{name}` → nom complet du fichier (`photo.jpg`)
+/// Recognized substitutions:
+///   `{n}`    → file number (0-padded, width = number of digits of the total)
+///   `{stem}` → file name without extension (`photo.jpg` → `photo`)
+///   `{name}` → full file name (`photo.jpg`)
 ///
-/// Si `--output` est la valeur par défaut (`output.png`), on utilise `{stem}.png` (batch)
-/// ou `output.png` (fichier unique). Si `--svg`, l'extension est forcée à `.svg`.
+/// If `--output` is the default value (`output.png`), `{stem}.png` is used (batch)
+/// or `output.png` (single file). If `--svg`, the extension is forced to `.svg`.
 fn resolve_output_path(
     output_pattern: &str,
     input: &std::path::Path,
@@ -560,8 +567,8 @@ fn resolve_output_path(
             .replace("{n}", &n_padded)
             .replace("{stem}", &stem)
             .replace("{name}", &name);
-        // Si l'utilisateur n'a mis aucun token par-fichier mais qu'on a plusieurs
-        // fichiers, on ajoute _{n} avant l'extension pour éviter d'écraser.
+        // If the user put no per-file token but we have several files, an _{n}
+        // is added before the extension to avoid overwriting.
         if total > 1 && !has_per_file_token {
             if let Some(dot) = s.rfind('.') {
                 s.insert_str(dot, &format!("_{}", n_padded));
@@ -570,7 +577,7 @@ fn resolve_output_path(
             }
         }
         if svg {
-            // Forcer l'extension à `.svg` (remplace la dernière).
+            // Force the extension to `.svg` (replaces the last one).
             if let Some(dot) = s.rfind('.') {
                 s.truncate(dot);
             }
@@ -581,9 +588,9 @@ fn resolve_output_path(
     PathBuf::from(resolved)
 }
 
-/// Traite un fichier d'entrée unique : ouvre, pipeline (RGB/RGBA/SVG), sauvegarde.
-/// `iter_progress` contrôle l'affichage de la progression par itération (coupé
-/// en mode batch parallèle pour éviter un stdout/stderr entremêlé).
+/// Processes a single input file: opens, pipeline (RGB/RGBA/SVG), saves.
+/// `iter_progress` controls the display of the progress by iteration (cut off
+/// in parallel batch mode to avoid interleaved stdout/stderr).
 fn process_one(
     input: &std::path::Path,
     output: &std::path::Path,
@@ -611,7 +618,7 @@ fn process_one(
             src_orig.dimensions()
         );
     }
-    // Sous-échantillonnage preview si demandé.
+    // Preview subsampling when requested.
     let src = match preview_size {
         Some((pw, ph)) => downscale_for_preview(&src_orig, pw, ph),
         None => src_orig,
@@ -633,8 +640,8 @@ fn process_one(
         && params.iterations > 1;
 
     if args.svg {
-        // `apply_with_iteration_counts` : l'image n'est jamais regardée ici, et
-        // la rendre à chaque itération était le poste dominant du traitement.
+        // `apply_with_iteration_counts`: the image is never looked at here, and
+        // rendering it at every iteration was the dominant cost of the run.
         let (_, dots) =
             filter::apply_with_iteration_counts(&rgb, params, &never_cancel, |iter, total| {
                 if show_progress {
@@ -710,7 +717,7 @@ fn save_rgba_for_output(
     bg: [u8; 3],
     path: &std::path::Path,
 ) -> image::ImageResult<()> {
-    // PNG/WebP/TIFF préservent l'alpha ; sinon on composite sur le fond.
+    // PNG/WebP/TIFF preserve alpha; otherwise composite onto the background.
     if frontend::extension_preserves_alpha(path) {
         return image.save(path);
     }
@@ -792,7 +799,7 @@ mod tests {
         let _ = std::fs::remove_file(path);
     }
 
-    // ── Parsing des couleurs de fond ─────────────────────────────────────────
+    // ── Parsing of the background colors ─────────────────────────────────────
 
     #[test]
     fn parse_bg_color_variants() {
@@ -871,7 +878,7 @@ mod tests {
         ));
     }
 
-    // ── Génération des chemins de sortie ─────────────────────────────────────
+    // ── Generation of the output paths ───────────────────────────────────────
 
     #[test]
     fn resolve_output_path_substitutions() {
@@ -893,12 +900,12 @@ mod tests {
             resolve("out/{name}.png", 0, 1),
             PathBuf::from("out/photo.jpg.png")
         );
-        // Aucun token par-fichier + plusieurs fichiers → suffixe `_n` avant l'extension.
+        // No per-file token + several files → `_n` suffix before the extension.
         assert_eq!(
             resolve("out/all.png", 3, 10),
             PathBuf::from("out/all_03.png")
         );
-        // Sans extension, le suffixe est ajouté à la fin.
+        // Without an extension, the suffix is added at the end.
         assert_eq!(resolve("out/all", 3, 10), PathBuf::from("out/all_03"));
     }
 
@@ -926,7 +933,7 @@ mod tests {
             ),
             PathBuf::from("output.svg")
         );
-        // `--svg` force l'extension même sur un pattern explicite.
+        // `--svg` forces the extension even on an explicit pattern.
         assert_eq!(
             resolve_output_path(
                 "out/x.png",
