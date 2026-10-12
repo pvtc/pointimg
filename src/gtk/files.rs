@@ -1,4 +1,4 @@
-//! Dialogues de fichiers, presets et export.
+//! File, preset and export dialogs.
 
 use std::cell::RefCell;
 use std::path::PathBuf;
@@ -32,8 +32,8 @@ fn filter_store(filters: &[gtk::FileFilter]) -> gtk::gio::ListStore {
     store
 }
 
-/// Propose le dernier dossier utilisé, pour éviter de le ressaisir à chaque
-/// ouverture ou export.
+/// Offers the last used folder, to avoid retyping it at every open or
+/// export.
 fn apply_initial_folder(dialog: &gtk::FileDialog, state: &Rc<RefCell<State>>) {
     let folder = state.borrow().last_dir.clone().or_else(|| {
         state
@@ -48,23 +48,23 @@ fn apply_initial_folder(dialog: &gtk::FileDialog, state: &Rc<RefCell<State>>) {
     }
 }
 
-/// Nom de fichier par défaut dérivé de l'image source (`photo.jpg` →
+/// Default file name derived from the source image (`photo.jpg` →
 /// `photo-pointimg.png`).
 fn default_name(state: &Rc<RefCell<State>>, ext: &str) -> String {
-    // La formule est partagée avec egui ; seul le repli diffère, et il vit déjà
-    // dans `derived_export_name`.
+    // The formula is shared with egui; only the fallback differs, and it
+    // already lives in `derived_export_name`.
     frontend::derived_export_name(state.borrow().src_path.as_deref(), ext)
 }
 
-/// Mémorise le dossier d'un fichier écrit, pour les dialogues suivants.
+/// Remembers the folder of a written file, for the next dialogs.
 fn remember_dir(state: &Rc<RefCell<State>>, path: &std::path::Path) {
     if let Some(parent) = path.parent().filter(|p| p.is_dir()) {
         state.borrow_mut().last_dir = Some(parent.to_path_buf());
     }
 }
 
-/// Ce qu'on demande au dialogue : un fichier existant, un dossier, ou un nom
-/// d'écriture.
+/// What we ask the dialog for: an existing file, a folder, or a write
+/// name.
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum Pick {
     Open,
@@ -72,18 +72,18 @@ enum Pick {
     Save,
 }
 
-/// Description d'un dialogue : ce qu'on demande, et comment le présenter.
+/// Description of a dialog: what we ask for, and how to present it.
 ///
-/// Les six dialogues du module ne différaient que par ces champs et par la
-/// fonction appelée — soit ~120 lignes pour une vingtaine de lignes de
-/// différence réelle. Tout le reste (dossier de départ, clones, extraction du
-/// chemin) est ici une fois.
+/// The six dialogs of the module only differed by these fields and by the
+/// function called — about 120 lines for twenty lines of real difference.
+/// Everything else (starting folder, clones, path extraction) is here once.
 struct Ask {
     title: &'static str,
     pick: Pick,
-    /// Nom proposé à l'écriture (`photo-pointimg.png`).
+    /// Name offered on writing (`photo-pointimg.png`).
     initial_name: Option<String>,
-    /// Filtres, et celui sélectionné par défaut — même objet, donc cloné à part.
+    /// Filters, and the one selected by default — same object, hence cloned
+    /// separately.
     filters: Vec<gtk::FileFilter>,
     default: Option<gtk::FileFilter>,
 }
@@ -111,11 +111,11 @@ impl Ask {
     }
 }
 
-/// Ouvre un dialogue et passe le chemin choisi à `picked`.
+/// Opens a dialog and passes the chosen path to `picked`.
 ///
-/// `picked` est un `fn` plutôt qu'une closure : chaque appelant a déjà sa
-/// fonction, et le `fn` évite d'embarquer des clones superflus dans la closure
-/// asynchrone du dialogue.
+/// `picked` is an `fn` rather than a closure: each caller already has its
+/// function, and the `fn` avoids carrying redundant clones into the
+/// dialog's asynchronous closure.
 fn pick_file<F>(
     window: &adw::ApplicationWindow,
     ask: &Ask,
@@ -135,8 +135,8 @@ fn pick_file<F>(
     dialog.set_default_filter(ask.default.as_ref());
     let state = Rc::clone(state);
     let widgets = Rc::clone(widgets);
-    // Un dialogue annulé, ou un fichier sans chemin local (URI distante), ne fait
-    // rien — comme dans les six copies d'origine.
+    // A cancelled dialog, or a file without a local path (remote URI), does
+    // nothing — just like in the six original copies.
     let rappel = move |res: Result<gtk::gio::File, gtk::glib::Error>| {
         let chemins = res.ok().and_then(|file| file.path());
         if let Some(path) = chemins {
@@ -150,7 +150,7 @@ fn pick_file<F>(
     }
 }
 
-/// Ouvre une image.
+/// Opens an image.
 pub(crate) fn choose_open_image(
     window: &adw::ApplicationWindow,
     state: &Rc<RefCell<State>>,
@@ -168,7 +168,7 @@ pub(crate) fn choose_open_image(
     );
 }
 
-/// Ouvre un dossier d'images.
+/// Opens a folder of images.
 pub(crate) fn choose_open_folder(
     window: &adw::ApplicationWindow,
     state: &Rc<RefCell<State>>,
@@ -183,7 +183,7 @@ pub(crate) fn choose_open_folder(
     );
 }
 
-/// Sauvegarde le rendu, dans l'un des formats matriciels.
+/// Saves the render, in one of the raster formats.
 pub(crate) fn choose_save_image(
     window: &adw::ApplicationWindow,
     state: &Rc<RefCell<State>>,
@@ -205,7 +205,7 @@ pub(crate) fn choose_save_image(
     );
 }
 
-/// Sauvegarde le rendu en SVG.
+/// Saves the render as SVG.
 pub(crate) fn choose_save_svg(
     window: &adw::ApplicationWindow,
     state: &Rc<RefCell<State>>,
@@ -223,7 +223,7 @@ pub(crate) fn choose_save_svg(
     );
 }
 
-/// Charge un preset TOML.
+/// Loads a TOML preset.
 pub(crate) fn choose_load_preset(
     window: &adw::ApplicationWindow,
     state: &Rc<RefCell<State>>,
@@ -239,7 +239,7 @@ pub(crate) fn choose_load_preset(
     );
 }
 
-/// Sauvegarde un preset TOML.
+/// Saves a TOML preset.
 pub(crate) fn choose_save_preset(
     window: &adw::ApplicationWindow,
     state: &Rc<RefCell<State>>,
@@ -257,12 +257,12 @@ pub(crate) fn choose_save_preset(
     );
 }
 
-/// Consigne le résultat d'une écriture : retient le dossier en cas de succès,
-/// et affiche le message correspondant.
+/// Records the outcome of a write: remembers the folder on success, and
+/// displays the matching message.
 ///
-/// Un point unique pour les trois écritures (preset, image, SVG) : le dossier
-/// est retenu en cas de succès et le message est choisi par l'appelant, si bien
-/// qu'un changement de politique s'applique aux trois d'un coup.
+/// A single point for the three writes (preset, image, SVG): the folder is
+/// remembered on success and the message is chosen by the caller, so a
+/// policy change applies to all three at once.
 fn report_save(
     result: Result<(), String>,
     path: &std::path::Path,
@@ -378,7 +378,7 @@ pub(crate) fn save_svg(path: PathBuf, state: &Rc<RefCell<State>>, widgets: &Rc<W
     );
 }
 
-/// Export sans dialogue : à côté de l'image source, en PNG.
+/// Export without a dialog: next to the source image, as PNG.
 pub(crate) fn quick_export(state: &Rc<RefCell<State>>, widgets: &Rc<Widgets>) {
     let Some(path) =
         state.borrow().src_path.as_ref().map(|source| {
@@ -388,25 +388,25 @@ pub(crate) fn quick_export(state: &Rc<RefCell<State>>, widgets: &Rc<Widgets>) {
         preview::notify(state, widgets, frontend::msg::OPEN_FIRST);
         return;
     };
-    // Pas de dialogue de choix : la confirmation se fait ici. Le chemin est
-    // cloné parce que le dialogue l'emprunte et la sauvegarde le consomme.
+    // No file chooser: the confirmation happens here. The path is cloned
+    // because the dialog borrows it and the save consumes it.
     let (destination, s, w) = (path.clone(), Rc::clone(state), Rc::clone(widgets));
     crate::confirm::confirm_overwrite(widgets, &path, move || save_result(destination, &s, &w));
 }
 
-/// Export SVG sans dialogue, à côté de l'image source.
+/// SVG export without a dialog, next to the source image.
 pub(crate) fn quick_export_svg(state: &Rc<RefCell<State>>, widgets: &Rc<Widgets>) {
     actions::save_svg_quick(state, widgets);
 }
 
-/// Réinitialise l'état « preset personnalisé » de la liste déroulante.
+/// Resets the "custom preset" state of the drop-down list.
 pub(crate) fn mark_preset_custom(state: &Rc<RefCell<State>>, widgets: &Rc<Widgets>) {
     let selected = widgets.presets.preset_combo.selected();
     if selected == 0 {
         return;
     }
-    // Le prédicat « ces réglages sont-ils exactement ce preset ? » vit dans
-    // `frontend`, partagé par les deux interfaces.
+    // The "are these settings exactly this preset?" predicate lives in
+    // `frontend`, shared by both interfaces.
     if frontend::matching_preset_index(&state.borrow().params) == Some(selected as usize - 1) {
         return;
     }
@@ -415,7 +415,7 @@ pub(crate) fn mark_preset_custom(state: &Rc<RefCell<State>>, widgets: &Rc<Widget
     state.borrow_mut().updating = false;
 }
 
-/// Applique le preset sélectionné dans la liste déroulante.
+/// Applies the preset selected in the drop-down list.
 pub(crate) fn apply_selected_preset(state: &Rc<RefCell<State>>, widgets: &Rc<Widgets>) {
     let selected = widgets.presets.preset_combo.selected();
     if selected == 0 {
@@ -424,7 +424,7 @@ pub(crate) fn apply_selected_preset(state: &Rc<RefCell<State>>, widgets: &Rc<Wid
     actions::apply_preset(selected as usize - 1, state, widgets);
 }
 
-/// Affiche le sous-titre du preset sélectionné (aide contextuelle).
+/// Displays the subtitle of the selected preset (contextual help).
 pub(crate) fn update_preset_row(state: &Rc<RefCell<State>>, widgets: &Rc<Widgets>) {
     let selected = widgets.presets.preset_combo.selected();
     let preset = filter::builtin_presets();
@@ -450,8 +450,8 @@ pub(crate) fn update_preset_row(state: &Rc<RefCell<State>>, widgets: &Rc<Widgets
     widgets.presets.preset_combo.set_subtitle(&text);
     state.borrow_mut().updating = false;
     sections::update_sections(widgets, &state.borrow().params);
-    // La grille remplace la liste déroulante quand elle est présente : elle
-    // porte donc elle aussi la légende, et l'état actif des vignettes.
+    // The grid replaces the drop-down list when it is present: it therefore
+    // carries the caption too, and the active state of the thumbnails.
     crate::wire::sync_preset_thumbs(state, widgets, selected);
     crate::wire::update_preset_caption(state, widgets, &text);
 }

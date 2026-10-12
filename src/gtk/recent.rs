@@ -1,15 +1,15 @@
-//! Fichiers récents.
+//! Recent files.
 //!
-//! GTK dispose de `GtkRecentManager`, qui alimente le menu « Documents
-//! récents » de toutes les applications GNOME et survit aux sessions : c'est
-//! l'outil natif, et il est utilisé tel quel.
+//! GTK has `GtkRecentManager`, which feeds the "Documents récents" menu of
+//! all GNOME applications and survives sessions: it is the native tool, and
+//! it is used as is.
 //!
-//! egui n'a pas d'équivalent — pas de `GMenu`, pas de menu du bureau — donc
-//! l'interface tient sa propre liste, dans le fichier de préférences qui
-//! existe déjà (`prefs.rs`).
+//! egui has no equivalent — no `GMenu`, no desktop menu — so the interface
+//! keeps its own list, in the preferences file that already exists
+//! (`prefs.rs`).
 //!
-//! Chaque front-end garde ainsi la manière de son toolkit ; seule l'intention
-//! — proposer les images récentes — est commune.
+//! Each front-end thus keeps the way of its toolkit; only the intent —
+//! offering the recent images — is shared.
 
 use std::cell::RefCell;
 use std::path::{Path, PathBuf};
@@ -21,26 +21,25 @@ use crate::State;
 use crate::actions;
 use crate::controls::Widgets;
 
-/// Nombre d'entrées proposées au maximum.
+/// Maximum number of entries offered.
 ///
-/// La liste vit dans l'état d'accueil, sous les boutons : quatre rangées
-/// tiennent avec l'icône et le titre de la page d'accueil. Au-delà, il
-/// faudrait un défilement — et un `ScrolledWindow` ne prend pas de hauteur
-/// dans le `StatusPage` d'adwaita, il s'effondre.
+/// The list lives in the welcome state, under the buttons: four rows fit with
+/// the icon and the title of the welcome page. Beyond that, scrolling would
+/// be needed — and a `ScrolledWindow` takes no height inside the adwaita
+/// `StatusPage`, it collapses.
 const MAX_RECENT: usize = 4;
 
-/// Ajoute une image aux documents récents du bureau.
+/// Adds an image to the desktop recent documents.
 pub(crate) fn remember(path: &Path) {
     let uri = gtk::gio::File::for_path(path).uri().to_string();
     gtk::RecentManager::default().add_item(&uri);
 }
 
-/// Chemins des images récentes, du plus récent au plus ancien.
+/// Paths of the recent images, from the most recent to the oldest.
 ///
-/// Le gestionnaire du bureau peut contenir des documents sans rapport : on
-/// ne garde que les images encore présentes sur le disque. `RecentInfo` ne
-/// rend que l'URI, d'où la conversion — un chemin local, ce que fournit
-/// toujours `file://`.
+/// The desktop manager can contain unrelated documents: only the images
+/// still present on disk are kept. `RecentInfo` only returns the URI, hence
+/// the conversion — a local path, which is what `file://` always provides.
 pub(crate) fn recent_images() -> Vec<PathBuf> {
     let mut paths = Vec::new();
     for item in gtk::RecentManager::default().items() {
@@ -61,8 +60,8 @@ pub(crate) fn recent_images() -> Vec<PathBuf> {
     paths
 }
 
-/// Décode les séquences `%XX` d'un URI `file://` : un chemin contenant un
-/// espace ou une lettre accentuée en contient.
+/// Decodes the `%XX` sequences of a `file://` URI: a path containing a space
+/// or an accented letter contains some.
 fn percent_decode(raw: &str) -> String {
     let bytes = raw.as_bytes();
     let mut out = Vec::with_capacity(bytes.len());
@@ -82,11 +81,11 @@ fn percent_decode(raw: &str) -> String {
     String::from_utf8_lossy(&out).into_owned()
 }
 
-/// Propose les images récentes dans l'état d'accueil.
+/// Offers the recent images in the welcome state.
 ///
-/// `adw::StatusPage` n'accepte qu'un titre, une description et une icône : les
-/// rangées vont donc dans un `PreferencesGroup` placé sous elle, ce qui reste
-/// dans l'adwaita et évite un dialogue séparé au premier lancement.
+/// `adw::StatusPage` only accepts a title, a description and an icon: the rows
+/// therefore go into a `PreferencesGroup` placed under it, which stays within
+/// adwaita and avoids a separate dialog on the first launch.
 pub(crate) fn build_recent_widget(
     state: &Rc<RefCell<State>>,
     widgets: &Rc<Widgets>,
@@ -100,8 +99,8 @@ pub(crate) fn build_recent_widget(
     group.set_description(Some("Reprendre où vous en étiez"));
     for path in images {
         let row = adw::ActionRow::new();
-        // Le nom du fichier, pas son chemin complet : la liste doit rester
-        // lisible, et deux images homonymes se distinguent par leur dossier.
+        // The file name, not its full path: the list must stay readable,
+        // and two images with the same name are told apart by their folder.
         let name = path
             .file_name()
             .map(|n| n.to_string_lossy().into_owned())
@@ -130,7 +129,7 @@ mod tests {
         assert_eq!(percent_decode("/tmp/photo.png"), "/tmp/photo.png");
         assert_eq!(percent_decode("/tmp/une%20photo.png"), "/tmp/une photo.png");
         assert_eq!(percent_decode("/tmp/%C3%A9t%C3%A9.png"), "/tmp/été.png");
-        // Une séquence incomplète est laissée telle quelle plutôt que perdue.
+        // An incomplete sequence is left as it is rather than lost.
         assert_eq!(percent_decode("/tmp/100%.png"), "/tmp/100%.png");
     }
 }

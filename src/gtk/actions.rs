@@ -1,4 +1,4 @@
-//! Logique applicative : workers de calcul, chargement, undo/redo, presets.
+//! Application logic: compute workers, loading, undo/redo, presets.
 
 use std::cell::RefCell;
 use std::path::PathBuf;
@@ -27,12 +27,12 @@ pub(crate) use crate::files::{
     choose_save_preset, choose_save_svg,
 };
 
-/// Délai avant de repasser en pleine résolution quand l'utilisateur arrête de
-/// manipuler les réglages.
+/// Delay before returning to full resolution when the user stops adjusting
+/// the settings.
 const FINALIZE_DELAY: Duration = Duration::from_millis(900);
 
-/// Appelé à chaque modification de paramètre : planifie un recalcul après un
-/// court délai (debounce). Si l'image n'est pas encore chargée, ne fait rien.
+/// Called on every parameter change: schedules a recompute after a short
+/// delay (debounce). Does nothing if the image is not loaded yet.
 pub(crate) fn on_params_changed(state: &Rc<RefCell<State>>, widgets: &Rc<Widgets>) {
     if state.borrow().updating {
         return;
@@ -53,7 +53,7 @@ pub(crate) fn on_params_changed(state: &Rc<RefCell<State>>, widgets: &Rc<Widgets
     state.borrow_mut().debounce = Some(id);
 }
 
-/// Demande un calcul : annule celui en cours et le relance, ou démarre.
+/// Requests a compute: cancels the one in progress and restarts it, or starts.
 pub(crate) fn request_compute(state: &Rc<RefCell<State>>, widgets: &Rc<Widgets>) {
     if state.borrow().computing {
         state.borrow_mut().restart_pending = true;
@@ -63,10 +63,10 @@ pub(crate) fn request_compute(state: &Rc<RefCell<State>>, widgets: &Rc<Widgets>)
     start_compute(state, widgets);
 }
 
-/// Recalcule immédiatement en pleine résolution (bouton Recalculer, Espace).
+/// Recomputes immediately at full resolution (Recalculer button, Space).
 ///
-/// Le mode choisi par l'utilisateur n'est pas modifié : c'est le calcul qui
-/// passe en pleine résolution, comme le fait la finalisation automatique.
+/// The mode chosen by the user is not modified: it is the compute that
+/// switches to full resolution, as automatic finalization does.
 pub(crate) fn request_full_compute(state: &Rc<RefCell<State>>, widgets: &Rc<Widgets>) {
     {
         let mut st = state.borrow_mut();
@@ -78,7 +78,7 @@ pub(crate) fn request_full_compute(state: &Rc<RefCell<State>>, widgets: &Rc<Widg
     request_compute(state, widgets);
 }
 
-/// Annulation par l'utilisateur.
+/// Cancellation requested by the user.
 pub(crate) fn cancel_compute(state: &Rc<RefCell<State>>, widgets: &Rc<Widgets>) {
     if !state.borrow().computing {
         return;
@@ -98,9 +98,9 @@ pub(crate) fn start_compute(state: &Rc<RefCell<State>>, widgets: &Rc<Widgets>) {
         let Some(src) = st.compute_source() else {
             return;
         };
-        // La density map n'est valable que pour la résolution où elle a été
-        // calculée : un aperçu à 1/2 suivi d'une finale pleine résolution
-        // doit recalculer la sienne.
+        // The density map is only valid at the resolution where it was
+        // computed: a 1/2 preview followed by a full-resolution final pass
+        // must recompute its own.
         let scale = if st.final_pass {
             1.0
         } else {
@@ -144,8 +144,8 @@ pub(crate) fn start_compute(state: &Rc<RefCell<State>>, widgets: &Rc<Widgets>) {
     preview::refresh_compare(state, widgets);
 }
 
-/// Programme la finalisation en pleine résolution après une courte période
-/// d'inactivité.
+/// Schedules finalization at full resolution after a short period of
+/// inactivity.
 fn schedule_finalize(state: &Rc<RefCell<State>>, widgets: &Rc<Widgets>) {
     if state.borrow().computes_full_resolution() {
         return;
@@ -162,7 +162,7 @@ fn schedule_finalize(state: &Rc<RefCell<State>>, widgets: &Rc<Widgets>) {
     state.borrow_mut().finalize_pending = Some(id);
 }
 
-/// Recalcule la density map dans un thread séparé.
+/// Recomputes the density map in a separate thread.
 pub(crate) fn start_density(state: &Rc<RefCell<State>>) {
     let Some(src) = state.borrow().compute_source() else {
         return;
@@ -190,14 +190,14 @@ pub(crate) fn start_density(state: &Rc<RefCell<State>>) {
     });
 }
 
-/// Charge une image depuis le disque.
+/// Loads an image from disk.
 pub(crate) fn load_image(path: PathBuf, state: &Rc<RefCell<State>>, widgets: &Rc<Widgets>) {
-    // Si l'image appartient au dossier en cours, on se place dessus.
+    // If the image belongs to the current folder, we move onto it.
     //
-    // L'emprunt de lecture est explicitement clos avant l'écriture : dans
-    // un `if let`, le temporaire du scrutinee reste vivant jusqu'à la fin du
-    // bloc, et le `borrow_mut()` suivant panicait — ce qui rendait la
-    // navigation ←/→ dans un dossier inutilisable.
+    // The read borrow is explicitly closed before the write: inside an
+    // `if let`, the scrutinee temporary stays alive until the end of the
+    // block, and the following `borrow_mut()` panicked — which made ←/→
+    // navigation inside a folder unusable.
     let index = {
         let st = state.borrow();
         st.folder_images
@@ -226,10 +226,11 @@ pub(crate) fn load_image(path: PathBuf, state: &Rc<RefCell<State>>, widgets: &Rc
                 st.src_dynamic = Some(img);
                 st.src_rgb = Some(rgb);
                 st.src_path = Some(path.clone());
-                // Document récent du bureau : c'est ce qui alimente le groupe
-                // « Images récentes » de l'état d'accueil au lancement suivant.
+                // Desktop recent document: this is what feeds the
+                // "Recent images" group of the welcome state at the next
+                // launch.
                 crate::recent::remember(&path);
-                // Taille du fichier d'origine : référence de la taille d'export.
+                // Size of the original file: reference for the export size.
                 st.source_size = std::fs::metadata(&path).ok().map(|meta| meta.len());
                 st.export_sizes = None;
                 st.src_texture = None;
@@ -267,9 +268,9 @@ pub(crate) fn load_image(path: PathBuf, state: &Rc<RefCell<State>>, widgets: &Rc
     }
 }
 
-/// Ouvre un dossier : charge la première image et active la navigation.
+/// Opens a folder: loads the first image and enables navigation.
 pub(crate) fn open_folder(path: PathBuf, state: &Rc<RefCell<State>>, widgets: &Rc<Widgets>) {
-    // Balayage et messages partagés avec egui (voir `frontend`).
+    // Folder scan and messages shared with egui (see `frontend`).
     let images = match frontend::collect_folder_images(&path) {
         Ok(images) => images,
         Err(e) => {
@@ -287,7 +288,7 @@ pub(crate) fn open_folder(path: PathBuf, state: &Rc<RefCell<State>>, widgets: &R
     load_image(first, state, widgets);
 }
 
-/// Image suivante / précédente dans le dossier courant.
+/// Next / previous image in the current folder.
 pub(crate) fn step_folder(delta: i32, state: &Rc<RefCell<State>>, widgets: &Rc<Widgets>) {
     let target = {
         let st = state.borrow();
@@ -303,7 +304,7 @@ pub(crate) fn step_folder(delta: i32, state: &Rc<RefCell<State>>, widgets: &Rc<W
     load_image(target, state, widgets);
 }
 
-/// Recompose `src_rgb` depuis `src_dynamic` (utile quand la couleur de fond change).
+/// Rebuilds `src_rgb` from `src_dynamic` (useful when the background color changes).
 pub(crate) fn refresh_src_rgb(state: &Rc<RefCell<State>>, widgets: &Rc<Widgets>) {
     let Some(img) = state.borrow().src_dynamic.clone() else {
         return;
@@ -390,9 +391,9 @@ pub(crate) fn redo(state: &Rc<RefCell<State>>, widgets: &Rc<Widgets>) {
     preview::notify(state, widgets, frontend::msg::REDONE);
 }
 
-/// Rétablit les valeurs par défaut d'une section, **sans toucher aux autres** :
-/// on part des réglages courants et on ne remplace que les champs de la
-/// section visée.
+/// Restores the default values of a section, **without touching the
+/// others**: we start from the current settings and only replace the fields
+/// of the targeted section.
 fn with_section_defaults(current: &FilterParams, target: ResetTarget) -> FilterParams {
     let default = FilterParams::default();
     let mut params = current.clone();
@@ -429,8 +430,8 @@ fn with_section_defaults(current: &FilterParams, target: ResetTarget) -> FilterP
     params
 }
 
-/// Rétablit les réglages par défaut. Passe par l'historique pour rester
-/// annulable (Ctrl+Z).
+/// Restores the default settings. Goes through the history to stay undoable
+/// (Ctrl+Z).
 pub(crate) fn reset_params(state: &Rc<RefCell<State>>, widgets: &Rc<Widgets>) {
     if state.borrow().params == FilterParams::default() {
         preview::notify(state, widgets, frontend::msg::ALREADY_DEFAULT);
@@ -449,7 +450,7 @@ pub(crate) fn reset_params(state: &Rc<RefCell<State>>, widgets: &Rc<Widgets>) {
     preview::notify(state, widgets, "Réglages réinitialisés.");
 }
 
-/// Rétablit une seule section (bouton ↺ dans l'en-tête du groupe).
+/// Restores a single section (↺ button in the group header).
 pub(crate) fn reset_section(
     target: ResetTarget,
     state: &Rc<RefCell<State>>,
@@ -471,8 +472,8 @@ pub(crate) fn reset_section(
         st.pending_commit = false;
         commit_history(&mut st);
     }
-    // Le preset affiché n'est plus « personnalisé » seulement si la section
-    // qui le définit a changé : on repasse à l'entrée neutre.
+    // The displayed preset is no longer "custom" only when the section that
+    // defines it has changed: we fall back to the neutral entry.
     sections::sync_widgets(state, widgets);
     sections::update_sections(widgets, &state.borrow().params);
     refresh_src_rgb(state, widgets);
@@ -480,7 +481,7 @@ pub(crate) fn reset_section(
     preview::notify(state, widgets, "Section réinitialisée.");
 }
 
-/// Applique un preset intégré (annulable, comme n'importe quel changement).
+/// Applies a built-in preset (undoable, like any other change).
 pub(crate) fn apply_preset(index: usize, state: &Rc<RefCell<State>>, widgets: &Rc<Widgets>) {
     let presets = filter::builtin_presets();
     let Some(preset) = presets.get(index) else {
@@ -498,8 +499,9 @@ pub(crate) fn apply_preset(index: usize, state: &Rc<RefCell<State>>, widgets: &R
     }
     sections::sync_widgets(state, widgets);
     sections::update_sections(widgets, &state.borrow().params);
-    // La ligne de preset porte le sous-titre, l'état actif des vignettes et la
-    // légende : sans cet appel, cliquer une vignette n'afficherait rien.
+    // The preset row carries the subtitle, the active state of the
+    // thumbnails and the caption: without this call, clicking a thumbnail
+    // would display nothing.
     crate::files::update_preset_row(state, widgets);
     refresh_src_rgb(state, widgets);
     request_compute(state, widgets);
@@ -510,7 +512,7 @@ pub(crate) fn apply_preset(index: usize, state: &Rc<RefCell<State>>, widgets: &R
     );
 }
 
-/// Applique les paramètres d'un preset chargé depuis un fichier.
+/// Applies the parameters of a preset loaded from a file.
 pub(crate) fn apply_preset_params(
     params: FilterParams,
     label: &str,
@@ -530,9 +532,9 @@ pub(crate) fn apply_preset_params(
     preview::notify(state, widgets, label);
 }
 
-/// Tire une nouvelle graine aléatoire et recalcule.
+/// Draws a new random seed and recomputes.
 pub(crate) fn vary_seed(state: &Rc<RefCell<State>>, widgets: &Rc<Widgets>) {
-    // Même tirage qu'en egui : une seule définition, dans `frontend`.
+    // Same draw as in egui: a single definition, in `frontend`.
     let seed = frontend::random_seed();
     {
         let mut st = state.borrow_mut();
@@ -543,15 +545,15 @@ pub(crate) fn vary_seed(state: &Rc<RefCell<State>>, widgets: &Rc<Widgets>) {
     on_params_changed(state, widgets);
 }
 
-/// Copie le résultat courant dans le presse-papiers.
+/// Copies the current result to the clipboard.
 pub(crate) fn copy_to_clipboard(state: &Rc<RefCell<State>>, widgets: &Rc<Widgets>) {
     let Some(result) = state.borrow().result.clone() else {
         preview::notify(state, widgets, frontend::msg::NOTHING_TO_COPY);
         return;
     };
     let texture = crate::preview::rgba_to_texture(&result);
-    // Le presse-papiers est un service de l'affichage : on passe par la
-    // fenêtre pour être sûr d'être dans le bon display.
+    // The clipboard is a service of the display: we go through the window to
+    // be sure of being on the right display.
     widgets
         .window
         .toast_overlay
@@ -560,9 +562,9 @@ pub(crate) fn copy_to_clipboard(state: &Rc<RefCell<State>>, widgets: &Rc<Widgets
     preview::notify(state, widgets, frontend::msg::COPIED);
 }
 
-// ─── Messages des workers ────────────────────────────────────────────────────
+// ─── Worker messages ─────────────────────────────────────────────────────────
 
-/// Récupère un message d'un worker et met à jour l'interface.
+/// Retrieves a message from a worker and updates the interface.
 pub(crate) fn handle_message(msg: Msg, state: &Rc<RefCell<State>>, widgets: &Rc<Widgets>) {
     match msg {
         Msg::Progress {
@@ -628,8 +630,8 @@ pub(crate) fn handle_message(msg: Msg, state: &Rc<RefCell<State>>, widgets: &Rc<
             preview::apply_zoom(state, widgets);
             preview::refresh_compare(state, widgets);
             preview::refresh_actions(state, widgets);
-            // Taille d'export : uniquement sur le rendu définitif. Le worker
-            // publiera son résultat par le canal.
+            // Export size: only on the final render. The worker will
+            // publish its result through the channel.
             let tx = state.borrow().tx.clone();
             crate::exports::refresh(state, &tx);
             preview::update_status_labels(state, widgets);
@@ -724,7 +726,7 @@ fn maybe_restart(state: &Rc<RefCell<State>>, widgets: &Rc<Widgets>) {
     }
 }
 
-/// Corps du thread de calcul.
+/// Body of the compute thread.
 fn run_worker(
     src: RgbImage,
     params: FilterParams,
@@ -810,7 +812,7 @@ fn run_worker(
     }
 }
 
-/// Export SVG des dots courants (utilisé par le menu et les raccourcis).
+/// SVG export of the current dots (used by the menu and the shortcuts).
 pub(crate) fn save_svg_quick(state: &Rc<RefCell<State>>, widgets: &Rc<Widgets>) {
     let Some(path) =
         state.borrow().src_path.as_ref().map(|source| {
@@ -820,8 +822,8 @@ pub(crate) fn save_svg_quick(state: &Rc<RefCell<State>>, widgets: &Rc<Widgets>) 
         preview::notify(state, widgets, frontend::msg::OPEN_FIRST);
         return;
     };
-    // Pas de dialogue de choix : la confirmation se fait ici. Même raison de
-    // cloner le chemin qu'au-dessus.
+    // No file chooser: the confirmation happens here. Same reason for cloning
+    // the path as above.
     let (destination, s, w) = (path.clone(), Rc::clone(state), Rc::clone(widgets));
     crate::confirm::confirm_overwrite(widgets, &path, move || {
         crate::files::save_svg(destination, &s, &w)
@@ -832,7 +834,7 @@ pub(crate) fn save_svg_quick(state: &Rc<RefCell<State>>, widgets: &Rc<Widgets>) 
 mod tests {
     use super::*;
 
-    /// Les réinitialisations partielles ne doivent toucher qu'à leur section.
+    /// Partial resets must touch only their own section.
     #[test]
     fn reset_targets_are_scoped() {
         let default = FilterParams::default();
@@ -874,7 +876,7 @@ mod tests {
         );
     }
 
-    /// Les presets intégrés doivent rester acceptables par le pipeline.
+    /// Built-in presets must stay acceptable to the pipeline.
     #[test]
     fn halftone_presets_carry_a_mode() {
         for preset in filter::builtin_presets() {
@@ -889,8 +891,8 @@ mod tests {
 
     #[test]
     fn folder_navigation_wraps() {
-        // `step_folder` ne fait rien sans dossier : on vérifie ici le calcul
-        // d'index utilisé par la navigation.
+        // `step_folder` does nothing without a folder: here we check the
+        // index computation used by navigation.
         let len = 3usize;
         let index = 2usize;
         for delta in [1, -1] {

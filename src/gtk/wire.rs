@@ -1,4 +1,4 @@
-//! Câblage des signaux GTK vers l'état applicatif.
+//! Wiring of the GTK signals towards the application state.
 
 use std::cell::RefCell;
 use std::rc::Rc;
@@ -20,12 +20,13 @@ use crate::sections;
 type St = Rc<RefCell<State>>;
 type Wi = Rc<Widgets>;
 
-/// Lève `updating` le temps de `body`, puis le repose.
+/// Raises `updating` for the duration of `body`, then puts it back down.
 ///
-/// Écrire dans un widget réémet son signal ; `updating` empêche le rappel de
-/// relancer un calcul pendant cette écriture. Le garder dans une fermeture plutôt
-/// qu'en deux `borrow_mut` autour d'un bloc assure que la garde est reposée même
-/// si le bloc gagne un `return` un jour — ce que la forme ouverte ne garantit pas.
+/// Writing in a widget re-emits its signal; `updating` prevents the callback
+/// from triggering a recompute during that write. Keeping it in a closure
+/// rather than in two `borrow_mut`s around a block ensures that the guard is
+/// put back even if the block one day gains a `return` — which the open form
+/// does not guarantee.
 fn with_updating<F>(state: &St, widgets: &Wi, body: F)
 where
     F: FnOnce(&Wi),
@@ -39,9 +40,9 @@ fn clone_state_widgets(state: &St, widgets: &Wi) -> (St, Wi) {
     (Rc::clone(state), Rc::clone(widgets))
 }
 
-// ─── Menu et actions ─────────────────────────────────────────────────────────
+// ─── Menus and actions ───────────────────────────────────────────────────────
 
-/// Éléments propres au bouton « Exporter ».
+/// Items specific to the "Exporter" button.
 pub(crate) fn export_menu_model() -> gtk::gio::Menu {
     let menu = gtk::gio::Menu::new();
     menu.append(Some("Exporter l'image…"), Some("win.export"));
@@ -58,11 +59,11 @@ pub(crate) fn export_menu_model() -> gtk::gio::Menu {
     menu
 }
 
-/// Menu principal de l'application, sous le bouton hamburger de l'en-tête.
+/// Main menu of the application, under the hamburger button of the header.
 ///
-/// Ouvrir un dossier, changer d'image, changer l'affichage et consulter les
-/// raccourcis n'ont pas d'autre accès que ce menu. Les séparateurs `_` des
-/// libellés fournissent les mnémoniques clavier.
+/// Opening a folder, changing image, changing the display and consulting the
+/// shortcuts have no other access than this menu. The `_` separators of the
+/// labels provide the keyboard mnemonics.
 pub(crate) fn menu_model() -> gtk::gio::Menu {
     let menu = gtk::gio::Menu::new();
 
@@ -96,15 +97,15 @@ pub(crate) fn menu_model() -> gtk::gio::Menu {
     menu
 }
 
-/// Enregistre le groupe d'actions `win.*` sur la fenêtre et les raccourcis.
+/// Registers the `win.*` action group on the window and the shortcuts.
 pub(crate) fn install_actions(state: &St, widgets: &Wi, window: &adw::ApplicationWindow) {
     let group = gtk::gio::SimpleActionGroup::new();
     let (s, w) = clone_state_widgets(state, widgets);
     let dialogs_window = window.clone();
 
-    // `g_set_accels_for_action` n'est pas exposé par gio-rs : les
-    // accélérateurs sont déclarés via un `GtkShortcutController` greffé à la
-    // fenêtre, ce qui a en plus l'avantage de fonctionner sans GtkApplication.
+    // `g_set_accels_for_action` is not exposed by gio-rs: the accelerators
+    // are declared via a `GtkShortcutController` grafted onto the window,
+    // which has the additional advantage of working without GtkApplication.
     let mut accelerators: Vec<(String, Vec<String>)> = Vec::new();
     let mut add = |name: &str, accels: &[&str], f: Rc<dyn Fn()>| {
         let action = gtk::gio::SimpleAction::new(name, None);
@@ -209,8 +210,8 @@ pub(crate) fn install_actions(state: &St, widgets: &Wi, window: &adw::Applicatio
         let (s, w) = (Rc::clone(&s), Rc::clone(&w));
         Rc::new(move || step_view(&s, &w, 1))
     });
-    // Pas d'accélérateur : `Maj+Tab` est traité par le `EventControllerKey`
-    // ci-dessous, qui fait la même chose et se déclenche dans les deux sens.
+    // No accelerator: `Maj+Tab` is handled by the `EventControllerKey`
+    // below, which does the same thing and fires in both directions.
     add("view-prev", &[], {
         let (s, w) = (Rc::clone(&s), Rc::clone(&w));
         Rc::new(move || step_view(&s, &w, -1))
@@ -246,7 +247,7 @@ pub(crate) fn install_actions(state: &St, widgets: &Wi, window: &adw::Applicatio
             let Some(trigger) = gtk::ShortcutTrigger::parse_string(accel) else {
                 continue;
             };
-            // La syntaxe attendue est `action(win.nom)`.
+            // The expected syntax is `action(win.nom)`.
             let Some(action) = gtk::ShortcutAction::parse_string(&format!("action({action_name})"))
             else {
                 continue;
@@ -265,7 +266,7 @@ fn toggle_fullscreen(window: &adw::ApplicationWindow) {
     }
 }
 
-/// Passe au mode d'affichage suivant (ou précédent avec `delta < 0`).
+/// Switches to the next display mode (or previous with `delta < 0`).
 fn step_view(state: &St, widgets: &Wi, delta: i32) {
     let next = {
         let current = view_index(state.borrow().view_mode) as i32;
@@ -281,7 +282,7 @@ fn step_view(state: &St, widgets: &Wi, delta: i32) {
     preview::apply_zoom(state, widgets);
 }
 
-/// Applique le preset suivant/précédent de la liste.
+/// Applies the next/previous preset of the list.
 fn step_preset(state: &St, widgets: &Wi, delta: i32) {
     let total = pointimg::filter::builtin_presets().len() as i32;
     let current = widgets.presets.preset_combo.selected() as i32;
@@ -298,15 +299,15 @@ fn step_preset(state: &St, widgets: &Wi, delta: i32) {
     actions::apply_preset(next as usize - 1, state, widgets);
 }
 
-/// Aligne la grille de vignettes sur le preset courant.
+/// Aligns the thumbnail grid on the current preset.
 ///
-/// `next` est la position dans la liste déroulable, où 0 vaut « Personnalisé »
-/// et `n + 1` le preset `n`. Un état « personnalisé » décoche toutes les cases
-/// — sans quoi une vignette resterait active alors qu'elle ne décrit plus les
-/// réglages.
+/// `next` is the position in the drop-down list, where 0 means "Personnalisé"
+/// and `n + 1` is preset `n`. A "custom" state unchecks all the boxes —
+/// otherwise a thumbnail would stay active while it no longer describes the
+/// settings.
 ///
-/// `updating` encadre la manipulation : `set_active` émet `toggled`, dont le
-/// rappel réappliquerait le preset — une seconde fois, et pour le mauvais.
+/// `updating` frames the manipulation: `set_active` emits `toggled`, whose
+/// callback would reapply the preset — a second time, and for the wrong one.
 pub(crate) fn sync_preset_thumbs(state: &St, widgets: &Wi, next: u32) {
     state.borrow_mut().updating = true;
     for (index, widget) in widgets.presets.preset_thumbs.iter().enumerate() {
@@ -317,11 +318,11 @@ pub(crate) fn sync_preset_thumbs(state: &St, widgets: &Wi, next: u32) {
     state.borrow_mut().updating = false;
 }
 
-/// Légende sous la grille de vignettes.
+/// Caption under the thumbnail grid.
 ///
-/// `texte` est celui que la liste déroulante affiche déjà — le même calcul, une
-/// seule source. Sans la grille, l'opération ne fait rien : c'est le
-/// sous-titre du `ComboRow` qui tient lieu de légende.
+/// `texte` is the one the drop-down list already displays — the same
+/// computation, a single source. Without the grid, the operation does
+/// nothing: it is the subtitle of the `ComboRow` that serves as the caption.
 pub(crate) fn update_preset_caption(_state: &St, widgets: &Wi, texte: &str) {
     if widgets.presets.preset_thumbs.is_empty() {
         return;
@@ -329,9 +330,9 @@ pub(crate) fn update_preset_caption(_state: &St, widgets: &Wi, texte: &str) {
     widgets.presets.preset_caption.set_text(texte);
 }
 
-// ─── Signaux des widgets ─────────────────────────────────────────────────────
+// ─── Widget signals ─────────────────────────────────────────────────────────
 
-/// Branche un réglage numérique : applique la valeur puis relance (debounce).
+/// Wires up a numeric setting: applies the value then recomputes (debounce).
 fn on_value(
     state: &St,
     widgets: &Wi,
@@ -350,7 +351,7 @@ fn on_value(
     });
 }
 
-/// Branche le curseur qui double un réglage numérique.
+/// Wires up the slider that doubles a numeric setting.
 fn on_slider(
     state: &St,
     widgets: &Wi,
@@ -359,7 +360,7 @@ fn on_slider(
     after: Option<fn(&St, &Wi)>,
 ) {
     let (state, widgets) = clone_state_widgets(state, widgets);
-    // `spec` est `Copy` : le callback ne peut pas capturer le widget.
+    // `spec` is `Copy`: the callback cannot capture the widget.
     let spec = slider.spec;
     slider.scale.connect_value_changed(move |scale| {
         if state.borrow().updating {
@@ -371,12 +372,13 @@ fn on_slider(
     });
 }
 
-/// Effets d'un changement de valeur numérique.
+/// Effects of a numeric value change.
 ///
-/// GTK réémet `value-changed` au retrait du focus d'une `SpinRow`, avec la
-/// valeur ré-analysée du champ : sans ce garde-fou, l'image serait recalculée
-/// alors que rien n'a bougé (passer du nombre de points au rayon min, par
-/// exemple). On ne relance donc que si les paramètres ont réellement changé.
+/// GTK re-emits `value-changed` when a `SpinRow` loses focus, with the
+/// re-parsed value of the field: without that safeguard, the image would be
+/// recomputed although nothing moved (going from the number of points to the
+/// min radius, for instance). We therefore only recompute if the parameters
+/// really changed.
 fn commit_value_change(
     state: &St,
     widgets: &Wi,
@@ -388,9 +390,9 @@ fn commit_value_change(
         return;
     }
     if from_slider {
-        // La valeur vient du curseur : la `SpinRow` jumelle affiche une valeur
-        // périmée, et les réglages voisins (bornes min/max, sections visibles)
-        // doivent être resynchronisés.
+        // The value comes from the slider: the twin `SpinRow` displays a stale
+        // value, and the neighboring settings (min/max bounds, visible
+        // sections) must be resynchronized.
         sections::sync_widgets(state, widgets);
     }
     if let Some(after) = after {
@@ -401,7 +403,7 @@ fn commit_value_change(
     actions::on_params_changed(state, widgets);
 }
 
-/// Branche un interrupteur.
+/// Wires up a switch.
 fn on_switch(
     state: &St,
     widgets: &Wi,
@@ -429,11 +431,11 @@ where
     button.connect_clicked(move |_| f(&state, &widgets));
 }
 
-/// Branche l'ensemble des signaux.
+/// Wires up the whole set of signals.
 ///
-/// Huit groupes, une fonction chacun : chaque section portait déjà son titre
-/// en commentaire, mais les 500 lignes formaient un bloc unique où retrouver
-/// un branchement demandait de le descendre en entier.
+/// Eight groups, one function each: each section already carried its title in
+/// a comment, but the 500 lines formed a single block where finding a wiring
+/// required scrolling through all of it.
 pub(crate) fn wire(state: &St, widgets: &Wi, window: &adw::ApplicationWindow) {
     wire_header_buttons(state, widgets, window);
     wire_presets(state, widgets);
@@ -447,7 +449,7 @@ pub(crate) fn wire(state: &St, widgets: &Wi, window: &adw::ApplicationWindow) {
     preview::connect_scroll_sync(widgets);
 }
 
-/// Signaux du groupe « Boutons de l'en-tête et de l'accueil ».
+/// Signals of the "Boutons de l'en-tête et de l'accueil" group.
 fn wire_header_buttons(state: &St, widgets: &Wi, window: &adw::ApplicationWindow) {
     for button in [&widgets.window.open, &widgets.status_bar.open_empty] {
         let (s, w) = clone_state_widgets(state, widgets);
@@ -506,7 +508,7 @@ fn wire_header_buttons(state: &St, widgets: &Wi, window: &adw::ApplicationWindow
             .connect_clicked(move |_| actions::choose_open_folder(&window, &s, &w));
     }
 
-    // Exemple fourni avec le programme, s'il est présent sur le disque.
+    // Example provided with the program, if it is present on the disk.
     if let Some(sample) = sample_image() {
         on_click(
             state,
@@ -520,7 +522,7 @@ fn wire_header_buttons(state: &St, widgets: &Wi, window: &adw::ApplicationWindow
         widgets.status_bar.sample_button.set_visible(false);
     }
 
-    // Boutons de réinitialisation par section.
+    // Per-section reset buttons.
     for reset in &widgets.compute.group_resets {
         let (s, w) = clone_state_widgets(state, widgets);
         let target = reset.target;
@@ -530,7 +532,7 @@ fn wire_header_buttons(state: &St, widgets: &Wi, window: &adw::ApplicationWindow
     }
 }
 
-/// Signaux du groupe « Presets ».
+/// Signals of the "Presets" group.
 fn wire_presets(state: &St, widgets: &Wi) {
     {
         let (s, w) = clone_state_widgets(state, widgets);
@@ -545,9 +547,9 @@ fn wire_presets(state: &St, widgets: &Wi) {
                 files::apply_selected_preset(&s, &w);
             });
     }
-    // Grille de vignettes : un clic applique le preset. La liste déroulante
-    // reste branchée en amont — la grille ne fait que la piloter — ce qui évite
-    // deux chemins d'application du même preset.
+    // Thumbnail grid: a click applies the preset. The drop-down list stays
+    // wired upstream — the grid only drives it — which avoids two paths for
+    // applying the same preset.
     for (index, widget) in widgets.presets.preset_thumbs.iter().enumerate() {
         let Some(bouton) = widget.clone().downcast::<gtk::ToggleButton>().ok() else {
             continue;
@@ -557,8 +559,8 @@ fn wire_presets(state: &St, widgets: &Wi) {
             if !bouton.is_active() || s.borrow().updating {
                 return;
             }
-            // `updating` empêche le rappel de la liste déroulante de
-            // réappliquer le preset une seconde fois.
+            // `updating` prevents the callback of the drop-down list from
+            // reapplying the preset a second time.
             s.borrow_mut().updating = true;
             w.presets.preset_combo.set_selected(index as u32 + 1);
             s.borrow_mut().updating = false;
@@ -567,7 +569,7 @@ fn wire_presets(state: &St, widgets: &Wi) {
     }
 }
 
-/// Signaux du groupe « Algorithme ».
+/// Signals of the "Algorithme" group.
 fn wire_algorithm(state: &St, widgets: &Wi) {
     {
         let (s, w) = clone_state_widgets(state, widgets);
@@ -593,8 +595,8 @@ fn wire_algorithm(state: &St, widgets: &Wi) {
         });
     }
 
-    // Les réglages doublés d'un curseur passent par des fonctions nommées :
-    // la `SpinRow` et son curseur appliquent exactement la même conversion.
+    // The settings doubled by a slider go through named functions: the
+    // `SpinRow` and its slider apply exactly the same conversion.
     on_value(
         state,
         widgets,
@@ -697,7 +699,7 @@ fn wire_algorithm(state: &St, widgets: &Wi) {
     );
 }
 
-/// Signaux du groupe « Qualité de l'aperçu ».
+/// Signals of the "Qualité de l'aperçu" group.
 fn wire_quality(state: &St, widgets: &Wi) {
     {
         let (s, w) = clone_state_widgets(state, widgets);
@@ -719,7 +721,7 @@ fn wire_quality(state: &St, widgets: &Wi) {
     }
 }
 
-/// Signaux du groupe « Halftone ».
+/// Signals of the "Trame" group.
 fn wire_halftone(state: &St, widgets: &Wi) {
     {
         let (s, w) = clone_state_widgets(state, widgets);
@@ -830,7 +832,7 @@ fn wire_halftone(state: &St, widgets: &Wi) {
     );
 }
 
-/// Signaux du groupe « Forme des points ».
+/// Signals of the "Forme des points" group.
 fn wire_shape(state: &St, widgets: &Wi) {
     {
         let (s, w) = clone_state_widgets(state, widgets);
@@ -925,7 +927,7 @@ fn wire_shape(state: &St, widgets: &Wi) {
     }
 }
 
-/// Signaux du groupe « Rendu ».
+/// Signals of the "Rendu" group.
 fn wire_render(state: &St, widgets: &Wi) {
     {
         let (s, w) = clone_state_widgets(state, widgets);
@@ -945,8 +947,8 @@ fn wire_render(state: &St, widgets: &Wi) {
                 st.params.transparent = false;
                 st.updating = true;
             }
-            // Les setters GTK émettent des signaux synchrones : on relâche le
-            // borrow avant de toucher aux widgets.
+            // GTK setters emit synchronous signals: the borrow is released
+            // before touching the widgets.
             w.render.transparent.set_active(false);
             s.borrow_mut().updating = false;
             sections::update_sections(&w, &s.borrow().params);
@@ -976,7 +978,7 @@ fn wire_render(state: &St, widgets: &Wi) {
     }
 }
 
-/// Signaux du groupe « Affichage ».
+/// Signals of the "Affichage" group.
 fn wire_display(state: &St, widgets: &Wi) {
     {
         let (s, w) = clone_state_widgets(state, widgets);
@@ -1021,8 +1023,8 @@ fn wire_display(state: &St, widgets: &Wi) {
     preview::connect_scroll_sync(widgets);
 }
 
-/// La density map dépend de la sensibilité à la variance : on la recalcule
-/// séparément, sans relancer le filtre.
+/// The density map depends on the variance sensitivity: it is recomputed
+/// separately, without rerunning the filter.
 fn after_variance(state: &St, widgets: &Wi) {
     actions::start_density(state);
     let _ = widgets;
@@ -1034,7 +1036,7 @@ fn set_variance(p: &mut pointimg::filter::FilterParams, v: f64) {
 
 fn set_min_radius(p: &mut pointimg::filter::FilterParams, v: f64) {
     p.min_radius_ratio = v as f32;
-    // La borne basse ne peut pas dépasser la haute.
+    // The low end cannot exceed the high end.
     if p.max_radius_ratio < p.min_radius_ratio {
         p.max_radius_ratio = p.min_radius_ratio;
     }
@@ -1081,7 +1083,7 @@ fn set_halftone_max_dot(p: &mut pointimg::filter::FilterParams, v: f64) {
     }
 }
 
-/// Idem [`sync_radii`] pour la paire de bornes du halftone.
+/// Same as [`sync_radii`] for the pair of halftone bounds.
 fn sync_halftone_radii(state: &St, widgets: &Wi) {
     if state.borrow().updating {
         return;
@@ -1093,10 +1095,10 @@ fn sync_halftone_radii(state: &St, widgets: &Wi) {
             st.params.halftone_max_dot_ratio,
         )
     };
-    // La garde encadre l'écriture des deux lignes : ici, `set_value` et
-    // `set_bound` réémettent tous deux, et la garde n'est levée qu'à la fin.
-    // C'est exactement ce que faisaient les deux copies, mais la fermeture
-    // garantit qu'aucun `return` ajouté plus tard ne la laisse levée.
+    // The guard frames the writing of the two lines: here, `set_value` and
+    // `set_bound` both re-emit, and the guard is only lifted at the end.
+    // That is exactly what the two copies did, but the closure guarantees that
+    // no `return` added later leaves it lifted.
     with_updating(state, widgets, |w| {
         sync_radius_pair(
             &w.halftone.halftone_min_radius,
@@ -1109,8 +1111,8 @@ fn sync_halftone_radii(state: &St, widgets: &Wi) {
     });
 }
 
-/// Les deux rayons sont bornés l'un par l'autre : après un changement, la ligne
-/// contrainte doit être réalignée sur la valeur retenue.
+/// The two radii are bounded by each other: after a change, the constrained
+/// line must be realigned on the retained value.
 fn sync_radii(state: &St, widgets: &Wi) {
     if state.borrow().updating {
         return;
@@ -1131,12 +1133,11 @@ fn sync_radii(state: &St, widgets: &Wi) {
     });
 }
 
-/// Écrit une paire (ligne de saisie, curseur, borne croisée) des deux côtés.
+/// Writes a pair (entry line, slider, crossed bound) on both sides.
 ///
-/// Les deux blocs jumeaux — rayons de points et rayons de trame — ne diffèrent
-/// que par les widgets. La danse d'emprunts (`borrow_mut` en deux temps de part
-/// et d'autre) est la partie fragile : `updating` doit rester synchronisé
-/// pendant toute la mise à jour.
+/// The two twin blocks — dot radii and screen radii — differ only by the
+/// widgets. The borrow dance (`borrow_mut` in two steps on both sides) is the
+/// fragile part: `updating` must stay synchronized during the whole update.
 fn sync_radius_pair(
     min_row: &adw::SpinRow,
     max_row: &adw::SpinRow,
@@ -1149,12 +1150,12 @@ fn sync_radius_pair(
     max_row.adjustment().set_value(f64::from(max));
     min_slider.set_value(f64::from(min));
     max_slider.set_value(f64::from(max));
-    // La borne croisée : chaque poignée ne peut pas dépasser l'autre.
+    // The crossed bound: each handle cannot go past the other.
     min_slider.set_bound(f64::from(max));
     max_slider.set_bound(f64::from(min));
 }
 
-// ─── Glisser-déposer ─────────────────────────────────────────────────────────
+// ─── Drag and drop ───────────────────────────────────────────────────────────
 
 pub(crate) fn install_dnd(window: &adw::ApplicationWindow, state: &St, widgets: &Wi) {
     let drop = gtk::DropTarget::new(
@@ -1167,9 +1168,9 @@ pub(crate) fn install_dnd(window: &adw::ApplicationWindow, state: &St, widgets: 
         let Ok(list) = value.get::<gtk::gdk::FileList>() else {
             return false;
         };
-        // Chaque fichier est traité, et le geste est accepté dès que la liste
-        // contient au moins un élément utile : le `return true` reste hors de la
-        // boucle, sinon seul le premier fichier serait chargé.
+        // Every file is handled, and the gesture is accepted as soon as the
+        // list contains at least one useful item: the `return true` stays out
+        // of the loop, otherwise only the first file would be loaded.
         let mut traite = false;
         for file in list.files() {
             let Some(path) = file.path() else {
@@ -1188,7 +1189,7 @@ pub(crate) fn install_dnd(window: &adw::ApplicationWindow, state: &St, widgets: 
     window.add_controller(drop);
 }
 
-// ─── Raccourcis clavier ──────────────────────────────────────────────────────
+// ─── Keyboard shortcuts ──────────────────────────────────────────────────────
 
 pub(crate) fn install_shortcuts(state: &St, widgets: &Wi, window: &adw::ApplicationWindow) {
     let controller = gtk::EventControllerKey::new();
@@ -1198,8 +1199,8 @@ pub(crate) fn install_shortcuts(state: &St, widgets: &Wi, window: &adw::Applicat
     controller.connect_key_pressed(move |_, keyval, _, modifiers| {
         use gtk::gdk::{Key, ModifierType};
         let ctrl = modifiers.intersects(ModifierType::CONTROL_MASK | ModifierType::META_MASK);
-        // Tant qu'un champ de saisie a le focus, les raccourcis « lettre »
-        // risqueraient d'être tapés dans le champ : on les laisse passer.
+        // As long as an entry field has the focus, the "letter" shortcuts
+        // risk being typed into the field: they are let through.
         let editing =
             key_widgets.render.seed.has_focus() || key_widgets.render.bg_button.has_focus();
         if ctrl {
@@ -1210,10 +1211,10 @@ pub(crate) fn install_shortcuts(state: &St, widgets: &Wi, window: &adw::Applicat
             return glib::Propagation::Proceed;
         }
         match keyval {
-            // `editing` garde déjà les raccourcis « lettre » : l'espace est le
-            // seul caractère qu'un champ de saisie peut recevoir au milieu d'un
-            // mot (une couleur « #ff cc00 », un nom de fichier). Sans la garde,
-            // taper un espace dans « Couleur du fond » relançait un calcul.
+            // `editing` already guards the "letter" shortcuts: space is the
+            // only character an entry field can receive in the middle of a
+            // word (a colour "#ff cc00", a file name). Without the guard,
+            // typing a space in "Couleur du fond" triggered a recompute.
             Key::space if !editing => {
                 actions::request_full_compute(&key_state, &key_widgets);
                 glib::Propagation::Stop
@@ -1265,7 +1266,7 @@ pub(crate) fn install_shortcuts(state: &St, widgets: &Wi, window: &adw::Applicat
     });
     window.add_controller(controller);
 
-    // Molette avec Ctrl : zoom (le zoom conserve le centre du viewport).
+    // Wheel with Ctrl: zoom (the zoom keeps the center of the viewport).
     let scroll_state = Rc::clone(state);
     let scroll_widgets = Rc::clone(widgets);
     let scroll = gtk::EventControllerScroll::builder()

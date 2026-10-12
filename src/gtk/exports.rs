@@ -1,15 +1,14 @@
-//! Mesure de la taille d'export, dans un thread de travail.
+//! Measurement of the export size, in a worker thread.
 //!
-//! La mesure encode réellement l'image pour chaque format
-//! ([`pointimg::export`]) : c'est une compression complète par format, donc
-//! elle est faite à part, uniquement sur le résultat *définitif* (une taille
-//! d'aperçu ne voudrait rien dire), invalidée dès que l'utilisateur revient à
-//! régler, et déposée dans un emplacement que le thread principal reprend.
+//! The measurement really encodes the image for each format
+//! ([`pointimg::export`]): it is a full compression per format, so
+//! it is done apart, only on the *final* result (a preview size would mean
+//! nothing), invalidated as soon as the user goes back to adjusting, and
+//! dropped in a slot that the main thread picks up.
 //!
-//! Le résultat alimente une étiquette de la barre d'état et l'infobulle du
-//! menu d'export : sans elle, le bénéfice central de `pointimg` — « la même
-//! image, en beaucoup plus léger » — resterait invisible jusqu'au premier
-//! enregistrement.
+//! The result feeds a label of the status bar and the tooltip of the export
+//! menu: without it, the central benefit of `pointimg` — "the same image, much
+//! lighter" — would stay invisible until the first save.
 
 use std::cell::RefCell;
 use std::rc::Rc;
@@ -24,14 +23,16 @@ use crate::State;
 
 type St = Rc<RefCell<State>>;
 
-/// Lance la mesure si le résultat affiché est définitif et pas déjà mesuré.
+/// Starts the measurement if the displayed result is final and not already
+/// measured.
 pub(crate) fn refresh(state: &St, tx: &async_channel::Sender<Msg>) {
     let (revision, source_size, transparent, bg, image) = {
         let st = state.borrow();
         if !st.result_is_final {
             return;
         }
-        // Déjà mesuré (ou en cours) pour ce résultat : on n'encode pas deux fois.
+        // Already measured (or in progress) for this result: we do not encode
+        // twice.
         if st.export_sizes_revision == st.result_revision
             && (st.export_sizes.is_some() || st.export_sizes_computing.load(Ordering::Relaxed))
         {
@@ -50,7 +51,7 @@ pub(crate) fn refresh(state: &St, tx: &async_channel::Sender<Msg>) {
     };
     let (generation_counter, generation, computing) = {
         let mut st = state.borrow_mut();
-        // Un nouveau résultat invalide toute mesure en cours.
+        // A new result invalidates any measurement in progress.
         st.export_sizes_generation.fetch_add(1, Ordering::AcqRel);
         let generation = st.export_sizes_generation.load(Ordering::Acquire);
         st.export_sizes_computing.store(true, Ordering::Release);
@@ -65,19 +66,19 @@ pub(crate) fn refresh(state: &St, tx: &async_channel::Sender<Msg>) {
     let tx = tx.clone();
     std::thread::spawn(move || {
         let sizes = measure_export_sizes(&image, transparent, bg, Some(source_size));
-        // Mesure périmée (l'utilisateur a changé de rendu entre-temps) : on
-        // jette le résultat, comme le fait la density map.
+        // Stale measurement (the user changed the render in the meantime): the
+        // result is thrown away, as the density map does.
         if generation_counter.load(Ordering::Acquire) != generation {
             return;
         }
         computing.store(false, Ordering::Release);
-        // Publication par le canal : c'est la boucle GTK qui rafraîchit les
-        // étiquettes, jamais un thread de travail qui touche un widget.
+        // Publication through the channel: it is the GTK loop that refreshes
+        // the labels, never a worker thread touching a widget.
         let _ = tx.send_blocking(Msg::ExportSizes { generation, sizes });
     });
 }
 
-/// Texte de l'étiquette de barre d'état : `Export : PNG 1.4 Mo · JPEG 791 Ko`.
+/// Text of the status bar label: `Export : PNG 1.4 MB · JPEG 791 kB`.
 pub(crate) fn sizes_label(state: &St) -> String {
     let (sizes, measuring) = {
         let st = state.borrow();
@@ -93,8 +94,8 @@ pub(crate) fn sizes_label(state: &St) -> String {
     }
 }
 
-/// Comparaison avec la source pour le format par défaut, pour l'infobulle du
-/// menu d'export.
+/// Comparison with the source for the default format, for the tooltip of the
+/// export menu.
 pub(crate) fn comparison(state: &St) -> Option<String> {
     state
         .borrow()

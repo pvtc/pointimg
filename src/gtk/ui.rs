@@ -1,4 +1,4 @@
-//! Point d'entrée de la construction de la fenêtre.
+//! Entry point of the window construction.
 
 use std::cell::RefCell;
 use std::rc::Rc;
@@ -13,7 +13,7 @@ use crate::recent;
 use crate::shortcuts;
 use crate::wire;
 
-/// Construit la fenêtre complète et renvoie ses poignées.
+/// Builds the complete window and returns its handles.
 pub(crate) fn build_ui(
     app: &adw::Application,
     state: Rc<RefCell<State>>,
@@ -29,7 +29,7 @@ pub(crate) fn build_ui(
 
     window.set_content(Some(&toast_overlay));
 
-    // La fenêtre des raccourcis partage le même overlay de notifications.
+    // The shortcuts window shares the same notification overlay.
     widgets.window.shortcuts.set_transient_for(Some(&window));
     widgets.window.shortcuts.set_modal(true);
     widgets
@@ -52,9 +52,9 @@ pub(crate) fn build_ui(
 
     crate::sections::sync_widgets(&state, &widgets);
     crate::sections::update_sections(&widgets, &state.borrow().params);
-    // La légende du preset n'est écrite que par ce chemin, appelé aux
-    // changements : sans cet appel au démarrage, elle resterait vide tant que
-    // l'utilisateur ne toucherait à aucun réglage.
+    // The caption of the preset is only written through this path, called on
+    // changes: without this call at startup, it would stay empty as long as
+    // the user does not touch any setting.
     files::update_preset_row(&state, &widgets);
     preview::refresh_preview(&state, &widgets);
     preview::refresh_actions(&state, &widgets);
@@ -63,10 +63,10 @@ pub(crate) fn build_ui(
     (window, widgets)
 }
 
-/// Propose les images récentes dans l'état d'accueil.
+/// Offers the recent images in the welcome state.
 ///
-/// `GtkRecentManager` est déjà rempli si l'application a été ouverte avec une
-/// image : il suffit de le lire une fois, au démarrage.
+/// `GtkRecentManager` is already filled if the application was opened with an
+/// image: it is enough to read it once, at startup.
 fn show_recent_images(state: &Rc<RefCell<State>>, widgets: &Rc<controls::Widgets>) {
     let Some(group) = recent::build_recent_widget(state, widgets) else {
         return;
@@ -74,13 +74,13 @@ fn show_recent_images(state: &Rc<RefCell<State>>, widgets: &Rc<controls::Widgets
     widgets.status_bar.empty_extra.append(&group);
 }
 
-/// Sous 900 px de large, l'aperçu et le panneau de réglages ne peuvent plus
-/// tenir côte à côte : le panneau se replie au-dessus de l'aperçu et un bouton
-/// de l'en-tête permet de le retrouver.
+/// Below 900 px of width, the preview and the settings panel can no longer sit
+/// side by side: the panel folds above the preview and a button in the header
+/// makes it findable again.
 ///
-/// La condition est déclarée par l'adwaita et réévaluée par GTK à chaque
-/// redimensionnement — aucun code à maintenir ici, contrairement à un
-/// `connect_map` sur la largeur de la fenêtre.
+/// The condition is declared by adwaita and re-evaluated by GTK at every
+/// resize — no code to maintain here, unlike a `connect_map` on the width of
+/// the window.
 fn install_breakpoint(window: &adw::ApplicationWindow, widgets: &controls::Widgets) {
     let condition = adw::BreakpointCondition::parse("max-width: 900px")
         .expect("condition de point de rupture valide");
@@ -98,9 +98,9 @@ fn install_breakpoint(window: &adw::ApplicationWindow, widgets: &controls::Widge
     );
     window.add_breakpoint(breakpoint);
 
-    // Le bouton et le panneau se reflètent l'un l'autre dans les deux sens : le
-    // point de rupture active le bouton en entrant dans la zone étroite, un clic
-    // referme le panneau, et le geste de balayage le rouvre.
+    // The button and the panel mirror each other both ways: the breakpoint
+    // activates the button when entering the narrow area, a click folds the
+    // panel back, and the swipe gesture reopens it.
     widgets.window.panel_toggle.connect_toggled({
         let split = widgets.window.split.clone();
         move |toggle| split.set_collapsed(!toggle.is_active())

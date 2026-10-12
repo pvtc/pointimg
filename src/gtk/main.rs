@@ -1,21 +1,21 @@
-//! Interface GTK4 / libadwaita de pointimg.
+//! GTK4 / libadwaita interface of pointimg.
 //!
-//! Architecture :
-//! - Le thread principal GTK possède l'état applicatif (`State`, derrière
-//!   `Rc<RefCell<..>>`) et tous les widgets (`Widgets`).
-//! - Les calculs du filtre et de la density map tournent dans des threads
-//!   dédiés et publient leurs résultats via un canal `async-channel`.
-//! - Un futur local (via `glib::MainContext::spawn_local`) consomme le canal
-//!   sur le thread principal et met à jour l'interface.
+//! Architecture:
+//! - The GTK main thread owns the application state (`State`, behind
+//!   `Rc<RefCell<..>>`) and all the widgets (`Widgets`).
+//! - The filter and density map computations run in dedicated threads and
+//!   publish their results through an `async-channel` channel.
+//! - A local future (via `glib::MainContext::spawn_local`) consumes the
+//!   channel on the main thread and updates the interface.
 //!
-//! Découpage :
-//! - [`ui`] : construction de la fenêtre et des raccourcis.
-//! - [`actions`] : workers, chargement/export, presets, undo/redo, calculs.
-//! - [`controls`] : fabrication et disposition des widgets.
-//! - [`sections`] : synchronisation état → widgets, visibilité des sections.
-//! - [`preview`] : textures, zoom, aperçus, barre d'état.
-//! - [`compare`] : comparaison avant/après par balayage.
-//! - [`wire`] : signaux GTK → état, menu et raccourcis clavier.
+//! Breakdown:
+//! - [`ui`]: building the window and the shortcuts.
+//! - [`actions`]: workers, loading/export, presets, undo/redo, computes.
+//! - [`controls`]: building and laying out the widgets.
+//! - [`sections`]: state → widgets synchronization, section visibility.
+//! - [`preview`]: textures, zoom, previews, status bar.
+//! - [`compare`]: before/after comparison by sweeping.
+//! - [`wire`]: GTK signals → state, menus and keyboard shortcuts.
 
 mod actions;
 mod compare;
@@ -49,7 +49,7 @@ use pointimg::frontend::{Quality, ViewMode};
 
 const APP_ID: &str = "org.pointimg.Pointimg";
 
-/// Messages envoyés par les workers vers le thread GTK.
+/// Messages sent by the workers to the GTK thread.
 pub(crate) enum Msg {
     Progress {
         generation: u64,
@@ -76,55 +76,55 @@ pub(crate) enum Msg {
         generation: u64,
         image: GrayImage,
         data: Arc<Vec<f32>>,
-        /// Échelle de l'image utilisée (la density map en dépend).
+        /// Scale of the image used (the density map depends on it).
         scale: f32,
     },
-    /// Tailles d'export mesurées (encodage réel, hors thread principal).
+    /// Measured export sizes (real encoding, off the main thread).
     ExportSizes {
         generation: u64,
         sizes: ExportSizes,
     },
 }
 
-/// État applicatif partagé entre les modules.
+/// Shared application state between the modules.
 pub(crate) struct State {
     pub params: FilterParams,
 
     pub src_dynamic: Option<DynamicImage>,
     pub src_rgb: Option<RgbImage>,
     pub src_path: Option<PathBuf>,
-    /// Dernier dossier utilisé pour ouvrir/enregistrer (proposé ensuite par les
-    /// dialogues de fichiers).
+    /// Last folder used to open/save (then offered by the file dialogs).
     pub last_dir: Option<PathBuf>,
-    /// Images du dossier courant (navigation `←`/`→`), si le fichier a été
-    /// ouvert via « Ouvrir un dossier ».
+    /// Images of the current folder (`←`/`→` navigation), if the file was
+    /// opened through "Ouvrir un dossier".
     pub folder_images: Vec<PathBuf>,
     pub folder_index: Option<usize>,
-    /// Taille d'origine avant le sous-échantillonnage éventuel, pour l'info-bulle.
+    /// Original size before any downsampling, for the tooltip.
     pub source_was_resized: bool,
 
     pub result: Option<Arc<RgbaImage>>,
     pub last_dots: Option<Vec<Dot>>,
-    /// Taille du fichier source en octets (référence de la taille d'export).
+    /// Source file size in bytes (reference for the export size).
     pub source_size: Option<u64>,
-    /// Taille d'export mesurée par encodage réel, et son état de calcul.
-    /// (cf. `exports.rs`)
+    /// Export size measured by real encoding, and its computation state.
+    /// (see `exports.rs`)
     pub export_sizes: Option<ExportSizes>,
-    /// Révision du résultat : la mesure d'export est refaite quand elle change.
+    /// Revision of the result: the export measurement is redone when it
+    /// changes.
     pub result_revision: u64,
     pub export_sizes_revision: u64,
     pub export_sizes_generation: Arc<AtomicU64>,
     pub export_sizes_computing: Arc<AtomicBool>,
     pub density_image: Option<GrayImage>,
     pub density_data: Option<Arc<Vec<f32>>>,
-    /// Échelle à laquelle `density_data` a été calculée : la density map
-    /// n'est réutilisable que par un calcul de même résolution.
+    /// Scale at which `density_data` was computed: the density map is only
+    /// reusable by a compute of the same resolution.
     pub density_scale: f32,
 
     pub view_mode: ViewMode,
     pub zoom: f64,
     pub zoom_fit: bool,
-    /// Zoom réellement appliqué (mode « Ajuster » : calculé du viewport).
+    /// Zoom actually applied ("Ajuster" mode: computed from the viewport).
     pub effective_zoom: f64,
     pub status: String,
     pub last_compute_ms: Option<u64>,
@@ -134,8 +134,8 @@ pub(crate) struct State {
     pub future: Vec<FilterParams>,
     pub last_committed: Option<FilterParams>,
     pub pending_commit: bool,
-    /// Empêche les callbacks de widgets de réagir à une mise à jour
-    /// programmatique (undo, chargement de preset).
+    /// Prevents widget callbacks from reacting to a programmatic update
+    /// (undo, preset loading).
     pub updating: bool,
     pub debounce: Option<glib::SourceId>,
 
@@ -143,15 +143,15 @@ pub(crate) struct State {
     pub user_cancelled: bool,
     pub restart_pending: bool,
 
-    /// Mode choisi par l'utilisateur (rapide ou pleine résolution).
+    /// Mode chosen by the user (fast or full resolution).
     pub quality: Quality,
-    /// Passe de finalisation en cours : le rendu affiché est en pleine
-    /// résolution même si l'aperçu rapide est le mode retenu.
+    /// Finalization pass in progress: the displayed render is at full
+    /// resolution even if fast preview is the mode being used.
     pub final_pass: bool,
-    /// Le résultat affiché est-il en pleine résolution ?
+    /// Is the displayed result at full resolution?
     pub result_is_final: bool,
-    /// Minuterie de finalisation : repasse en pleine résolution quand
-    /// l'utilisateur arrête de manipuler les réglages.
+    /// Finalization timer: returns to full resolution when the user stops
+    /// adjusting the settings.
     pub finalize_pending: Option<glib::SourceId>,
 
     pub cancel: Arc<AtomicBool>,
@@ -159,7 +159,7 @@ pub(crate) struct State {
     pub density_generation: Arc<AtomicU64>,
     pub tx: async_channel::Sender<Msg>,
 
-    // Cache des textures d'aperçu.
+    // Cache of the preview textures.
     pub src_texture: Option<gtk::gdk::Texture>,
     pub result_texture: Option<gtk::gdk::Texture>,
     pub density_texture: Option<gtk::gdk::Texture>,
@@ -217,43 +217,43 @@ impl State {
         }
     }
 
-    /// Le résultat affiché ne correspond plus aux réglages courants.
+    /// The displayed result no longer matches the current settings.
     pub fn result_is_stale(&self) -> bool {
         (self.result.is_some() && !self.result_is_final) || self.computing
     }
 
-    /// Le calcul en cours est-il en pleine résolution ?
+    /// Is the running compute at full resolution?
     pub fn computes_full_resolution(&self) -> bool {
         self.quality.is_full() || self.final_pass
     }
 
-    /// Image utilisée pour les calculs, sous-échantillonnée si l'aperçu est
-    /// en mode rapide.
+    /// Image used for the computes, downsampled if the preview is in fast
+    /// mode.
     pub fn compute_source(&self) -> Option<RgbImage> {
         let src = self.src_rgb.as_ref()?;
         if self.final_pass {
             return Some(src.clone());
         }
-        // Même sous-échantillonnage qu'egui : comparer deux aperçus n'aurait
-        // aucun sens s'ils ne montraient pas les mêmes pixels.
+        // Same downsampling as egui: comparing two previews would make no
+        // sense if they did not show the same pixels.
         Some(pointimg::frontend::downsample(src, self.quality.scale()))
     }
 
-    /// Index de l'image courante dans la navigation de dossier.
+    /// Index of the current image in the folder navigation.
     pub fn folder_position(&self) -> Option<(usize, usize)> {
         self.folder_index
             .map(|index| (index + 1, self.folder_images.len()))
     }
 }
 
-/// Formate une durée en millisecondes de façon lisible.
+/// Formats a duration in milliseconds in a readable way.
 pub(crate) use pointimg::frontend::{format_duration, format_memory};
 
-/// La fenêtre ouverte, accessible depuis le signal `open`.
+/// The open window, accessible from the `open` signal.
 ///
-/// `GApplication` n'a qu'une fenêtre : le signal `activate` la construit, le
-/// signal `open` (chemins reçus en argument ou d'un autre programme) charge
-/// ensuite les fichiers dedans. Ces poignées font le lien entre les deux.
+/// `GApplication` has only one window: the `activate` signal builds it, the
+/// `open` signal (paths received as an argument or from another program) then
+/// loads the files into it. These handles connect the two.
 type WindowHandles = (Rc<RefCell<State>>, Rc<controls::Widgets>);
 
 fn main() -> glib::ExitCode {
@@ -261,18 +261,17 @@ fn main() -> glib::ExitCode {
 
     let app = adw::Application::builder()
         .application_id(APP_ID)
-        // `HANDLES_OPEN` : le chemin est transmis par le signal `open` plutôt
-        // que par `activate`. C'est ce qui permet à la fois
-        // `pointimg-gtk photo.jpg` et l'ouverture depuis le gestionnaire de
-        // fichiers (activation D-Bus), qui passe par le même chemin.
+        // `HANDLES_OPEN`: the path is transmitted by the `open` signal rather
+        // than by `activate`. That is what allows both
+        // `pointimg-gtk photo.jpg` and opening from the file
+        // manager (D-Bus activation), which go through the same path.
         .flags(gtk::gio::ApplicationFlags::HANDLES_OPEN)
         .build();
     let (tx, rx) = async_channel::unbounded::<Msg>();
 
-    // `activate` construit la fenêtre, `open` doit ensuite y charger des
-    // fichiers. Le pont entre les deux signaux : `activate` est émis de façon
-    // synchrone, donc le remplissage a lieu avant le retour de
-    // `app.activate()` ci-dessous.
+    // `activate` builds the window, `open` must then load files into it. The
+    // bridge between the two signals: `activate` is emitted synchronously, so
+    // the filling takes place before `app.activate()` returns below.
     let handles: Rc<RefCell<Option<WindowHandles>>> = Rc::new(RefCell::new(None));
     let handles_for_activate = Rc::clone(&handles);
 
@@ -296,9 +295,9 @@ fn main() -> glib::ExitCode {
         window.present();
     });
 
-    // Fichiers (et dossiers) passés en argument, ou choisis dans un autre
-    // programme. Le premier est ouvert dans la fenêtre, les suivants la
-    // remplissent à leur tour — même comportement qu'un glisser-déposer.
+    // Files (and folders) passed as an argument, or chosen in another
+    // program. The first one is opened in the window, the next ones fill it
+    // in turn — same behaviour as a drag and drop.
     app.connect_open(move |app, files, _hint| {
         app.activate();
         let borrowed = handles.borrow();
@@ -315,8 +314,8 @@ fn main() -> glib::ExitCode {
         }
     });
 
-    // `run_with_args_os` plutôt que `run()` : c'est lui qui transmettra les
-    // chemins de la ligne de commande au signal `open`.
+    // `run_with_args_os` rather than `run()`: it is the one that will transmit
+    // the command line paths to the `open` signal.
     let args: Vec<std::ffi::OsString> = std::env::args_os().collect();
     app.run_with_args_os(&args)
 }

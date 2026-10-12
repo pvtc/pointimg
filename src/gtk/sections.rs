@@ -1,4 +1,4 @@
-//! Synchronisation état → widgets et visibilité/sensibilité des sections.
+//! State → widgets synchronization and visibility/sensitivity of the sections.
 
 use std::cell::RefCell;
 use std::rc::Rc;
@@ -11,35 +11,33 @@ use pointimg::frontend::{self, Quality, view_index};
 use crate::State;
 use crate::controls::Widgets;
 
-/// Position de l'algorithme dans la liste déroulante.
+/// Position of the algorithm in the drop-down list.
 ///
-/// La table vit dans `frontend`, partagée avec egui. Le repli est le *premier*
-/// algorithme, donc cohérent avec la table : une liste décalée retombe sur
-/// « Grille » plutôt que sur `Halftone` — qui, de plus, exige un mode d'encre et
-/// faisait échouer le rendu suivant.
+/// The table lives in `frontend`, shared with egui. The fallback is the
+/// *first* algorithm, hence consistent with the table: a shifted list falls
+/// back on "Grille" rather than on `Halftone` — which, moreover, requires an
+/// ink mode and made the next render fail.
 pub(crate) fn algorithm_index(a: Algorithm) -> u32 {
     frontend::algorithm_index(a).unwrap_or(0)
 }
 
-/// Algorithme correspondant à une position. Voir [`algorithm_index`].
+/// Algorithm corresponding to a position. See [`algorithm_index`].
 pub(crate) fn algorithm_from_index(i: u32) -> Algorithm {
     frontend::algorithm_of(i).unwrap_or(frontend::ALGORITHMS[0])
 }
 
-/// Sous-titre du sélecteur de dithering quand aucun algorithme n'est signalé.
+/// Subtitle of the dithering selector when no algorithm is indicated.
 pub(crate) const DITHERING_SUBTITLE: &str = "Tramage de la palette quantifiée";
 
-/// Avertissement de poids de l'algorithme de dithering choisi.
+/// Caveat of the weight of the chosen dithering algorithm.
 ///
-/// Le sous-titre porte la version courte, visible sans survol comme la ligne
-/// d'avertissement d'egui ; l'infobulle porte la version longue. Les textes
-/// viennent de `Dithering::size_caveat`, donc les deux interfaces disent la
-/// même chose.
+/// The subtitle carries the short version, visible without hovering like the
+/// egui warning line; the tooltip carries the long version. The texts come
+/// from `Dithering::size_caveat`, so both interfaces say the same thing.
 ///
-/// Appelé à la fois par `sync_widgets` (undo, préréglages) et par le gestionnaire
-/// du sélecteur : `sync_widgets` n'est pas rejoué après un changement proposé
-/// par l'utilisateur, puisqu'il sert à resynchroniser les widgets *après* une
-/// modification programmatique.
+/// Called both by `sync_widgets` (undo, presets) and by the selector handler:
+/// `sync_widgets` is not replayed after a change proposed by the user, since
+/// it serves to resynchronize the widgets *after* a programmatic change.
 pub(crate) fn sync_dithering_note(dithering: Dithering, widgets: &Widgets) {
     widgets
         .dots
@@ -51,14 +49,14 @@ pub(crate) fn sync_dithering_note(dithering: Dithering, widgets: &Widgets) {
         .set_tooltip_text(dithering.size_caveat());
 }
 
-/// Position du tramage dans la liste déroulante. Table partagée avec egui.
+/// Position of the dithering in the drop-down list. Table shared with egui.
 pub(crate) fn dithering_index(dithering: Dithering) -> u32 {
     frontend::dithering_index(dithering).unwrap_or(0)
 }
 
-/// Tramage correspondant à une position. Le repli est le premier de la table
-/// (« Aucun »), pas un `_ => Dithering::Off` qui apparaîtrait correct alors
-/// qu'une liste décalée vient de choisir à sa place.
+/// Dithering corresponding to a position. The fallback is the first of the
+/// table ("Aucun"), not a `_ => Dithering::Off` that would look correct while
+/// a shifted list has just chosen in its place.
 pub(crate) fn dithering_from_index(index: u32) -> Dithering {
     frontend::dithering_of(index).unwrap_or(frontend::DITHERINGS[0])
 }
@@ -72,18 +70,18 @@ pub(crate) fn shape_index(s: &DotShape) -> u32 {
     }
 }
 
-/// Position du mode de qualité dans la liste déroulante. Table partagée avec egui.
+/// Position of the quality mode in the drop-down list. Table shared with egui.
 pub(crate) fn quality_index(quality: Quality) -> u32 {
     frontend::quality_index(quality).unwrap_or(0)
 }
 
-/// Mode de qualité correspondant à une position. Le repli est le premier de la
-/// table, pas `Full` : index inconnue ne veut pas dire « meilleure qualité ».
+/// Quality mode corresponding to a position. The fallback is the first of the
+/// table, not `Full`: an unknown index does not mean "better quality".
 pub(crate) fn quality_from_index(index: u32) -> Quality {
     frontend::quality_of(index).unwrap_or(frontend::QUALITIES[0])
 }
 
-/// Aide courte affichée en sous-titre du sélecteur d'algorithme.
+/// Short help displayed as the subtitle of the algorithm selector.
 fn algorithm_help(algorithm: Algorithm) -> &'static str {
     match algorithm {
         Algorithm::Grid => "Une cellule = un point. Rapide et prévisible.",
@@ -94,8 +92,8 @@ fn algorithm_help(algorithm: Algorithm) -> &'static str {
     }
 }
 
-/// Met à jour les valeurs des widgets depuis `state.params` sans déclencher
-/// les callbacks de modification.
+/// Updates the values of the widgets from `state.params` without triggering
+/// the change callbacks.
 pub(crate) fn sync_widgets(state: &Rc<RefCell<State>>, widgets: &Rc<Widgets>) {
     let p = state.borrow().params.clone();
     state.borrow_mut().updating = true;
@@ -136,7 +134,7 @@ pub(crate) fn sync_widgets(state: &Rc<RefCell<State>>, widgets: &Rc<Widgets>) {
         .max_radius
         .adjustment()
         .set_value(f64::from(p.max_radius_ratio));
-    // Chaque curseur marque l'autre borne : la plage se lit sans le titre.
+    // Each slider marks the other end: the range can be read without the title.
     widgets
         .algorithm
         .min_radius_slider
@@ -227,8 +225,8 @@ pub(crate) fn sync_widgets(state: &Rc<RefCell<State>>, widgets: &Rc<Widgets>) {
         .dots
         .dithering
         .set_selected(dithering_index(p.dithering));
-    // Avertissement de poids, même texte que dans l'interface egui (source
-    // commune : `Dithering::size_caveat`), pour qu'il ne diverge pas.
+    // Weight caveat, same text as in the egui interface (shared source:
+    // `Dithering::size_caveat`), so that it does not diverge.
     widgets
         .dots
         .dithering
@@ -306,7 +304,8 @@ pub(crate) fn sync_widgets(state: &Rc<RefCell<State>>, widgets: &Rc<Widgets>) {
     state.borrow_mut().updating = false;
 }
 
-/// Ajuste visibilité et sensibilité selon l'algorithme et la forme choisis.
+/// Adjusts the visibility and sensitivity according to the chosen algorithm
+/// and shape.
 pub(crate) fn update_sections(widgets: &Widgets, p: &FilterParams) {
     let is_halftone = p.algorithm == Algorithm::Halftone;
 
@@ -322,25 +321,25 @@ pub(crate) fn update_sections(widgets: &Widgets, p: &FilterParams) {
         p.algorithm,
         Algorithm::Kmeans | Algorithm::Voronoi
     ));
-    // Le halftone ignore tous les paramètres de placement : on masque le bloc
-    // plutôt que de le griser, ce qui évite une lecture trompeuse.
+    // The halftone ignores all the placement parameters: the block is hidden
+    // rather than greyed out, which avoids a misleading reading.
     widgets.algorithm.variance.set_visible(!is_halftone);
     widgets.algorithm.min_radius.set_visible(!is_halftone);
     widgets.algorithm.max_radius.set_visible(!is_halftone);
     widgets.algorithm.max_boost.set_visible(!is_halftone);
     widgets.halftone.halftone_group.set_visible(is_halftone);
 
-    // Réglages(conditionnels : masqués tant que la fonction qui les utilise n'est
-    // pas active. Grisés, ils se lisaient comme des réglages disponibles — et
-    // l'interface egui les masquait déjà (cf. `show_shape_and_palette_section`),
-    // ce qui faisait diverger les deux rendus pour rien.
+    // Conditional settings: hidden as long as the function that uses them is
+    // not active. Greyed out, they read as available settings — and the egui
+    // interface already hid them (see `show_shape_and_palette_section`), so the
+    // two renders diverged for nothing.
     let palette = p.palette_size.is_some();
     widgets.dots.palette_size.set_visible(palette);
     widgets.dots.dithering.set_visible(palette);
     widgets.render.seed_row.set_visible(p.rng_seed.is_some());
-    // Les curseurs vivent dans des `ActionRow` à part : leur visibilité suit
-    // celle du réglage qu'ils doublent, sans quoi une rangée vide subsisterait
-    // sous un réglage masqué.
+    // The sliders live in separate `ActionRow`s: their visibility follows that
+    // of the setting they double, without which an empty row would remain under
+    // a hidden setting.
     let is_points = matches!(
         p.algorithm,
         Algorithm::Kmeans | Algorithm::Voronoi | Algorithm::Quadtree
@@ -410,9 +409,9 @@ mod tests {
         assert_eq!(shape_index(&DotShape::RegularPolygon { sides: 6 }), 3);
     }
 
-    /// `step_view` est piloté par `Tab` et `Maj+Tab` (voir `wire.rs`). Le
-    /// calcul est ici refait sur `ViewMode` : un aller-retour doit revenir au
-    /// point de départ, et les deux sens doivent boucler.
+    /// `step_view` is driven by `Tab` and `Maj+Tab` (see `wire.rs`). The
+    /// computation is redone here on `ViewMode`: a round trip must come back
+    /// to the starting point, and both directions must loop.
     #[test]
     fn le_cycle_des_apercus_boucle_dans_les_deux_sens() {
         let modes: Vec<ViewMode> = (0..VIEW_COUNT)
@@ -426,7 +425,7 @@ mod tests {
             assert_eq!(pas(pas(index, 1), -1), index, "aller-retour instable");
             assert_eq!(*mode, pointimg::frontend::view_from_index(index));
         }
-        // Le dernier reboucle sur le premier, et l'inverse.
+        // The last one loops back onto the first, and vice versa.
         assert_eq!(pas(0, -1), VIEW_COUNT - 1);
         assert_eq!(pas(VIEW_COUNT - 1, 1), 0);
         assert_eq!(modes[pas(0, -1) as usize], ViewMode::DensityMap);

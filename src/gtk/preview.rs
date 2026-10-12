@@ -1,4 +1,4 @@
-//! Textures d'aperçu, zoom, panneaux, état vide et barre d'état.
+//! Preview textures, zoom, panes, empty state and status bar.
 
 use std::cell::RefCell;
 use std::rc::Rc;
@@ -13,13 +13,13 @@ use crate::compare;
 use crate::controls::Widgets;
 use crate::{State, ViewMode};
 
-/// Zoom maximal de l'aperçu : au-delà, on ne voit plus qu'un aplat de couleur.
-/// Bornes du zoom, alignées sur egui via `frontend`. Deux plages différentes
-/// pour le même geste feraient comparer ce qui n'est pas comparable.
-/// (`f64::from` n'est pas encore `const`, d'où le `as` explicite.)
+/// Maximum preview zoom: beyond it, one only sees a flat patch of color.
+/// Zoom bounds, aligned with egui via `frontend`. Two different ranges for
+/// the same gesture would make you compare what is not comparable.
+/// (`f64::from` is not `const` yet, hence the explicit `as`.)
 const ZOOM_MIN: f64 = frontend::ZOOM_MIN as f64;
 const ZOOM_MAX: f64 = frontend::ZOOM_MAX as f64;
-/// Un cran de zoom, au clavier et aux boutons (identique des deux côtés).
+/// One zoom notch, by keyboard and by buttons (identical on both sides).
 pub(crate) const ZOOM_STEP: f64 = frontend::ZOOM_STEP as f64;
 
 fn texture_from_bytes(width: u32, height: u32, data: Vec<u8>) -> gtk::gdk::Texture {
@@ -52,20 +52,20 @@ fn texture_from_gray(img: &GrayImage) -> gtk::gdk::Texture {
     texture_from_bytes(w, h, data)
 }
 
-/// Convertit une image RGBA en texture, en composant l'alpha sur un damier.
+/// Converts an RGBA image to a texture, compositing the alpha onto a checkerboard.
 fn texture_from_rgba_checker(img: &RgbaImage) -> gtk::gdk::Texture {
     texture_from_bytes(img.width(), img.height(), rgba_checker_bytes(img))
 }
 
-/// Bytes RGBA (R8g8b8a8) d'une image, alpha aplati sur un damier.
+/// RGBA bytes (R8g8b8a8) of an image, alpha flattened onto a checkerboard.
 pub(crate) fn rgba_checker_bytes(img: &RgbaImage) -> Vec<u8> {
     let (w, h) = img.dimensions();
     let mut data = vec![0u8; (w * h * 4) as usize];
     for y in 0..h {
         for x in 0..w {
             let p = img.get_pixel(x, y);
-            // Composite partagé avec egui ; seul l'ordre des octets RGBA est
-            // propre à GTK.
+            // Composite shared with egui; only the byte order of the RGBA
+            // bytes is specific to GTK.
             let [r, g, b] = frontend::composite_on_checker(p.0, x, y);
             let i = ((y * w + x) * 4) as usize;
             data[i] = r;
@@ -77,7 +77,7 @@ pub(crate) fn rgba_checker_bytes(img: &RgbaImage) -> Vec<u8> {
     data
 }
 
-/// Texture du résultat, pour le presse-papiers.
+/// Texture of the result, for the clipboard.
 pub(crate) fn rgba_to_texture(img: &RgbaImage) -> gtk::gdk::Texture {
     texture_from_rgba_checker(img)
 }
@@ -86,8 +86,8 @@ pub(crate) fn rgba_to_texture(img: &RgbaImage) -> gtk::gdk::Texture {
 
 pub(crate) fn refresh_source_texture(state: &Rc<RefCell<State>>, widgets: &Rc<Widgets>) {
     let texture = state.borrow().src_rgb.as_ref().map(texture_from_rgb);
-    // Ne pas garder de `borrow_mut` pendant `set_paintable` (les setters GTK
-    // peuvent émettre des signaux synchrones).
+    // Do not hold a `borrow_mut` during `set_paintable` (GTK setters can
+    // emit synchronous signals).
     match texture {
         Some(texture) => {
             widgets.preview.src_pane.image.set_paintable(Some(&texture));
@@ -148,7 +148,7 @@ pub(crate) fn refresh_density_texture(state: &Rc<RefCell<State>>, widgets: &Rc<W
     }
 }
 
-/// Reconstruit toutes les textures d'aperçu et réapplique le zoom.
+/// Rebuilds all the preview textures and reapplies the zoom.
 pub(crate) fn refresh_preview(state: &Rc<RefCell<State>>, widgets: &Rc<Widgets>) {
     refresh_source_texture(state, widgets);
     refresh_result_texture(state, widgets);
@@ -159,7 +159,7 @@ pub(crate) fn refresh_preview(state: &Rc<RefCell<State>>, widgets: &Rc<Widgets>)
 
 // ─── Zoom ────────────────────────────────────────────────────────────────────
 
-/// Taille d'une image, en tenant compte du mode de rendu courant.
+/// Size of an image, taking the current render mode into account.
 fn reference_size(state: &State) -> Option<(u32, u32)> {
     if let Some(src) = state.src_rgb.as_ref() {
         return Some((src.width(), src.height()));
@@ -167,7 +167,7 @@ fn reference_size(state: &State) -> Option<(u32, u32)> {
     state.result.as_ref().map(|img| img.dimensions())
 }
 
-/// Recalcule le zoom « Ajuster » à partir de la taille disponible.
+/// Recomputes the "Ajuster" (fit) zoom from the available size.
 fn compute_fit_zoom(state: &State, width: i32, height: i32) -> f64 {
     let Some((w, h)) = reference_size(state) else {
         return 1.0;
@@ -179,7 +179,7 @@ fn compute_fit_zoom(state: &State, width: i32, height: i32) -> f64 {
     scale.clamp(ZOOM_MIN, ZOOM_MAX)
 }
 
-/// Applique visibilité, échelle et zoom des panneaux d'aperçu.
+/// Applies the visibility, the scale and the zoom of the preview panes.
 pub(crate) fn apply_zoom(state: &Rc<RefCell<State>>, widgets: &Rc<Widgets>) {
     let (visible_src, visible_dst, visible_density, visible_compare) = {
         let st = state.borrow();
@@ -206,8 +206,9 @@ pub(crate) fn apply_zoom(state: &Rc<RefCell<State>>, widgets: &Rc<Widgets>) {
         (st.zoom_fit, st.zoom, reference_size(&st))
     };
 
-    // En mode « Ajuster », le facteur dépend du viewport : on le mesure une fois
-    // sur un panneau visible puis on l'applique à tous (comparaison comprise).
+    // In "Ajuster" mode, the factor depends on the viewport: it is measured
+    // once on a visible pane then applied to all of them (comparison
+    // included).
     let mut effective = if fit {
         let (w, h) = viewport(
             &widgets.preview.src_pane.scroll,
@@ -264,12 +265,12 @@ pub(crate) fn apply_zoom(state: &Rc<RefCell<State>>, widgets: &Rc<Widgets>) {
     }
     widgets.preview.compare_pane.area.queue_draw();
 
-    // Le résultat n'est pas voilé pendant le calcul : la barre d'état signale
-    // seule le caractère provisoire du rendu (« aperçu rapide », « pleine
-    // résolution… »), comme dans l'interface egui.
+    // The result is not veiled during the compute: the status bar alone
+    // signals the provisional nature of the render ("aperçu rapide",
+    // "pleine résolution…"), as in the egui interface.
 
-    // Étiquettes de zoom : le pourcentage réellement appliqué, pas la valeur
-    // mémorisée (inutilisée en mode « Ajuster »).
+    // Zoom labels: the percentage actually applied, not the stored value
+    // (unused in "Ajuster" mode).
     widgets
         .preview
         .zoom_label
@@ -283,7 +284,7 @@ pub(crate) fn apply_zoom(state: &Rc<RefCell<State>>, widgets: &Rc<Widgets>) {
     }));
 }
 
-/// Taille du viewport d'aperçu, mesurée sur le premier panneau visible.
+/// Size of the preview viewport, measured on the first visible pane.
 fn viewport(
     src: &gtk::ScrolledWindow,
     dst: &gtk::ScrolledWindow,
@@ -298,7 +299,7 @@ fn viewport(
     (0, 0)
 }
 
-/// Recalcule le « Ajuster » quand le viewport change de taille.
+/// Recomputes the "Ajuster" (fit) zoom when the viewport changes size.
 pub(crate) fn connect_fit_signals(state: &Rc<RefCell<State>>, widgets: &Rc<Widgets>) {
     let scrolls = [
         widgets.preview.src_pane.scroll.clone(),
@@ -319,14 +320,14 @@ pub(crate) fn connect_fit_signals(state: &Rc<RefCell<State>>, widgets: &Rc<Widge
     }
 }
 
-// ─── Synchronisation des vues ────────────────────────────────────────────────
+// ─── Synchronization of the views ───────────────────────────────────────────
 
-// Empêche les miroirs de adjustment de se déclencher en boucle.
+// Prevents the adjustment mirrors from triggering each other in a loop.
 thread_local! {
     static SYNCING: RefCell<bool> = const { RefCell::new(false) };
 }
 
-/// Miroite le défilement d'un panneau vers tous les autres.
+/// Mirrors the scrolling of one pane onto all the others.
 pub(crate) fn connect_scroll_sync(widgets: &Rc<Widgets>) {
     let scrolls = [
         widgets.preview.src_pane.scroll.clone(),
@@ -373,8 +374,8 @@ fn mirror(source: &gtk::Adjustment, target: &gtk::Adjustment) {
     if (target.value() - source.value()).abs() < f64::EPSILON {
         return;
     }
-    // On se cale sur la position relative, pas sur la valeur absolue : les
-    // panneaux peuvent avoir des tailles de contenu différentes.
+    // We align on the relative position, not on the absolute value: the panes
+    // may have different content sizes.
     let source_page = source.page_size().max(1.0);
     let target_page = target.page_size().max(1.0);
     let ratio = (source.value() + source_page / 2.0) / source_page;
@@ -382,9 +383,9 @@ fn mirror(source: &gtk::Adjustment, target: &gtk::Adjustment) {
     target.set_value((ratio * target_page - target_page / 2.0).clamp(target.lower(), upper));
 }
 
-// ─── Aperçu, état vide et badges ─────────────────────────────────────────────
+// ─── Preview, empty state and badges ─────────────────────────────────────────
 
-/// Affiche/masque l'état d'accueil et met à jour les badges de l'aperçu.
+/// Shows/hides the welcome state and updates the badges of the preview.
 pub(crate) fn update_overlays(state: &Rc<RefCell<State>>, widgets: &Rc<Widgets>) {
     let (has_image, computing, stale, quality) = {
         let st = state.borrow();
@@ -420,7 +421,7 @@ pub(crate) fn update_overlays(state: &Rc<RefCell<State>>, widgets: &Rc<Widgets>)
         ));
     }
 
-    // Titre de la fenêtre : nom du fichier + position dans le dossier.
+    // Window title: file name + position in the folder.
     let (title, subtitle) = {
         let st = state.borrow();
         let name = st
@@ -439,7 +440,7 @@ pub(crate) fn update_overlays(state: &Rc<RefCell<State>>, widgets: &Rc<Widgets>)
     widgets.window.window_title.set_title(&title);
     widgets.window.window_title.set_subtitle(&subtitle);
 
-    // Dossier : position de l'image courante.
+    // Folder: position of the current image.
     let folder = state.borrow().folder_position();
     widgets.presets.folder_label.set_text(
         &folder
@@ -456,7 +457,7 @@ fn window_subtitle(state: &State) -> String {
     }
 }
 
-// ─── Actions et barre d'état ────────────────────────────────────────────────
+// ─── Actions and status bar ──────────────────────────────────────────────────
 
 pub(crate) fn refresh_actions(state: &Rc<RefCell<State>>, widgets: &Rc<Widgets>) {
     let (computing, has_result, final_result, undoable, redoable) = {
@@ -478,8 +479,8 @@ pub(crate) fn refresh_actions(state: &Rc<RefCell<State>>, widgets: &Rc<Widgets>)
     }
     widgets.window.undo.set_sensitive(undoable);
     widgets.window.redo.set_sensitive(redoable);
-    // On n'exporte que le rendu en pleine résolution : en mode aperçu rapide,
-    // l'export attend la finalisation automatique.
+    // Only the full-resolution render is exported: in fast preview mode, the
+    // export waits for the automatic finalization.
     widgets
         .window
         .export
@@ -501,9 +502,9 @@ pub(crate) fn update_status_labels(state: &Rc<RefCell<State>>, widgets: &Rc<Widg
         let memory = st.src_rgb.as_ref().map(|src| {
             let estimate = filter::estimate_memory_bytes_for(src.width(), src.height(), &st.params);
             let warning = estimate > 1_500 * 1024 * 1024;
-            // Le chiffre seul alarmait sans rien expliquer : on dit ce qu'il
-            // annonce, c'est-à-dire ce que la passe en pleine résolution
-            // demandera — ce n'est pas la mémoire déjà employée.
+            // The figure alone alarmed without explaining anything: we say
+            // what it announces, that is what the full-resolution pass will
+            // require — this is not the memory already used.
             let text = format!("Pleine résolution : ~{}", crate::format_memory(estimate));
             if warning { format!("⚠ {text}") } else { text }
         });
@@ -521,7 +522,7 @@ pub(crate) fn update_status_labels(state: &Rc<RefCell<State>>, widgets: &Rc<Widg
         .status_bar
         .memory
         .set_tooltip_text(Some("Pic mémoire estimé pour le calcul en cours."));
-    // Taille d'export : mesurée par encodage réel du rendu définitif.
+    // Export size: measured by real encoding of the final render.
     let sizes = crate::exports::sizes_label(state);
     widgets.preview.export_sizes.set_text(&sizes);
     if let Some(comparison) = crate::exports::comparison(state) {
@@ -532,7 +533,7 @@ pub(crate) fn update_status_labels(state: &Rc<RefCell<State>>, widgets: &Rc<Widg
     } else {
         widgets.preview.export_sizes.set_tooltip_text(None);
     }
-    // L'infobulle du menu d'export annonce la taille avant même de l'ouvrir.
+    // The export menu tooltip announces the size before even opening it.
     if let Some(comparison) = crate::exports::comparison(state) {
         widgets
             .window
@@ -548,8 +549,8 @@ pub(crate) fn update_status_labels(state: &Rc<RefCell<State>>, widgets: &Rc<Widg
     widgets.status_bar.status.set_text(&status);
 }
 
-/// Message d'erreur éphémère (les erreurs ne doivent pas voler une ligne de
-/// statut qui décrit l'état courant).
+/// Ephemeral error message (errors must not steal a status line that
+/// describes the current state).
 pub(crate) fn notify_error(state: &Rc<RefCell<State>>, widgets: &Rc<Widgets>, message: &str) {
     let toast = adw::Toast::new(message);
     toast.set_timeout(6);
@@ -558,7 +559,7 @@ pub(crate) fn notify_error(state: &Rc<RefCell<State>>, widgets: &Rc<Widgets>, me
     update_status_labels(state, widgets);
 }
 
-/// Notification d'information (enregistrement, copie, changement d'image).
+/// Information notification (save, copy, image change).
 pub(crate) fn notify(state: &Rc<RefCell<State>>, widgets: &Rc<Widgets>, message: &str) {
     let toast = adw::Toast::new(message);
     widgets.window.toast_overlay.add_toast(toast);
@@ -566,10 +567,10 @@ pub(crate) fn notify(state: &Rc<RefCell<State>>, widgets: &Rc<Widgets>, message:
     update_status_labels(state, widgets);
 }
 
-// ─── Zoom / vues : actions de haut niveau ────────────────────────────────────
+// ─── Zoom / views: high-level actions ───────────────────────────────────────
 
-/// Change le zoom en gardant le centre du viewport (un saut vers le coin
-/// serait désorientant).
+/// Changes the zoom keeping the center of the viewport (a jump to a corner
+/// would be disorienting).
 pub(crate) fn zoom_by(state: &Rc<RefCell<State>>, widgets: &Rc<Widgets>, factor: f64) {
     let current = {
         let st = state.borrow();
@@ -595,7 +596,7 @@ pub(crate) fn set_zoom(state: &Rc<RefCell<State>>, widgets: &Rc<Widgets>, value:
     keep_center(widgets, center_x, center_y);
 }
 
-/// Bascule le mode « Ajuster ».
+/// Toggles the "Ajuster" (fit) mode.
 pub(crate) fn toggle_fit(state: &Rc<RefCell<State>>, widgets: &Rc<Widgets>, fit: bool) {
     {
         let mut st = state.borrow_mut();
@@ -608,7 +609,7 @@ pub(crate) fn toggle_fit(state: &Rc<RefCell<State>>, widgets: &Rc<Widgets>, fit:
     apply_zoom(state, widgets);
 }
 
-/// Aligne les boutons « 1:1 » / « Ajuster » sur l'état.
+/// Aligns the "1:1" / "Ajuster" buttons on the state.
 pub(crate) fn sync_zoom_toggles(state: &Rc<RefCell<State>>, widgets: &Rc<Widgets>) {
     let (fit, at_one) = {
         let st = state.borrow();
@@ -635,10 +636,11 @@ pub(crate) fn sync_zoom_toggles(state: &Rc<RefCell<State>>, widgets: &Rc<Widgets
     }
 }
 
-/// Centre du viewport, en coordonnées d'ajustement.
+/// Center of the viewport, in adjustment coordinates.
 ///
-/// Ni `state` ni les ajustements eux-mêmes n'y entrent : seul le défilement
-/// visible compte, ce qui vaudrait aussi bien au clavier qu'à la molette.
+/// Neither `state` nor the adjustments themselves come into it: only the
+/// visible scrolling matters, which would hold as well for the keyboard as
+/// for the wheel.
 fn viewport_center(widgets: &Rc<Widgets>) -> (f64, f64) {
     let scroll = visible_scroll(widgets);
     match scroll {
@@ -680,7 +682,7 @@ fn visible_scroll(widgets: &Rc<Widgets>) -> Option<gtk::ScrolledWindow> {
     None
 }
 
-/// Rafraîchit le comparateur (surfaces + état « obsolète »).
+/// Refreshes the comparator (surfaces + "stale" state).
 pub(crate) fn refresh_compare(state: &Rc<RefCell<State>>, widgets: &Rc<Widgets>) {
     let (source, result, has_image, stale) = {
         let st = state.borrow();

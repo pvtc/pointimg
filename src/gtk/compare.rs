@@ -1,14 +1,14 @@
-//! Comparaison avant/après par balayage (« wipe »).
+//! Before/after comparison by sweeping ("wipe").
 //!
-//! Un seul `DrawingArea` dessine la source à gauche d'un curseur et le résultat
-//! à droite, ce qui permet de comparer la même zone pixel par pixel. Le rendu
-//! passe par cairo : les `ImageSurface` sont construites à partir des images
-//! déjà en mémoire (pas de re-téléchargement GPU) et la zone visible est
-//! découpée par clipping rectangulaire de part et d'autre du curseur.
+//! A single `DrawingArea` draws the source on the left of a cursor and the
+//! result on the right, which makes it possible to compare the same area
+//! pixel by pixel. Rendering goes through cairo: the `ImageSurface`s are
+//! built from images already in memory (no GPU re-download) and the visible
+//! area is cut by rectangular clipping on both sides of the cursor.
 //!
-//! La taille du contenu est pilotée par le zoom (comme les autres panneaux) :
-//! c'est `preview::apply_zoom` qui la fixe, le `ScrolledWindow` gère le
-//! défilement et le curseur est simplement dessiné à `split * largeur`.
+//! The content size is driven by the zoom (like the other panes): it is
+//! `preview::apply_zoom` that sets it, the `ScrolledWindow` handles the
+//! scrolling and the cursor is simply drawn at `split * width`.
 
 use std::cell::RefCell;
 use std::rc::Rc;
@@ -21,20 +21,20 @@ use pointimg::frontend;
 
 use crate::controls::{ComparePane, make_scroll};
 
-/// Ce que le dessin du comparateur doit savoir sur l'état courant.
+/// What the comparator drawing needs to know about the current state.
 pub(crate) struct CompareData {
     pub source: Option<cairo::ImageSurface>,
     pub result: Option<cairo::ImageSurface>,
-    /// Dimensions d'affichage (image × zoom) partagées par les deux couches.
+    /// Display dimensions (image × zoom) shared by both layers.
     pub content_width: i32,
     pub content_height: i32,
     pub stale: bool,
     pub has_image: bool,
-    /// Position du curseur, synchronisée avec le widget interactif.
+    /// Cursor position, synchronized with the interactive widget.
     pub split: f64,
 }
 
-/// Surface cairo `Rgb24` (BGRX en mémoire) depuis une image RVB.
+/// Cairo `Rgb24` surface (BGRX in memory) from an RGB image.
 fn rgb_surface(img: &RgbImage) -> Option<cairo::ImageSurface> {
     if img.width() == 0 || img.height() == 0 {
         return None;
@@ -58,8 +58,8 @@ fn rgb_surface(img: &RgbImage) -> Option<cairo::ImageSurface> {
     .ok()
 }
 
-/// Surface cairo depuis une image RGBA, alpha aplati sur un damier (comme le
-/// rendu des autres panneaux).
+/// Cairo surface from an RGBA image, alpha flattened onto a checkerboard
+/// (like the rendering of the other panes).
 fn rgba_checker_surface(img: &RgbaImage) -> Option<cairo::ImageSurface> {
     if img.width() == 0 || img.height() == 0 {
         return None;
@@ -67,8 +67,8 @@ fn rgba_checker_surface(img: &RgbaImage) -> Option<cairo::ImageSurface> {
     let stride = img.width() as usize * 4;
     let mut data = vec![0u8; stride * img.height() as usize];
     for (x, y, p) in img.enumerate_pixels() {
-        // Même composite que les autres panneaux ; cairo lit du BGRX, d'où
-        // l'ordre inversé des deux premiers canaux.
+        // Same composite as the other panes; cairo reads BGRX, hence the
+        // reversed order of the first two channels.
         let [r, g, b] = frontend::composite_on_checker(p.0, x, y);
         let i = y as usize * stride + x as usize * 4;
         data[i] = b;
@@ -86,7 +86,7 @@ fn rgba_checker_surface(img: &RgbaImage) -> Option<cairo::ImageSurface> {
     .ok()
 }
 
-/// Construit le panneau « comparaison ».
+/// Builds the "comparaison" pane.
 pub(crate) fn build_pane() -> ComparePane {
     let caption = gtk::Label::new(Some("Comparaison"));
     caption.set_xalign(0.0);
@@ -118,8 +118,8 @@ pub(crate) fn build_pane() -> ComparePane {
         });
     }
 
-    // Curseur déplaçable : c'est un réglage d'affichage, il vit dans le widget
-    // (miroiré dans `CompareData` pour survive au redessin).
+    // Movable cursor: this is a display setting, it lives in the widget
+    // (mirrored into `CompareData` to survive a redraw).
     let set_split = std::rc::Rc::new({
         let data = Rc::clone(&data);
         let area = area.clone();
@@ -171,7 +171,7 @@ pub(crate) fn build_pane() -> ComparePane {
     }
 }
 
-/// Rafraîchit les surfaces et la taille de contenu du comparateur.
+/// Refreshes the surfaces and the content size of the comparator.
 pub(crate) fn refresh(
     pane: &ComparePane,
     source: Option<&RgbImage>,
@@ -189,12 +189,13 @@ pub(crate) fn refresh(
     pane.area.queue_draw();
 }
 
-/// Dessine la comparaison.
+/// Draws the comparison.
 fn paint(cr: &cairo::Context, width: i32, height: i32, data: &CompareData) {
     let (Some(source), Some(result)) = (data.source.as_ref(), data.result.as_ref()) else {
         if data.has_image {
-            // Image chargée mais rendu pas encore arrivé : le message du
-            // comparateur reste, l'état d'accueil couvre le cas sans image.
+            // Image loaded but the render has not arrived yet: the message
+            // of the comparator stays, the welcome state covers the
+            // no-image case.
             message(cr, width as f64, height as f64, frontend::msg::COMPUTING);
         }
         return;
@@ -204,7 +205,7 @@ fn paint(cr: &cairo::Context, width: i32, height: i32, data: &CompareData) {
     let (rw, rh) = (result.width() as f64, result.height() as f64);
     let content_w = data.content_width.max(1) as f64;
     let content_h = data.content_height.max(1) as f64;
-    // Même échelle pour les deux couches : la comparaison porte sur la même zone.
+    // Same scale for both layers: the comparison is on the same area.
     let scale = (content_w / sw.max(rw)).min(content_h / sh.max(rh));
     let dw = (sw * scale).round().max(1.0);
     let dh = (sh * scale).round().max(1.0);
@@ -214,21 +215,21 @@ fn paint(cr: &cairo::Context, width: i32, height: i32, data: &CompareData) {
     let total_h = dh.max(dh_r);
     let split_x = (total_w * data.split).clamp(1.0, total_w - 1.0);
 
-    // Résultat à droite du curseur.
+    // Result to the right of the cursor.
     cr.save().ok();
     cr.rectangle(split_x, 0.0, total_w - split_x, total_h);
     cr.clip();
     paint_surface(cr, result, 0.0, 0.0, dw_r, dh_r);
     cr.restore().ok();
 
-    // Source à gauche du curseur.
+    // Source to the left of the cursor.
     cr.save().ok();
     cr.rectangle(0.0, 0.0, split_x, total_h);
     cr.clip();
     paint_surface(cr, source, 0.0, 0.0, dw, dh);
     cr.restore().ok();
 
-    // Curseur : trait + poignée.
+    // Cursor: line + handle.
     cr.set_line_width(2.0);
     cr.set_source_rgb(1.0, 1.0, 1.0);
     cr.move_to(split_x, 0.0);

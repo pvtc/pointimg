@@ -1,14 +1,14 @@
-//! Construction des widgets et de la disposition de la fenêtre GTK4.
+//! Building the widgets and the layout of the GTK4 window.
 //!
-//! Le panneau de gauche est une `adw::PreferencesPage` : chaque réglage occupe
-//! une seule ligne (`adw::SpinRow` = saisie clavier aux plages réelles de
-//! `validate_params`), les sections restent visibles et les actions principales
-//! vivent dans l'en-tête plutôt qu'en bas d'un panneau à faire défiler.
+//! The left panel is an `adw::PreferencesPage`: each setting occupies a
+//! single line (`adw::SpinRow` = keyboard entry at the real ranges of
+//! `validate_params`), the sections stay visible and the main actions live
+//! in the header rather than at the bottom of a panel that has to scroll.
 //!
-//! Les réglages à course large (nombre de points, rayons) sont doublés d'un
-//! `GtkScale` : le `SpinRow` reste l'outil de la valeur exacte, le curseur
-//! celui du réglage à la souris — impossible avec la seule molette du
-//! `SpinButton`, dont le pas est fixe.
+//! The wide-range settings (number of points, radii) are doubled with a
+//! `GtkScale`: the `SpinRow` remains the exact-value tool, the slider the
+//! mouse one — impossible with the `SpinButton` wheel alone, whose step is
+//! fixed.
 
 use std::cell::RefCell;
 use std::rc::Rc;
@@ -18,10 +18,10 @@ use gtk::glib;
 
 use pointimg::frontend::Curve;
 
-/// Conversion entre la position d'un curseur (0 → 1) et la valeur du filtre.
+/// Conversion between a slider position (0 → 1) and the filter value.
 ///
-/// `Copy` pour être recopié dans les callbacks GTK, qui ne peuvent pas
-/// capturer le widget lui-même.
+/// `Copy` to be copied into the GTK callbacks, which cannot capture the
+/// widget itself.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub(crate) struct SliderSpec {
     curve: Curve,
@@ -31,14 +31,14 @@ pub(crate) struct SliderSpec {
 }
 
 impl SliderSpec {
-    /// Position du curseur correspondant à une valeur de filtre.
+    /// Slider position corresponding to a filter value.
     pub(crate) fn position(self, value: f64) -> f64 {
         self.curve.position(value, self.start, self.end)
     }
 
-    /// Valeur de filtre correspondant à une position du curseur, arrondie à la
-    /// précision du champ de saisie voisin : sans cela, le glissement laisserait
-    /// `0,25317937` dans les réglages.
+    /// Filter value corresponding to a slider position, rounded to the
+    /// precision of the neighboring entry field: without that, dragging
+    /// would leave `0.25317937` in the settings.
     pub(crate) fn value(self, position: f64) -> f64 {
         let factor = 10f64.powi(self.digits as i32);
         let value = (self.curve.value(position, self.start, self.end) * factor).round() / factor;
@@ -46,32 +46,32 @@ impl SliderSpec {
     }
 }
 
-/// Curseur horizontal doublant un `adw::SpinRow`.
+/// Horizontal slider doubling an `adw::SpinRow`.
 #[derive(Clone)]
 pub(crate) struct ValueSlider {
     pub scale: gtk::Scale,
     pub spec: SliderSpec,
-    /// Rangée qui héberge le curseur, pour la masquer avec le réglage qu'elle
-    /// double (le curseur seul ne suffirait pas : la rangée resterait visible,
-    /// vide de son curseur).
+    /// Row hosting the slider, to hide it along with the setting it doubles
+    /// (the slider alone would not be enough: the row would stay visible,
+    /// empty of its slider).
     row: Option<adw::ActionRow>,
 }
 
 impl ValueSlider {
-    /// `digits` est la précision du `SpinRow` associé, pour que les deux
-    /// représentations tombent d'accord.
+    /// `digits` is the precision of the associated `SpinRow`, so that both
+    /// representations agree.
     pub(crate) fn new(start: f64, end: f64, digits: u32, curve: Curve) -> Self {
-        // Le curseur travaille en position relative : GTK n'a pas d'échelle
-        // logarithmique, et une course linéaire sur 0,0005 → 1,0 rendrait les
-        // petits rayons impossibles à atteindre à la souris.
+        // The slider works in relative position: GTK has no logarithmic
+        // scale, and a linear travel over 0.0005 → 1.0 would make the small
+        // radii impossible to reach with the mouse.
         let scale = gtk::Scale::with_range(gtk::Orientation::Horizontal, 0.0, 1.0, 0.002);
         scale.set_draw_value(false);
         scale.set_value_pos(gtk::PositionType::Right);
         scale.set_has_origin(false);
         scale.set_hexpand(true);
         scale.set_digits(3);
-        // Un `GtkScale` capte la molette : sans cette interception, faire
-        // défiler le panneau des réglages modifiait silencieusement les valeurs.
+        // A `GtkScale` captures the wheel: without this interception,
+        // scrolling the settings panel silently changed the values.
         forward_wheel_to_scroller(&scale);
         Self {
             scale,
@@ -85,32 +85,32 @@ impl ValueSlider {
         }
     }
 
-    /// Place la poignée sur une valeur de filtre.
+    /// Places the handle on a filter value.
     pub(crate) fn set_value(&self, value: f64) {
         self.scale.set_value(self.spec.position(value));
     }
 
-    /// Marque la position de l'autre borne d'une paire (une seule marque à la
-    /// fois : `gtk_scale_add_mark` ne renvoie pas de handle).
+    /// Marks the position of the other end of a pair (one mark at a time:
+    /// `gtk_scale_add_mark` returns no handle).
     pub(crate) fn set_bound(&self, other: f64) {
         self.scale.clear_marks();
         self.scale
             .add_mark(self.spec.position(other), gtk::PositionType::Bottom, None);
     }
 
-    /// Rangée qui héberge le curseur.
+    /// Row hosting the slider.
     ///
-    /// `adw::PreferencesGroup` n'accepte que des `AdwPreferencesRow`, et le
-    /// suffixe d'un `AdwActionRow` n'est pas extensible : le curseur occupe
-    /// donc la partie droite de la rangée, comme les curseurs des réglages
-    /// GNOME.
+    /// `adw::PreferencesGroup` only accepts `AdwPreferencesRow`s, and the
+    /// suffix of an `AdwActionRow` is not extensible: the slider therefore
+    /// takes the right part of the row, like the sliders of the GNOME
+    /// settings.
     ///
-    /// Ni titre ni sous-titre : la rangée double un `SpinRow` situé juste au
-    /// dessus, dont le libellé et l'aide nomment déjà le réglage. Le curseur
-    /// n'est qu'un second moyen de le régler, pas un réglage à part entière —
-    /// libellé et surtout le mot « curseur », déjà présent dans la moitié
-    /// droite de la fenêtre, n'apprenaient rien. L'échelle est expliquée dans
-    /// l'infobulle.
+    /// Neither title nor subtitle: the row doubles a `SpinRow` sitting just
+    /// above, whose label and help already name the setting. The slider is
+    /// only a second way to adjust it, not a setting in its own right —
+    /// the label and above all the word "curseur", already present in the
+    /// right half of the window, taught nothing. The scale is explained in
+    /// the tooltip.
     pub(crate) fn row(&mut self, tooltip: &str) -> adw::ActionRow {
         let row = adw::ActionRow::new();
         row.set_activatable(false);
@@ -120,7 +120,7 @@ impl ValueSlider {
         row
     }
 
-    /// Masque la rangée entière quand le réglage doublé n'est pas visible.
+    /// Hides the whole row when the doubled setting is not visible.
     pub(crate) fn set_row_visible(&self, visible: bool) {
         if let Some(row) = &self.row {
             row.set_visible(visible);
@@ -128,13 +128,13 @@ impl ValueSlider {
     }
 }
 
-/// Une rangée de curseur pour une paire min/max.
+/// A slider row for a min/max pair.
 ///
-/// GTK n'a pas de curseur à deux poignées (c'est aussi vrai de libadwaita,
-/// dont `AdwSliderRow` n'existe qu'à partir de 1.6). On met donc les deux
-/// curseurs l'un sous l'autre, chacun marquant la position de l'autre borne :
-/// la lecture de la plage et de son écart reste immédiate, et la saisie
-/// chiffrée se fait dans les deux `SpinRow` du dessus.
+/// GTK has no two-handle slider (this is also true of libadwaita, whose
+/// `AdwSliderRow` only exists from 1.6). The two sliders are therefore
+/// stacked, each marking the position of the other end: reading the range
+/// and its spread stays immediate, and the numeric entry happens in the two
+/// `SpinRow`s above.
 fn pair_row(low: &mut ValueSlider, high: &mut ValueSlider, tooltip: &str) -> adw::ActionRow {
     let row = adw::ActionRow::new();
     row.set_activatable(false);
@@ -153,13 +153,13 @@ fn pair_row(low: &mut ValueSlider, high: &mut ValueSlider, tooltip: &str) -> adw
         box_.append(&line);
     }
     row.add_suffix(&box_);
-    // La rangée est mémorisée par la borne basse : c'est elle qui pilote la
-    // visibilité du couple.
+    // The row is remembered by the low end: it is the one driving the
+    // visibility of the pair.
     low.row = Some(row.clone());
     row
 }
 
-/// Portées de « réinitialiser » : un bouton par section du panneau.
+/// Scopes of "reset": one button per section of the panel.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub(crate) enum ResetTarget {
     Presets,
@@ -169,14 +169,14 @@ pub(crate) enum ResetTarget {
     All,
 }
 
-/// Un bouton de réinitialisation de section.
+/// A section reset button.
 #[derive(Clone)]
 pub(crate) struct GroupReset {
     pub button: gtk::Button,
     pub target: ResetTarget,
 }
 
-/// Un panneau d'aperçu : légende + zone défilante.
+/// A preview pane: caption + scrolling area.
 #[derive(Clone)]
 pub(crate) struct Pane {
     pub root: gtk::Box,
@@ -184,7 +184,7 @@ pub(crate) struct Pane {
     pub image: gtk::Image,
 }
 
-/// Le panneau « comparaison » : une seule image, deux couches, un curseur.
+/// The "comparaison" pane: one image, two layers, one cursor.
 #[derive(Clone)]
 pub(crate) struct ComparePane {
     pub root: gtk::Box,
@@ -193,8 +193,8 @@ pub(crate) struct ComparePane {
     pub data: Rc<RefCell<crate::compare::CompareData>>,
 }
 
-/// Poignées vers tous les widgets contrôlés par l'application.
-/// Fenêtre : vue scindée, overlay de notifications, raccourcis.
+/// Handles towards all the widgets controlled by the application.
+/// Window: split view, notification overlay, shortcuts.
 #[derive(Clone)]
 pub(crate) struct WindowWidgets {
     pub window_title: adw::WindowTitle,
@@ -211,7 +211,7 @@ pub(crate) struct WindowWidgets {
     pub toast_overlay: adw::ToastOverlay,
 }
 
-/// Presets intégrés, ouverture de fichiers et de dossiers.
+/// Built-in presets, opening of files and folders.
 #[derive(Clone)]
 pub(crate) struct PresetWidgets {
     pub preset_combo: adw::ComboRow,
@@ -224,7 +224,7 @@ pub(crate) struct PresetWidgets {
     pub folder_row: adw::ActionRow,
 }
 
-/// Algorithme de placement et réglages communs.
+/// Placement algorithm and common settings.
 #[derive(Clone)]
 pub(crate) struct AlgorithmWidgets {
     pub algo: adw::ComboRow,
@@ -247,7 +247,7 @@ pub(crate) struct AlgorithmWidgets {
     pub iterations_slider: ValueSlider,
 }
 
-/// Réglages propres à la trame.
+/// Settings specific to the screen (halftone).
 #[derive(Clone)]
 pub(crate) struct HalftoneWidgets {
     pub halftone_group: adw::PreferencesGroup,
@@ -264,7 +264,7 @@ pub(crate) struct HalftoneWidgets {
     pub halftone_max_slider: ValueSlider,
 }
 
-/// Forme des points et palette.
+/// Dot shape and palette.
 #[derive(Clone)]
 pub(crate) struct DotWidgets {
     pub shape: adw::ComboRow,
@@ -278,7 +278,7 @@ pub(crate) struct DotWidgets {
     pub dithering: adw::ComboRow,
 }
 
-/// Fond, correction gamma, graine.
+/// Background, gamma correction, seed.
 #[derive(Clone)]
 pub(crate) struct RenderWidgets {
     pub bg_button: gtk::ColorDialogButton,
@@ -290,7 +290,7 @@ pub(crate) struct RenderWidgets {
     pub vary_seed: gtk::Button,
 }
 
-/// Qualité de l'aperçu et réinitialisations par section.
+/// Preview quality and per-section resets.
 #[derive(Clone)]
 pub(crate) struct ComputeWidgets {
     pub quality: adw::ComboRow,
@@ -299,7 +299,7 @@ pub(crate) struct ComputeWidgets {
     pub group_resets: Vec<GroupReset>,
 }
 
-/// Barre d'outils et panneaux d'aperçu.
+/// Toolbar and preview panes.
 #[derive(Clone)]
 pub(crate) struct PreviewWidgets {
     pub view_mode: gtk::DropDown,
@@ -318,7 +318,7 @@ pub(crate) struct PreviewWidgets {
     pub compare_pane: ComparePane,
 }
 
-/// Page d'accueil et barre d'état.
+/// Welcome page and status bar.
 #[derive(Clone)]
 pub(crate) struct StatusWidgets {
     pub empty_page: adw::StatusPage,
@@ -330,12 +330,11 @@ pub(crate) struct StatusWidgets {
     pub status: gtk::Label,
 }
 
-/// Tous les widgets, groupés par section de réglages.
+/// All the widgets, grouped by settings section.
 ///
-/// `widgets.algorithm.variance` se lit comme ce qu'il est, et un widget ajouté
-/// à une section se range tout seul. Les noms de section ne peuvent pas
-/// collisionner avec un nom de champ — c'est ce qui a fait renoncer à `shape`
-/// et `status`, tous deux champs *et* sections.
+/// `widgets.algorithm.variance` reads as what it is, and a widget added to
+/// a section files itself. Section names cannot collide with a field name —
+/// that is what ruled out `shape` and `status`, both fields *and* sections.
 #[derive(Clone)]
 pub(crate) struct Widgets {
     pub window: WindowWidgets,
@@ -373,19 +372,19 @@ const VIEWS: [&str; 5] = [
 ];
 const QUALITIES: [&str; 3] = ["Rapide (1/2)", "Rapide (1/4)", "Pleine résolution"];
 
-/// Compose la barre d'outils supérieure.
+/// Composes the upper toolbar.
 ///
-/// Tout y est déjà construit : cette fonction ne fait qu'habiller les boutons
-/// (icône, libellé, infobulle) et les ordonner. L'extraire retire cinquante lignes
-/// de mise en forme du milieu de `build()`, où elles masquaient la structure de la
-/// fenêtre.
+/// Everything in it is already built: this function only dresses the buttons
+/// (icon, label, tooltip) and orders them. Extracting it removes fifty lines
+/// of formatting from the middle of `build()`, where they hid the structure
+/// of the window.
 ///
-/// `adw::ButtonContent` impose le contenu (icône + libellé) : `set_label` suivi de
-/// `set_icon_name` sur un GtkButton ne garde que l'icône.
+/// `adw::ButtonContent` imposes the content (icon + label): `set_label`
+/// followed by `set_icon_name` on a GtkButton keeps only the icon.
 ///
-/// Elle prend `&Widgets` et non neuf paramètres : les champs qu'elle touche sont
-/// tous dans les sections `window` et `presets`, et un dixième bouton n'ajoute
-/// pas un paramètre de plus.
+/// It takes `&Widgets` and not nine parameters: the fields it touches are
+/// all in the `window` and `presets` sections, and a tenth button does not
+/// add one more parameter.
 fn header_bar(widgets: &Widgets) -> adw::HeaderBar {
     let Widgets {
         window:
@@ -404,8 +403,8 @@ fn header_bar(widgets: &Widgets) -> adw::HeaderBar {
         presets: PresetWidgets { open_folder, .. },
         ..
     } = widgets.clone();
-    // `adw::ButtonContent` impose le contenu (icône + libellé) : `set_label`
-    // suivi de `set_icon_name` sur un GtkButton ne garde que l'icône.
+    // `adw::ButtonContent` imposes the content (icon + label): `set_label`
+    // followed by `set_icon_name` on a GtkButton keeps only the icon.
     set_button_content(&open, "document-open-symbolic", "Ouvrir…");
     open.set_tooltip_text(Some("Ouvrir une image (Ctrl+O)"));
     set_button_content(&open_folder, "folder-open-symbolic", "Dossier…");
@@ -431,8 +430,8 @@ fn header_bar(widgets: &Widgets) -> adw::HeaderBar {
     set_button_content(&export, "document-save-symbolic", "Exporter");
     export.add_css_class("suggested-action");
     export.set_tooltip_text(Some("Exporter l'image (Ctrl+S)"));
-    // Le bouton ne propose que les exports : le menu complet (dossier,
-    // presets, affichage, raccourcis) est sous le bouton hamburger.
+    // The button only offers the exports: the full menu (folder, presets,
+    // display, shortcuts) is under the hamburger button.
     export.set_menu_model(Some(&crate::wire::export_menu_model()));
     menu.set_tooltip_text(Some("Menu principal"));
 
@@ -451,11 +450,11 @@ fn header_bar(widgets: &Widgets) -> adw::HeaderBar {
     header
 }
 
-/// Compose la barre d'état : trois mesures, un badge de qualité, un message.
+/// Composes the status bar: three measurements, a quality badge, a message.
 ///
-/// L'ordre compte — le message d'état est en dernier parce qu'il est le seul à
-/// s'étirer (`hexpand`) et à devoir rester visible. Retourne le conteneur prêt à
-/// être posé en bas de la fenêtre.
+/// The order matters — the status message is last because it is the only one
+/// that stretches (`hexpand`) and has to stay visible. Returns the container
+/// ready to be placed at the bottom of the window.
 fn status_bar(
     memory: &gtk::Label,
     export_sizes: &gtk::Label,
@@ -471,13 +470,13 @@ fn status_bar(
     for label in [memory, export_sizes, timing] {
         label.set_xalign(0.0);
         label.add_css_class("dim-label");
-        // La liste des formats est longue (« PNG 1.4 Mo · WebP — · JPEG… »)
-        // et ne tient pas dans une fenêtre étroite : sans élision elle était
-        // coupée net, sans aucun signe de continuation.
+        // The list of formats is long ("Export : PNG 1.4 MB · WebP — · JPEG…")
+        // and does not fit in a narrow window: without elision it was cut off
+        // short, with no sign of continuation.
         label.set_ellipsize(gtk::pango::EllipsizeMode::End);
-        // Le libellé ne doit pas non plus s'étendre : il prend ce dont il a
-        // besoin et cède le reste au message d'état, qui est le champ qui
-        // change.
+        // The label must not expand either: it takes what it needs and
+        // yields the rest to the status message, which is the field that
+        // changes.
         label.set_max_width_chars(40);
         status_bar.append(label);
     }
@@ -490,10 +489,10 @@ fn status_bar(
     status_bar
 }
 
-/// Construit la disposition complète : en-tête, panneau de réglages, aperçu.
-/// Construit la disposition complète : en-tête, panneau de réglages, aperçu.
+/// Builds the complete layout: header, settings panel, preview.
+/// Builds the complete layout: header, settings panel, preview.
 pub(crate) fn build() -> (adw::ToastOverlay, Rc<Widgets>) {
-    // ── Widgets de base ──────────────────────────────────────────────────────
+    // ── Base widgets ──────────────────────────────────────────────────────────
     let open = gtk::Button::with_label("Ouvrir…");
     let open_empty = gtk::Button::with_label("Ouvrir une image…");
     let sample_button = gtk::Button::with_label("Utiliser un exemple");
@@ -505,9 +504,9 @@ pub(crate) fn build() -> (adw::ToastOverlay, Rc<Widgets>) {
     let export = gtk::MenuButton::new();
     let menu = gtk::MenuButton::new();
     menu.set_menu_model(Some(&crate::wire::menu_model()));
-    // Révèle le panneau de réglages quand il est replié (fenêtre étroite) : le
-    // bouton n'existe que dans ce cas, cf. le point de rupture plus bas. Champ
-    // de `Widgets`, donc déclaré avant la construction du littéral.
+    // Reveals the settings panel when it is folded away (narrow window): the
+    // button only exists in that case, see the breakpoint further down. A
+    // field of `Widgets`, hence declared before building the literal.
     let panel_toggle = gtk::ToggleButton::new();
     panel_toggle.set_icon_name("sidebar-show-symbolic");
     panel_toggle.set_tooltip_text(Some("Afficher les réglages"));
@@ -558,9 +557,9 @@ pub(crate) fn build() -> (adw::ToastOverlay, Rc<Widgets>) {
         0.1,
         2,
     );
-    // Curseurs : la molette du `SpinButton` a un pas fixe (0,1), ce qui rend
-    // les 4 décimales du rayon min pénibles à atteindre. Le curseur se règle
-    // à la souris ; la `SpinRow` reste l'outil de la valeur exacte.
+    // Sliders: the `SpinButton` wheel has a fixed step (0.1), which makes
+    // the 4 decimals of the min radius painful to reach. The slider is
+    // adjusted with the mouse; the `SpinRow` stays the exact-value tool.
     let mut variance_slider = ValueSlider::new(0.0, 1.0, 2, Curve::Linear);
     let mut min_radius_slider = ValueSlider::new(0.0005, 1.0, 4, Curve::Log);
     let mut max_radius_slider = ValueSlider::new(0.0005, 1.0, 4, Curve::Log);
@@ -603,9 +602,9 @@ pub(crate) fn build() -> (adw::ToastOverlay, Rc<Widgets>) {
         1.0,
         0,
     );
-    // Linéaire, comme dans l'interface egui : sur 1 → 100, une échelle
-    // logarithmique gaspille 80 % de la course entre 1 et 10, alors que
-    // c'est justement là que se joue le réglage (« 5 ou 10 itérations ?»).
+    // Linear, as in the egui interface: over 1 → 100, a logarithmic scale
+    // wastes 80% of the travel between 1 and 10, whereas that is precisely
+    // where the setting is decided ("5 or 10 iterations?").
     let mut iterations_slider = ValueSlider::new(1.0, 100.0, 0, Curve::Linear);
 
     let halftone_mode = combo_row("Mode", &["CMJN (rosette)", "Couleurs dominantes"], None);
@@ -661,14 +660,14 @@ pub(crate) fn build() -> (adw::ToastOverlay, Rc<Widgets>) {
         2,
     );
     let mut halftone_freq_slider = ValueSlider::new(4.0, 400.0, 0, Curve::Log);
-    // La plage 0 → 10 passe en racine : en linéaire, les valeurs utiles
-    // (0,002 et 0,85) seraient tassées dans le premier dixième du rail.
+    // The 0 → 10 range goes to square root: linearly, the useful values
+    // (0.002 and 0.85) would be crammed into the first tenth of the rail.
     //
-    // La borne basse s'arrête à 1,0, pas à 10 : `validate_params` plafonne
-    // `halftone_min_radius_ratio` à 1,0 quand `halftone_max_dot_ratio` monte à
-    // 10. Les deux partageaient la même plage, et la poignée basse franchissait
-    // le plafond — erreur sèche du worker, sans cause visible. La `SpinRow`
-    // juste au-dessus indiquait déjà la bonne borne.
+    // The low end stops at 1.0, not at 10: `validate_params` caps
+    // `halftone_min_radius_ratio` at 1.0 when `halftone_max_dot_ratio` rises
+    // to 10. Both shared the same range, and the low handle crossed the cap
+    // — a bare worker error, with no visible cause. The `SpinRow` just above
+    // already indicated the right end.
     let mut halftone_min_slider = ValueSlider::new(0.0, 1.0, 3, Curve::Sqrt);
     let mut halftone_max_slider = ValueSlider::new(0.05, 10.0, 2, Curve::Sqrt);
 
@@ -715,8 +714,8 @@ pub(crate) fn build() -> (adw::ToastOverlay, Rc<Widgets>) {
         1.0,
         0,
     );
-    // Le dithering se choisit parmi quatre algorithmes : Floyd-Steinberg,
-    // Riemersma, Bayer 4×4 et Bayer 8×8, en plus de « Aucun ».
+    // Dithering is chosen among four algorithms: Floyd-Steinberg,
+    // Riemersma, Bayer 4×4 and Bayer 8×8, in addition to "Aucun".
     let dithering = combo_row(
         "Dithering",
         &[
@@ -801,7 +800,7 @@ pub(crate) fn build() -> (adw::ToastOverlay, Rc<Widgets>) {
     let timing = gtk::Label::new(None);
     let status = gtk::Label::new(None);
 
-    // ── Panneau de réglages ──────────────────────────────────────────────────
+    // ── Settings panel ────────────────────────────────────────────────────────
     let page = adw::PreferencesPage::new();
 
     let preset_group = adw::PreferencesGroup::new();
@@ -814,9 +813,9 @@ pub(crate) fn build() -> (adw::ToastOverlay, Rc<Widgets>) {
     preset_items.extend(preset_names.iter().map(String::as_str));
     preset_combo.set_model(Some(&gtk::StringList::new(&preset_items)));
 
-    // Grille de vignettes : un preset se choisit sur son rendu, pas sur son nom.
-    // Présente seulement si les vignettes sont là — sinon la liste déroulante,
-    // qui reste le sélecteur de référence, fait le travail seule.
+    // Thumbnail grid: a preset is chosen on its render, not on its name.
+    // Present only if the thumbnails are there — otherwise the drop-down
+    // list, which remains the reference selector, does the job alone.
     let preset_thumbs: Vec<gtk::Widget> = pointimg::filter::builtin_presets()
         .iter()
         .enumerate()
@@ -975,7 +974,7 @@ pub(crate) fn build() -> (adw::ToastOverlay, Rc<Widgets>) {
     compute_group.add(&reset_row);
     page.add(&compute_group);
 
-    // Boutons de réinitialisation par section, dans l'en-tête de chaque groupe.
+    // Per-section reset buttons, in the header of each group.
     let mut group_resets = Vec::new();
     for (group, title, target) in [
         (&preset_group, "Réglages rapides", ResetTarget::Presets),
@@ -999,17 +998,17 @@ pub(crate) fn build() -> (adw::ToastOverlay, Rc<Widgets>) {
         .vscrollbar_policy(gtk::PolicyType::Automatic)
         .child(&page)
         .build();
-    // Largeur imposée : sans cela le conteneur s'étire à la largeur naturelle de
-    // la ligne la plus large du panneau et celui-ci mange la moitié de la
-    // fenêtre. `propagate_natural_width(false)` empêche la largeur du contenu de
-    // remonter jusqu'à la taille demandée — c'est lui qui faisait 540 px.
+    // Forced width: without it the container stretches to the natural width
+    // of the widest row of the panel, and that eats half of the window.
+    // `propagate_natural_width(false)` stops the content width from bubbling
+    // up to the requested size — that is what made it 540 px.
     controls_scroll.set_propagate_natural_width(false);
     controls_scroll.set_size_request(360, -1);
 
-    // ── En-tête ──────────────────────────────────────────────────────────────
-    // Par valeur : un widget GTK est un `Arc`, le clone ne copie rien. Les
-    // valeurs sont reprises ensuite dans `Widgets`, sans double possession.
-    // ── Aperçu ───────────────────────────────────────────────────────────────
+    // ── Header ────────────────────────────────────────────────────────────────
+    // By value: a GTK widget is an `Arc`, the clone copies nothing. The
+    // values are taken up again in `Widgets`, without double ownership.
+    // ── Preview ──────────────────────────────────────────────────────────────
     let preview_toolbar = gtk::Box::new(gtk::Orientation::Horizontal, 8);
     preview_toolbar.set_margin_top(6);
     preview_toolbar.set_margin_bottom(6);
@@ -1056,8 +1055,8 @@ pub(crate) fn build() -> (adw::ToastOverlay, Rc<Widgets>) {
     let empty_actions = button_row();
     empty_actions.append(&open_empty);
     empty_actions.append(&sample_button);
-    // Les images récentes s'ajoutent sous les boutons par `ui.rs`, qui
-    // connaît l'état : la page d'accueil les accueille sans les remplacer.
+    // The recent images are added under the buttons by `ui.rs`, which knows
+    // the state: the welcome page hosts them without replacing them.
     let empty_child = gtk::Box::new(gtk::Orientation::Vertical, 0);
     empty_child.set_valign(gtk::Align::Center);
     empty_child.set_halign(gtk::Align::Center);
@@ -1076,11 +1075,11 @@ pub(crate) fn build() -> (adw::ToastOverlay, Rc<Widgets>) {
     preview.append(&preview_toolbar);
     preview.append(&overlay);
 
-    // `AdwOverlaySplitView` plutôt qu'un `GtkPaned` : le panneau garde une
-    // largeur imposée, et se replie au-dessus de l'aperçu quand la fenêtre
-    // devient étroite. Un `Paned` ne sait pas le faire, et imposait la largeur
-    // naturelle de sa rangée la plus large (540 px, dictée par la rangée de
-    // boutons) : il ne laissait que 280 px d'aperçu en fenêtre 820 px.
+    // `AdwOverlaySplitView` rather than a `GtkPaned`: the panel keeps a
+    // forced width, and folds above the preview when the window becomes
+    // narrow. A `Paned` cannot do that, and imposed the natural width of its
+    // widest row (540 px, dictated by the button row): it left only 280 px of
+    // preview in an 820 px window.
     let split = adw::OverlaySplitView::new();
     split.set_sidebar(Some(&controls_scroll));
     split.set_content(Some(&preview));
@@ -1090,7 +1089,7 @@ pub(crate) fn build() -> (adw::ToastOverlay, Rc<Widgets>) {
     split.set_sidebar_width_unit(adw::LengthUnit::Px);
     split.set_show_sidebar(true);
 
-    // ── Barre d'état ─────────────────────────────────────────────────────────
+    // ── Status bar ───────────────────────────────────────────────────────────
     let status_bar = status_bar(&memory, &export_sizes, &timing, &quality_badge, &status);
 
     let toast_overlay_for_return = toast_overlay.clone();
@@ -1206,8 +1205,8 @@ pub(crate) fn build() -> (adw::ToastOverlay, Rc<Widgets>) {
         },
     };
 
-    // L'assemblage final vient après le littéral : `header_bar` et la barre
-    // d'état prennent `&Widgets`, qui n'existe qu'ici.
+    // The final assembly comes after the literal: `header_bar` and the
+    // status bar take `&Widgets`, which only exists here.
     let header = header_bar(&widgets);
 
     let toolbar = adw::ToolbarView::new();
@@ -1219,15 +1218,15 @@ pub(crate) fn build() -> (adw::ToastOverlay, Rc<Widgets>) {
     (toast_overlay_for_return, Rc::new(widgets))
 }
 
-// ─── Fabriques ───────────────────────────────────────────────────────────────
+// ─── Factories ──────────────────────────────────────────────────────────────
 
-/// Bouton « icône + libellé » (contenu explicite, comme dans GNOME).
+/// "Icon + label" button (explicit content, as in GNOME).
 fn set_button_content<W: IsA<gtk::Widget>>(button: &W, icon: &str, label: &str) {
     let content = adw::ButtonContent::new();
     content.set_icon_name(icon);
     content.set_label(label);
-    // `set_child` existe sur `GtkButton` comme sur `GtkMenuButton` : on passe
-    // par le widget concret pour rester générique.
+    // `set_child` exists on `GtkButton` as on `GtkMenuButton`: we go through
+    // the concrete widget to stay generic.
     let widget = button.as_ref().clone();
     if let Ok(button) = widget.clone().downcast::<gtk::Button>() {
         button.set_child(Some(&content));
@@ -1238,22 +1237,22 @@ fn set_button_content<W: IsA<gtk::Widget>>(button: &W, icon: &str, label: &str) 
     }
 }
 
-/// Bouton icône seule, à plat (barre d'outils).
+/// Icon-only button, flat (toolbar).
 fn set_icon_button(button: &gtk::Button, icon: &str, tooltip: &str) {
     button.set_icon_name(icon);
     button.set_tooltip_text(Some(tooltip));
     button.add_css_class("flat");
 }
 
-/// Rangée de boutons de même largeur (équivalent de `AdwButtonRow`, qui
-/// demande libadwaita 1.6 ; on garde le socle à 1.4).
+/// Row of buttons of equal width (equivalent of `AdwButtonRow`, which
+/// requires libadwaita 1.6; we keep the base at 1.4).
 fn button_row() -> gtk::Box {
     let row = gtk::Box::new(gtk::Orientation::Horizontal, 6);
     row.set_homogeneous(true);
     row
 }
 
-/// Une `ListBox` sans sélection servant de conteneur « boxed-list ».
+/// A `ListBox` without selection used as a "boxed-list" container.
 fn rows_box<'a>(rows: &[&'a (impl IsA<gtk::Widget> + 'a)]) -> gtk::ListBox {
     let list = gtk::ListBox::new();
     list.set_selection_mode(gtk::SelectionMode::None);
@@ -1281,10 +1280,10 @@ fn switch_row(title: &str, subtitle: &str) -> adw::SwitchRow {
     row
 }
 
-/// Ligne numérique : glissière *et* saisie clavier, comme les réglages système.
+/// Numeric row: slider *and* keyboard entry, like the system settings.
 ///
-/// Les bornes reprennent celles de `filter::validate_params` : la saisie
-/// clavier couvre toute la plage validée (jusqu'à 100 000 points, 32 canaux).
+/// The bounds are those of `filter::validate_params`: keyboard entry covers
+/// the whole validated range (up to 100 000 points, 32 channels).
 pub(crate) fn spin_row(
     title: &str,
     subtitle: Option<&str>,
@@ -1304,8 +1303,8 @@ pub(crate) fn spin_row(
     row.set_numeric(true);
     row.set_snap_to_ticks(false);
     row.set_tooltip_text(Some(tooltip));
-    // Une `SpinRow` capte la molette : sans cette interception, faire défiler
-    // le panneau des réglages modifiait silencieusement les valeurs.
+    // A `SpinRow` captures the wheel: without this interception, scrolling
+    // the settings panel silently changed the values.
     forward_wheel_to_scroller(&row);
     row
 }
@@ -1344,15 +1343,15 @@ pub(crate) fn make_scroll(child: &impl IsA<gtk::Widget>) -> gtk::ScrolledWindow 
     scroll
 }
 
-/// Redirige la molette d'un widget de saisie vers le `ScrolledWindow` parent.
+/// Redirects the wheel of an entry widget towards the parent `ScrolledWindow`.
 ///
-/// `GtkRange`/`GtkSpinButton` consomment l'événement de molette : sans cela, la
-/// molette ne fait pas défiler le panneau mais change la valeur du réglage situé
-/// sous le curseur — et relance un calcul. Avec Ctrl, Shift ou Alt, le cran est
-/// appliqué au réglage (ajustement fin, convention GNOME).
+/// `GtkRange`/`GtkSpinButton` consume the wheel event: without this, the
+/// wheel does not scroll the panel but changes the value of the setting under
+/// the pointer — and triggers a recompute. With Ctrl, Shift or Alt, the notch
+/// is applied to the setting (fine adjustment, GNOME convention).
 pub(crate) fn forward_wheel_to_scroller<W: IsA<gtk::Widget>>(widget: &W) {
-    // Le closure doit être « statique » : on capture une poignée GTK, pas une
-    // référence empruntée au paramètre.
+    // The closure must be "static": we capture a GTK handle, not a reference
+    // borrowed from the parameter.
     let handle: gtk::Widget = widget.as_ref().clone();
     let controller = gtk::EventControllerScroll::builder()
         .flags(
@@ -1381,7 +1380,7 @@ pub(crate) fn forward_wheel_to_scroller<W: IsA<gtk::Widget>>(widget: &W) {
     widget.add_controller(controller);
 }
 
-/// Premier `ScrolledWindow` dans la hiérarchie d'un widget.
+/// First `ScrolledWindow` in the widget hierarchy.
 fn enclosing_scroller(widget: &impl IsA<gtk::Widget>) -> Option<gtk::ScrolledWindow> {
     let mut current = widget.as_ref().parent();
     while let Some(node) = current {
@@ -1404,8 +1403,8 @@ fn step_adjustment(adjustment: &gtk::Adjustment, delta: f64) {
 mod tests {
     use super::*;
 
-    /// Curseur des rayons : logarithmique sur 0,0005 → 1, au pas de la
-    /// `SpinRow` (4 décimales).
+    /// Radius slider: logarithmic over 0.0005 → 1, with the step of the
+    /// `SpinRow` (4 decimals).
     fn radius_spec() -> SliderSpec {
         SliderSpec {
             curve: Curve::Log,
@@ -1417,8 +1416,9 @@ mod tests {
 
     #[test]
     fn slider_value_is_quantised_to_the_spin_row_precision() {
-        // Le curseur travaille en position relative : sans arrondi, la valeur
-        // demanderait sept décimales et le champ voisin affiche « 0,2531794 ».
+        // The slider works in relative position: without rounding, the value
+        // would need seven decimals and the neighboring field would show
+        // "0.2531794".
         assert_eq!(radius_spec().value(0.7), 0.1023);
     }
 

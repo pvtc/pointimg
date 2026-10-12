@@ -1,12 +1,12 @@
-//! Confirmation avant d'écraser un fichier.
+//! Confirmation before overwriting a file.
 //!
-//! Un export rapide écrit à côté de l'image source, sans que l'utilisateur
-//! choisisse le chemin. Écraser ce fichier sans le lui dire serait une perte
-//! silencieuse. Les exports choisis dans le dialogue n'ont pas besoin de cette
-//! étape — le portail confirme déjà.
+//! A quick export writes next to the source image, without the user choosing
+//! the path. Overwriting that file without telling them would be a silent
+//! loss. The exports chosen in the dialog do not need this step — the portal
+//! already confirms.
 //!
-//! `choose` est asynchrone, d'où la forme « pose la question, puis fait le
-//! travail » au lieu d'un booléen de retour.
+//! `choose` is asynchronous, hence the "ask the question, then do the work"
+//! shape instead of a boolean return value.
 
 use std::path::Path;
 
@@ -14,19 +14,19 @@ use gtk::prelude::*;
 
 use crate::controls::Widgets;
 
-/// Les raccourcis d'état et de widgets, comme dans le reste du module GTK.
+/// The state and widget type aliases, as in the rest of the GTK module.
 type Wi = std::rc::Rc<Widgets>;
 
-/// Bouton « Annuler » — l'index 0, donc `cancel_button`.
+/// "Annuler" button — index 0, hence `cancel_button`.
 const ANNULER: i32 = 0;
-/// Bouton « Remplacer » — l'index 1.
+/// "Remplacer" button — index 1.
 const REMPLACER: i32 = 1;
 
-/// Demande confirmation si `path` existe, puis appelle `then`.
+/// Asks for confirmation if `path` exists, then calls `then`.
 ///
-/// Le fichier absent n'est pas confirmé — il n'y a rien à perdre. La fenêtre
-/// introuvable non plus : mieux vaut exporter que bloquer sur un dialogue qu'on
-/// ne peut pas poser.
+/// A missing file is not confirmed — there is nothing to lose. Neither is an
+/// unfindable window: exporting is better than blocking on a dialog that
+/// cannot be shown.
 pub(crate) fn confirm_overwrite<F>(widgets: &Wi, path: &Path, then: F)
 where
     F: FnOnce() + 'static,
@@ -58,8 +58,8 @@ where
             path.display()
         ))
         .buttons(["Annuler", "Remplacer"])
-        // « Annuler » est le bouton par défaut : valider par mégarde ne doit
-        // jamais détruire le fichier.
+        // "Annuler" is the default button: confirming by accident must never
+        // destroy the file.
         .cancel_button(ANNULER)
         .default_button(ANNULER)
         .build();

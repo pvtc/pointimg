@@ -1,15 +1,15 @@
-//! Fenêtre « Raccourcis clavier ».
+//! "Raccourcis clavier" window.
 //!
-//! `adw::ShortcutsWindow` est disponible à partir de libadwaita 1.8 ; on
-//! construit donc la page à la main (`adw::ShortcutsItem` n'étant pas non plus
-//! disponible en 1.4), ce qui donne le même rendu.
+//! `adw::ShortcutsWindow` is available from libadwaita 1.8; the page is
+//! therefore built by hand (`adw::ShortcutsItem` not being available in 1.4
+//! either), which gives the same rendering.
 
 use adw::prelude::*;
 
-/// Un raccourci : libellé + touches.
+/// A shortcut: label + keys.
 type Shortcut = (&'static str, &'static [&'static str]);
 
-/// Les raccourcis affichés, regroupés par section.
+/// The displayed shortcuts, grouped by section.
 const SECTIONS: &[(&str, &[Shortcut])] = &[
     (
         "Fichier",
@@ -53,7 +53,7 @@ const SECTIONS: &[(&str, &[Shortcut])] = &[
     ),
 ];
 
-/// Construit le contenu de la fenêtre des raccourcis.
+/// Builds the content of the shortcuts window.
 pub(crate) fn build_page() -> impl IsA<gtk::Widget> {
     let page = adw::PreferencesPage::new();
     for (title, shortcuts) in SECTIONS {
