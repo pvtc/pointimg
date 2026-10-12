@@ -60,10 +60,9 @@ pub(crate) fn export_menu_model() -> gtk::gio::Menu {
 
 /// Menu principal de l'application, sous le bouton hamburger de l'en-tête.
 ///
-/// Ce menu était jusqu'ici attaché au bouton « Exporter », alors qu'il ne
-/// contenait presque rien d'exportiel : ouvrir un dossier, changer d'image,
-/// changer l'affichage et consulter les raccourcis n'avaient aucun autre accès.
-/// Les séparateurs `_` des libellés fournissent les mnémoniques clavier.
+/// Ouvrir un dossier, changer d'image, changer l'affichage et consulter les
+/// raccourcis n'ont pas d'autre accès que ce menu. Les séparateurs `_` des
+/// libellés fournissent les mnémoniques clavier.
 pub(crate) fn menu_model() -> gtk::gio::Menu {
     let menu = gtk::gio::Menu::new();
 
@@ -375,8 +374,8 @@ fn on_slider(
 /// Effets d'un changement de valeur numérique.
 ///
 /// GTK réémet `value-changed` au retrait du focus d'une `SpinRow`, avec la
-/// valeur ré-analysée du champ : sans ce garde-fou, l'image était recalculée
-/// alors que rien n'avait bougé (passer du nombre de points au rayon min, par
+/// valeur ré-analysée du champ : sans ce garde-fou, l'image serait recalculée
+/// alors que rien n'a bougé (passer du nombre de points au rayon min, par
 /// exemple). On ne relance donc que si les paramètres ont réellement changé.
 fn commit_value_change(
     state: &St,
@@ -389,9 +388,9 @@ fn commit_value_change(
         return;
     }
     if from_slider {
-        // La valeur vient du curseur : la `SpinRow` jumelle affiche encore
-        // l'ancienne, et le curseur lui-même doit être recalé sur les
-        // réglages voisins (bornes min/max, sections visibles).
+        // La valeur vient du curseur : la `SpinRow` jumelle affiche une valeur
+        // périmée, et les réglages voisins (bornes min/max, sections visibles)
+        // doivent être resynchronisés.
         sections::sync_widgets(state, widgets);
     }
     if let Some(after) = after {
@@ -1134,10 +1133,10 @@ fn sync_radii(state: &St, widgets: &Wi) {
 
 /// Écrit une paire (ligne de saisie, curseur, borne croisée) des deux côtés.
 ///
-/// Les deux copies de ce bloc — rayons de points et rayons de trame — étaient
-/// identiques aux noms de widgets près. La danse d'emprunts (`borrow_mut` en
-/// deux temps de part et d'autre) était la partie fragile : une copie pouvait
-/// évoluer sans l'autre et laisser `updating` désynchronisé.
+/// Les deux blocs jumeaux — rayons de points et rayons de trame — ne diffèrent
+/// que par les widgets. La danse d'emprunts (`borrow_mut` en deux temps de part
+/// et d'autre) est la partie fragile : `updating` doit rester synchronisé
+/// pendant toute la mise à jour.
 fn sync_radius_pair(
     min_row: &adw::SpinRow,
     max_row: &adw::SpinRow,
@@ -1169,10 +1168,8 @@ pub(crate) fn install_dnd(window: &adw::ApplicationWindow, state: &St, widgets: 
             return false;
         };
         // Chaque fichier est traité, et le geste est accepté dès que la liste
-        // contient au moins un élément utile. Le `return true` était à
-        // l'intérieur de la boucle : il sortait après le premier fichier, quoi
-        // qu'il advienne des suivants. Déposer un dossier et une image ne
-        // chargeait donc que le dossier.
+        // contient au moins un élément utile : le `return true` reste hors de la
+        // boucle, sinon seul le premier fichier serait chargé.
         let mut traite = false;
         for file in list.files() {
             let Some(path) = file.path() else {

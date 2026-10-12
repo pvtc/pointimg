@@ -174,8 +174,8 @@ fn apply_dynamic_gamma_cmyk_halftone_does_not_panic() {
 
 #[test]
 fn apply_gamma_dominant_halftone_does_not_panic() {
-    // Régression : `apply` en gamma ne routait que le CMJN vers `apply_rgba` ;
-    // le mode dominant atteignait `unreachable!()`.
+    // Régression : `apply` en gamma routerait seul le CMJN vers `apply_rgba`, et
+    // le mode dominant atteindrait `unreachable!()`.
     use pointimg::filter::Algorithm;
     let img = RgbImage::from_fn(32, 32, |x, y| match (x / 16 + y / 16) % 3 {
         0 => image::Rgb([255, 0, 0]),

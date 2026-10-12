@@ -6,10 +6,8 @@ use std::sync::atomic::AtomicBool;
 
 /// Image à densité uniforme : un damier.
 ///
-/// J'avais d'abord conclu que ce damier rendait le test vain, la densité devant
-/// y être nulle partout et les graines ne jamais bouger. C'est faux, et c'est
-/// vérifié : les 80 graines se déplacent toutes entre une et cinq itérations.
-/// Le test a des dents. Ce qu'il ne couvre pas, en revanche, c'est le *poids* de
+/// Les 80 graines s'y déplacent toutes entre une et cinq itérations, donc le
+/// test a des dents. Ce qu'il ne couvre pas, en revanche, c'est le *poids* de
 /// Lloyd — `lloyd_weights` y vaut partout la même valeur, donc aucune erreur de
 /// calcul de ce poids ne se verrait. D'où `noisy` plus bas.
 fn checkerboard(w: u32, h: u32) -> image::RgbImage {

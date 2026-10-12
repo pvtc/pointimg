@@ -90,8 +90,8 @@ impl ValueSlider {
         self.scale.set_value(self.spec.position(value));
     }
 
-    /// Marque la position de l'autre borne d'une paire (l'ancienne marque est
-    /// remplacée : `gtk_scale_add_mark` ne renvoie pas de handle).
+    /// Marque la position de l'autre borne d'une paire (une seule marque à la
+    /// fois : `gtk_scale_add_mark` ne renvoie pas de handle).
     pub(crate) fn set_bound(&self, other: f64) {
         self.scale.clear_marks();
         self.scale
@@ -506,9 +506,8 @@ pub(crate) fn build() -> (adw::ToastOverlay, Rc<Widgets>) {
     let menu = gtk::MenuButton::new();
     menu.set_menu_model(Some(&crate::wire::menu_model()));
     // Révèle le panneau de réglages quand il est replié (fenêtre étroite) : le
-    // bouton n'existe que dans ce cas, cf. le point de rupture plus bas. Créé ici
-    // et non dans `header_bar` parce que c'est un champ de `Widgets`, donc il doit
-    // exister avant le littéral.
+    // bouton n'existe que dans ce cas, cf. le point de rupture plus bas. Champ
+    // de `Widgets`, donc déclaré avant la construction du littéral.
     let panel_toggle = gtk::ToggleButton::new();
     panel_toggle.set_icon_name("sidebar-show-symbolic");
     panel_toggle.set_tooltip_text(Some("Afficher les réglages"));
@@ -716,8 +715,8 @@ pub(crate) fn build() -> (adw::ToastOverlay, Rc<Widgets>) {
         1.0,
         0,
     );
-    // Le dithering est devenu un choix d'algorithme : l'interrupteur ne
-    // suffisait plus à distinguer Floyd-Steinberg, Riemersma et Bayer.
+    // Le dithering se choisit parmi quatre algorithmes : Floyd-Steinberg,
+    // Riemersma, Bayer 4×4 et Bayer 8×8, en plus de « Aucun ».
     let dithering = combo_row(
         "Dithering",
         &[
@@ -1285,8 +1284,7 @@ fn switch_row(title: &str, subtitle: &str) -> adw::SwitchRow {
 /// Ligne numérique : glissière *et* saisie clavier, comme les réglages système.
 ///
 /// Les bornes reprennent celles de `filter::validate_params` : la saisie
-/// clavier donne accès à toute la plage, là où l'ancien curseur s'arrêtait
-/// bien avant (5 000 points au lieu de 100 000, 12 canaux au lieu de 32…).
+/// clavier couvre toute la plage validée (jusqu'à 100 000 points, 32 canaux).
 pub(crate) fn spin_row(
     title: &str,
     subtitle: Option<&str>,

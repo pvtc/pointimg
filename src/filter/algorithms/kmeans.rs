@@ -23,8 +23,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 ///   sur la distance spatiale² (exact : départage par plus petit index comme
 ///   `Iterator::min_by`) ;
 /// - accumulation par chunks de lignes fixes combinés dans l'ordre des
-///   indices → sommes f64 déterministes (l'ancien `fold/reduce` dépendait du
-///   work-stealing et pouvait dériver dans le dernier ulp) ;
+///   indices → sommes f64 déterministes, quel que soit le nombre de threads ;
 /// - arrêt précoce quand les centres atteignent un point fixe bit-à-bit
 ///   (les itérations restantes seraient des no-ops).
 ///
@@ -57,9 +56,8 @@ where
     let norm_x = 1.0 / w_f;
     let norm_y = 1.0 / h_f;
 
-    // LUTs : positions et couleurs normalisées (recalculées à chaque itération
-    // auparavant, alors qu'elles sont constantes). Divisions identiques à
-    // l'implémentation d'origine — parité des valeurs garantie.
+    // LUTs : positions et couleurs normalisées, constantes d'une image à l'autre
+    // et d'une itération à l'autre — calculées une fois hors de la boucle.
     let xn: Vec<f32> = (0..width).map(|px| px as f32 / w_f).collect();
     let yn: Vec<f32> = (0..height).map(|py| py as f32 / h_f).collect();
     let mut norm_lut = [0f32; 256];

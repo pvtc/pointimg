@@ -82,8 +82,7 @@ impl IntegralImage {
         ]
     }
 
-    /// Sommes RGB et nombre de pixels du rectangle (clampé à l'image, comme
-    /// l'ancien parcours direct).
+    /// Sommes RGB et nombre de pixels du rectangle (clampé à l'image).
     fn rect_sums(&self, x: u32, y: u32, w: u32, h: u32) -> ([u64; 3], u64) {
         let x0 = x as usize;
         let y0 = y as usize;

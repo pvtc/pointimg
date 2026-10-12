@@ -74,7 +74,7 @@ fn accepte(applique: impl Fn(&mut FilterParams)) {
 /// Vérifie qu'une valeur *hors* plage est refusée par le moteur.
 ///
 /// Le complément de [`accepte`] : une borne devenue trop large passerait
-/// inaperçue si seule la borne basse était testée.
+/// inaperçue si seule la borne basse est testée.
 fn refuse(applique: impl Fn(&mut FilterParams)) {
     let mut params = base();
     applique(&mut params);

@@ -116,7 +116,7 @@ pub struct FilterParams {
     pub min_radius_ratio: f32,
     /// Rayon maximum : fraction de min(largeur, hauteur) — ex. 0.08 = 8% de l'image
     pub max_radius_ratio: f32,
-    /// Couleur de fond RGB — source de vérité unique (remplace l'ancien bg_white)
+    /// Couleur de fond RGB — source de vérité unique
     pub bg_color: [u8; 3],
     /// Nombre d'itérations pour Voronoi / Kmeans
     pub iterations: usize,
@@ -215,7 +215,7 @@ impl FilterParams {
             return Ok(document.params);
         }
 
-        // Les presets plats produits avant la version 1 restent lisibles.
+        // Les presets plats, sans enveloppe `document`, restent lisibles.
         toml::from_str(s).map_err(|e| anyhow!("preset TOML invalide : {e}"))
     }
 }

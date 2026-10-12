@@ -228,7 +228,7 @@ mod tests {
     #[test]
     fn importance_sample_more_points_than_pixels_spreads() {
         // 4×4 pixels mais 40 points demandés : aucun pixel ne doit concentrer
-        // les graines (l'ancien chemin les écrasait toutes sur le dernier).
+        // toutes les graines.
         let weights = vec![1.0f32; 16];
         let seeds = importance_sample(&weights, 4, 4, 40, 7);
         assert_eq!(seeds.len(), 40);

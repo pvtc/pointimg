@@ -137,7 +137,7 @@ fn draw_sorted_bands_rgb(dst: &mut RgbImage, sorted: &[&Dot], shape: DotShape) {
         });
 }
 
-/// Blend RGB d'un pixel (formule de l'ancien chemin séquentiel).
+/// Blend RGB d'un pixel (même formule que le chemin séquentiel).
 #[inline]
 fn blend_rgb_band(band: &mut [u8], off: usize, color: [u8; 3], coverage: u32) {
     debug_assert!(coverage > 0 && coverage <= AA_TOTAL);
@@ -297,9 +297,9 @@ fn compute_centers(dots: &[Dot], n: usize) -> Vec<[f32; 3]> {
 
     // Stop early when the color centers have converged.
     for _ in 0..10 {
-        // Meilleur centre par couleur unique. Mêmes opérations que l'ancien
-        // `min_by(|a, b| a.1.total_cmp(&b.1))` : balayage croissant, le premier
-        // minimum l'emporte, avec sortie anticipée sur une correspondance exacte.
+        // Meilleur centre par couleur unique : balayage croissant, le premier
+        // minimum l'emporte (comportement de `min_by` sur l'index du centre),
+        // sortie anticipée sur une correspondance exacte.
         let best_per_unique: Vec<usize> = unique_colors
             .iter()
             .map(|&color| {
@@ -540,8 +540,8 @@ fn draw_sorted_bands_rgba(dst: &mut RgbaImage, sorted: &[&Dot], shape: DotShape)
         });
 }
 
-/// Blend RGBA (opérateur "over" sur l'alpha) d'un pixel
-/// (formule de l'ancien chemin séquentiel).
+/// Blend RGBA (opérateur "over" sur l'alpha) d'un pixel (même formule que le
+/// chemin séquentiel).
 #[inline]
 fn blend_rgba_band(band: &mut [u8], off: usize, color: [u8; 3], coverage: u32) {
     debug_assert!(coverage > 0 && coverage <= AA_TOTAL);

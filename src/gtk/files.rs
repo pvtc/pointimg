@@ -260,11 +260,9 @@ pub(crate) fn choose_save_preset(
 /// Consigne le résultat d'une écriture : retient le dossier en cas de succès,
 /// et affiche le message correspondant.
 ///
-/// Le bloc était recopié trois fois (preset, image, SVG) et les copies
-/// divergeaient déjà sur le texte d'erreur (« Erreur sauvegarde preset » vs
-/// « Erreur d'écriture SVG »). Un endroit unique évite qu'un changement de
-/// politique — retenir le dossier aussi en cas d'échec, par exemple — ne soit
-/// appliqué qu'à une copie.
+/// Un point unique pour les trois écritures (preset, image, SVG) : le dossier
+/// est retenu en cas de succès et le message est choisi par l'appelant, si bien
+/// qu'un changement de politique s'applique aux trois d'un coup.
 fn report_save(
     result: Result<(), String>,
     path: &std::path::Path,
@@ -408,7 +406,7 @@ pub(crate) fn mark_preset_custom(state: &Rc<RefCell<State>>, widgets: &Rc<Widget
         return;
     }
     // Le prédicat « ces réglages sont-ils exactement ce preset ? » vit dans
-    // `frontend` : il était posé trois fois ici, et une quatrième fois côté egui.
+    // `frontend`, partagé par les deux interfaces.
     if frontend::matching_preset_index(&state.borrow().params) == Some(selected as usize - 1) {
         return;
     }

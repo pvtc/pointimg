@@ -117,8 +117,8 @@ fn dots_to_srgb(dots: &[Dot]) -> Vec<Dot> {
 /// [`Previews::Each`] alimente l'affichage progressif d'une interface ;
 /// [`Previews::None`] ne calcule que les points, et laisse le rendu final se
 /// faire une seule fois. La différence n'est pas cosmétique : un rendu sur 8,4 Mpx
-/// coûte un passage plein-pixel plus ~25 Mo d'image, et il y en avait un par
-/// itération.
+/// coûte un passage plein-pixel plus ~25 Mo d'image — en mode [`Previews::Each`],
+/// un par itération.
 ///
 /// La *progression* reste annoncée dans les deux cas : seule l'image disparaît.
 /// Le contrat interne est donc `Option<&RgbImage>`, `None` signifiant « pas
@@ -277,9 +277,8 @@ fn is_cmyk_halftone(params: &FilterParams) -> bool {
 /// est vrai, le pipeline s'opère en espace linéaire puis ré-encode le résultat.
 ///
 /// Délègue à [`apply`] après aplatissement : gère ainsi uniformément le gamma,
-/// le halftone CMJN (chemin `f32`) et tous les algorithmes. Auparavant, le
-/// chemin gamma+halftone empruntait une route interne qui paniquait
-/// (`unreachable!`).
+/// le halftone CMJN (chemin `f32`) et tous les algorithmes, par le même chemin
+/// que le reste du pipeline.
 pub fn apply_dynamic(src: &DynamicImage, params: &FilterParams) -> Result<RgbImage> {
     let rgb = flatten_to_rgb(src, params.bg_color);
     apply(&rgb, params)
@@ -291,7 +290,7 @@ pub fn apply_dynamic(src: &DynamicImage, params: &FilterParams) -> Result<RgbIma
 /// Pour les autres algorithmes, appelle `on_progress` une seule fois à la fin.
 ///
 /// Retourne `(image_finale, dots)` — les dots correspondent exactement à l'image
-/// rendue, ce qui évite le double-calcul qu'on avait avant.
+/// rendue, ce qui évite un second rendu.
 ///
 /// Le token `cancel` est vérifié entre chaque itération. Si `cancel` est vrai,
 /// la fonction retourne une erreur [`Cancelled`], détectable avec [`is_cancelled`].
@@ -387,7 +386,7 @@ where
 {
     // Le halftone actif n'a pas de boucle de Lloyd : une seule passe, comme dans
     // `apply_with_progress`. La garde est hors de la branche gamma, sinon un
-    // halftone sans gamma tombait sur l'`unreachable!()` du chemin pointilliste.
+    // halftone sans gamma atteindrait l'`unreachable!()` du chemin pointilliste.
     if params.algorithm == Algorithm::Halftone && params.halftone != HalftoneMode::Off {
         let (rgba, dots) = apply_rgba(src, params)?;
         let rgb = image::DynamicImage::ImageRgba8(rgba).to_rgb8();
@@ -483,7 +482,7 @@ pub fn apply(src: &RgbImage, params: &FilterParams) -> Result<RgbImage> {
     if params.gamma_correct {
         // Tout halftone actif (CMJN ou dominant) passe par `apply_rgba`, qui
         // gère le chemin gamma. Sans ce garde général, un halftone dominant en
-        // gamma atteignait `unreachable!()` dans `apply_with_progress_inner`.
+        // gamma atteindrait `unreachable!()` dans `apply_with_progress_inner`.
         if params.algorithm == Algorithm::Halftone && params.halftone != HalftoneMode::Off {
             let (rgba, _) = apply_rgba(src, params)?;
             return Ok(image::DynamicImage::ImageRgba8(rgba).to_rgb8());

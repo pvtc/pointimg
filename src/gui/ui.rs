@@ -127,8 +127,8 @@ impl eframe::App for App {
         // laissé par eframe dans ses propres préférences).
         self.apply_theme(&ctx);
 
-        // `eframe::App::style` n'existe plus en 0.36 : on applique notre style
-        // nous-mêmes, et on le réapplique quand l'utilisateur change l'échelle
+        // `eframe::App::style` n'est pas exposé par eframe 0.36 : le style est
+        // appliqué ici, et réappliqué quand l'utilisateur change l'échelle
         // d'interface.
         if self.applied_style != Some(self.ui_scale) {
             let scale = self.ui_scale;
@@ -185,9 +185,8 @@ impl App {
             .unwrap_or_else(|e| e.into_inner())
             .take();
         if let Some(err) = error {
-            // Une erreur de calcul doit survivre à la durée du message : elle
-            // était jusqu'ici écrasée par la ligne de statut dès la frame
-            // suivante.
+            // Une erreur de calcul doit survivre à la durée du message, que la
+            // ligne de statut remplacerait à la frame suivante.
             self.notify_error(err);
         }
     }
@@ -1701,9 +1700,8 @@ impl App {
         egui::Panel::bottom("status_bar").show(ui, |ui| {
             ui.horizontal_wrapped(|ui| {
                 if computing {
-                    // Le spinner était posé avant `total > 0`, donc il s'affichait
-                    // par-dessus la barre de progression : les deux se
-                    // chevauchaient. La barre passe avant lui.
+                    // Ordre de dessin : barre de progression puis spinner. Dans
+                    // l'ordre inverse les deux se chevauchent.
                     let (done, total) = *self.progress.lock().unwrap_or_else(|e| e.into_inner());
                     if total > 0 {
                         // La couleur de remplissage par défaut est trop sombre
@@ -1777,8 +1775,8 @@ fn show_pane(ui: &mut egui::Ui, pane: Pane<'_>) {
         spinning,
     } = pane;
     // La place est imposée par l'appelant : dans une mise en page horizontale,
-    // `available_width()` est la largeur restante *pour chaque enfant*, donc
-    // le premier panneau consumesait tout l'espace et le second était expulsé.
+    // `available_width()` est la largeur restante *pour chaque enfant*, donc un
+    // enfant en prendrait tout l'espace et en expulserait l'autre.
     ui.allocate_ui(egui::vec2(size.x.max(64.0), size.y.max(64.0)), |ui| {
         egui::Frame::central_panel(ui.style())
             .inner_margin(8.0)
@@ -1868,11 +1866,8 @@ impl App {
 
 /// Ligne « libellé + curseur à valeur intégrée ».
 ///
-/// Remplace le duo `number_row` + `slider_row` qui occupait deux lignes pour un
-/// seul réglage : `egui::Slider` sait afficher sa valeur *dans* le rail, et
-/// cette valeur reste saisissable au clic. Le panneau perd une ligne par
-/// réglage, et le curseur orphelin — celui qui n'avait pas de libellé — cease
-/// d'exister.
+/// Une ligne par réglage : champ de saisie et curseur fusionnés, `egui::Slider`
+/// affichant sa valeur *dans* le rail, saisissable au clic.
 ///
 /// La disposition est `[libellé] [rail + valeur]`, comme les lignes de saisie :
 /// `Slider::text` aurait posé le libellé *à droite* du rail, et le panneau

@@ -1,7 +1,8 @@
 //! Mode halftone multi-canaux (rosette CMYK classique ou couleurs dominantes).
 //!
-//! Le pipeline historique produit un nuage de points uniformes avec des couleurs
-//! "moyenne de zone". Le mode halftone, à l'inverse, sépare l'image en **N canaux
+//! Les algorithmes de partitionnement produisent un nuage de points aux rayons
+//! modulés par la densité locale, avec des couleurs proches de la moyenne de
+//! zone. Le mode halftone, à l'inverse, sépare l'image en **N canaux
 //! d'encre** (Cyan, Magenta, Jaune, Noir — ou N couleurs dominantes extraites par
 //! k-means), puis place une **trame rotationnée indépendante par canal**. Les dots
 //! d'un canal ont la couleur pleine de leur encre (ex. Cyan = [0, 255, 255]) et
@@ -293,11 +294,9 @@ fn separate_cmyk_linear(src: &Rgb32FImage, angles: [f32; 4]) -> Vec<InkChannel> 
 ///
 /// L'ordre d'apparition et l'index de chaque couleur sont conservés.
 ///
-/// Une table à adressage ouvert maison a été essayée ici, l'idée étant que
-/// SipHash coûte 20 à 50 ns par pixel. Elle ne changeait **rien** (1,23 s sur une
-/// photo 900×700, des deux côtés) : le coût du mode `Dominant` est ailleurs, dans
-/// le tramage. Soixante lignes de table pour 0 % de gain ne se gardent pas, la
-/// `HashMap` de la bibliothèque reste donc en place.
+/// La `HashMap` de la bibliothèque suffit : une table à adressage ouvert
+/// maison n'a mesuré aucun gain (1,23 s des deux côtés sur une photo 900×700),
+/// le coût du mode `Dominant` étant dans le tramage et non dans le hachage.
 fn unique_pixel_colors(src: &RgbImage) -> (Vec<[u8; 3]>, Vec<u32>) {
     use std::collections::HashMap;
     let n_pixels = (src.width() as usize) * (src.height() as usize);

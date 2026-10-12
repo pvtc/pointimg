@@ -153,7 +153,7 @@ impl App {
             self.notify(frontend::msg::SAVE_CANCELLED);
             return;
         }
-        // Utiliser render_svg_from_dots si on a les dots (archi 19)
+        // Réutiliser les dots du dernier rendu évite de relancer le pipeline.
         let rendered = {
             let dots_guard = self.last_dots.lock().unwrap_or_else(|e| e.into_inner());
             match (dots_guard.as_ref(), &self.src_rgb) {

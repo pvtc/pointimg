@@ -281,14 +281,12 @@ fn riemersma_weights(taps: usize, decay: f64) -> Vec<f64> {
 /// réinjection de l'erreur encore en attente — donc l'erreur est intégralement
 /// redistribuée et la moyenne conservée.
 ///
-/// **La file enjambe la fin des lignes.** Une version antérieure la remettait à
-/// zéro après chaque ligne, ce qui jetait le résidu en attente et laissait une
-/// dérive mesurée de 1,0 unité de luminance sur une rampe horizontale (0,83 sur un
-/// dégradé 2D) ; la file est désormais conservée d'une ligne à l'autre, et la
-/// dérive tombe à 0,00. La file est de surcroît dimensionnée sur `taps` et non
-/// sur la largeur de l'image : la version antérieure indexait les positions par
-/// colonne, si bien qu'en fin de ligne la queue se repliait sur des positions déjà
-/// traitées, et une image plus étroite que la file perdait des parts.
+/// **La file enjambe la fin des lignes.** Elle n'est jamais remise à zéro d'une
+/// ligne à l'autre : le résidu en attente continue d'être distribué et la moyenne
+/// reste conservée. Elle est de surcroît dimensionnée sur `taps` et non sur la
+/// largeur de l'image, avec une tête qui tourne — indexer les positions par
+/// colonne replierait la fin de ligne sur des positions déjà traitées, et une
+/// image plus étroite que la file perdrait des parts.
 ///
 /// Pour que cette continuité soit spatialement correcte, le balayage est
 /// **serpentin** (boustrophédon) : une ligne est parcourue de gauche à droite, la
@@ -927,9 +925,8 @@ mod proprietes {
     /// appliquée plus haut.
     ///
     /// Ce test ne vérifie donc pas un comportement satisfaisant, mais que
-    /// l'exclusion est intentionnelle. S'il échoue, c'est bon signe : la
-    /// limitation a été corrigée, et les tolerances des tests précédents peuvent
-    /// être resserrées.
+    /// l'exclusion est intentionnelle. S'il échoue, la limite est levée et les
+    /// tolérances des tests précédents peuvent être resserrées.
     #[test]
     fn une_source_grise_ne_se_reproduit_pas_sans_gris_dans_la_palette() {
         let palette: Vec<[u8; 3]> = vec![[0, 0, 0], [255, 0, 0], [0, 255, 0], [0, 0, 255]];
@@ -942,7 +939,7 @@ mod proprietes {
             assert!(
                 delta > 6.0,
                 "{mode:?} : l'écart n'est plus que de {delta:.2} — la limite \\
-                 documentée a disparu, les tolerances peuvent être resserrées"
+                 documentée a disparu, les tolérances peuvent être resserrées"
             );
         }
     }

@@ -486,10 +486,8 @@ pub const CHECKER_DARK: f32 = 240.0;
 
 /// Gris du damier sous le pixel `(x, y)`.
 ///
-/// La formule était écrite trois fois — egui, le panneau d'aperçu GTK, et le
-/// panneau de comparaison — avec les mêmes constantes. Trois copies de « à quoi
-/// ressemble la transparence » garantissent qu'un jour deux interfaces
-/// montreront des damiers différents sans que personne ne l'ait décidé.
+/// Les deux interfaces et le panneau de comparaison partagent la même
+/// définition : elles doivent afficher le même damier pour la même image.
 #[inline]
 pub fn checker_shade(x: u32, y: u32) -> f32 {
     if (x / CHECKER_SIZE + y / CHECKER_SIZE).is_multiple_of(2) {
@@ -928,8 +926,8 @@ mod tests {
 
     /// Chaque table doit contenir chaque variante de son enum, une seule fois,
     /// et les deux sens de conversion doivent s'accorder. Ajouter une variante
-    /// sans l'inscrire fait échouer ce test — c'est le seul garde-fou contre une
-    /// liste décalée, qui choisissait auparavant en silence via un `_ =>`.
+    /// sans l'inscrire fait échouer ce test — c'est le seul garde-fou contre
+    /// une liste décalée, qu'un `_ =>` laisserait passer en silence.
     #[test]
     fn les_tables_couvrent_toutes_leurs_variantes() {
         use filter::{Algorithm, Dithering};

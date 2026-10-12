@@ -264,16 +264,9 @@ pub(crate) fn apply_zoom(state: &Rc<RefCell<State>>, widgets: &Rc<Widgets>) {
     }
     widgets.preview.compare_pane.area.queue_draw();
 
-    // Le résultat n'est volontairement plus voilé pendant le calcul.
-    //
-    // Une version antérieure composait le panneau résultat à 55 % d'opacité, et le
-    // panneau de comparaison à 70 %, dès que le rendu affiché n'était plus final.
-    // Sur fond clair cela rendait l'image terne pendant plusieurs secondes, et
-    // l'interface egui ne le fait pas alors que les deux calculent
-    // `result_is_stale()` à l'identique : l'écart de rendu venait de là, pas d'un
-    // bug d'affichage. Le caractère provisoire du rendu est signalé par le texte de
-    // la barre d'état (« aperçu rapide », « pleine résolution… »), dans les deux
-    // interfaces.
+    // Le résultat n'est pas voilé pendant le calcul : la barre d'état signale
+    // seule le caractère provisoire du rendu (« aperçu rapide », « pleine
+    // résolution… »), comme dans l'interface egui.
 
     // Étiquettes de zoom : le pourcentage réellement appliqué, pas la valeur
     // mémorisée (inutilisée en mode « Ajuster »).
