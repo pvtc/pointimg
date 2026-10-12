@@ -1,46 +1,45 @@
-//! Préférences d'interface persistées entre deux lancements.
+//! Interface preferences persisted between two launches.
 //!
-//! eframe n'écrit son `Storage` qu'à l'autosave (toutes les 30 s) ou à la
-//! fermeture propre : une préférence modifiée puis quittée aussitôt serait
-//! perdue. On tient donc notre propre petit fichier — écrit immédiatement, via
-//! l'écriture atomique du projet — dans le répertoire de configuration que
-//! eframe a choisi pour l'application.
+//! eframe only writes its `Storage` at autosave (every 30 s) or on a clean
+//! exit: a preference changed and quit right away would be lost. We therefore
+//! keep our own little file — written immediately, through the project's
+//! atomic write — in the configuration directory eframe chose for the
+//! application.
 
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
-/// Nom du fichier de préférences (distinct de l'`app.ron` d'eframe, que
-/// l'application ne doit pas écraser).
+/// Name of the preferences file (distinct from eframe's `app.ron`, which the
+/// application must not overwrite).
 const FILE_NAME: &str = "ui-prefs.ron";
 const KEY_SCALE: &str = "ui_scale";
 const KEY_THEME: &str = "ui_theme";
 
-/// Préfixe des entrées d'images récentes.
+/// Prefix of the recent image entries.
 ///
-/// Le fichier est un simple `clé = valeur` par ligne, sans liste. Les entrées
-/// sont donc numérotées — `recent_00`, `recent_01`… — et le remplissage par
-/// zéro les fait se trier dans l'ordre (l'écriture trie les lignes) même si la
-/// liste dépasse dix éléments.
+/// The file is a simple `key = value` per line, with no list. The entries are
+/// therefore numbered — `recent_00`, `recent_01`… — and the zero padding makes
+/// them sort in order (the write sorts the lines) even if the list grows past
+/// ten items.
 const KEY_RECENT: &str = "recent_";
 
-/// Nombre d'images récentes conservées.
+/// Number of recent images kept.
 const MAX_RECENT: usize = 10;
 
-/// Clé de la `n`-ième image récente.
+/// Key of the `n`-th recent image.
 fn recent_key(index: usize) -> String {
     format!("{KEY_RECENT}{index:02}")
 }
 
-/// Préférences d'interface chargées depuis le disque.
+/// Interface preferences loaded from disk.
 pub(crate) struct InterfacePrefs {
     values: HashMap<String, String>,
     path: PathBuf,
 }
 
 impl InterfacePrefs {
-    /// Charge les préférences ; renvoie `None` si le répertoire de
-    /// configuration est inaccessible (l'application fonctionne alors sans
-    /// mémorisation).
+    /// Loads the preferences; returns `None` if the configuration directory is
+    /// inaccessible (the application then runs without memorization).
     pub(crate) fn load() -> Option<Self> {
         let path = storage_path()?;
         Some(Self {
@@ -49,7 +48,7 @@ impl InterfacePrefs {
         })
     }
 
-    /// Échelle d'interface mémorisée, si elle a été enregistrée.
+    /// Memorized interface scale, if one has been saved.
     pub(crate) fn scale(&self) -> Option<f32> {
         self.values
             .get(KEY_SCALE)?
@@ -58,7 +57,7 @@ impl InterfacePrefs {
             .filter(|scale| (0.5..=3.0).contains(scale))
     }
 
-    /// Thème imposé mémorisé (`None` = suivre le système).
+    /// Memorized forced theme (`None` = follow the system).
     pub(crate) fn theme(&self) -> Option<egui::Theme> {
         match self.values.get(KEY_THEME).map(String::as_str) {
             Some("dark") => Some(egui::Theme::Dark),
@@ -67,8 +66,7 @@ impl InterfacePrefs {
         }
     }
 
-    /// Enregistre immédiatement : quitter aussitôt après un changement ne perd
-    /// rien.
+    /// Saves immediately: quitting right after a change loses nothing.
     pub(crate) fn save(&mut self, scale: f32, theme: Option<egui::Theme>) {
         self.values
             .insert(KEY_SCALE.to_string(), format!("{scale:.3}"));
@@ -81,10 +79,10 @@ impl InterfacePrefs {
         self.flush();
     }
 
-    /// Images ouvertes récemment, de la plus récente à la plus ancienne.
+    /// Recently opened images, from the most recent to the oldest.
     ///
-    /// Les entrées dont le fichier a disparu sont écartées : proposer une image
-    /// qui n'existe plus ne sert à rien.
+    /// Entries whose file has disappeared are discarded: offering an image that
+    /// no longer exists is useless.
     pub(crate) fn recent(&self) -> Vec<PathBuf> {
         let mut paths: Vec<PathBuf> = (0..MAX_RECENT)
             .filter_map(|index| self.values.get(&recent_key(index)).cloned())
@@ -94,10 +92,10 @@ impl InterfacePrefs {
         paths
     }
 
-    /// Place une image en tête des récentes et écrit le fichier.
+    /// Puts an image at the top of the recents and writes the file.
     ///
-    /// Une image déjà présente remonte sans être dupliquée — rouvrir la même
-    /// image dix fois de suite ne doit pas la pousser dix fois.
+    /// An image already present moves up without being duplicated — reopening
+    /// the same image ten times in a row must not push it ten times.
     pub(crate) fn push_recent(&mut self, path: &Path) {
         let path = path.to_string_lossy().into_owned();
         let mut paths: Vec<String> = (0..MAX_RECENT)
@@ -107,8 +105,8 @@ impl InterfacePrefs {
         paths.retain(|stored| stored != &path);
         paths.insert(0, path);
         paths.truncate(MAX_RECENT);
-        // Les emplacements au-delà de la nouvelle longueur disparaissent :
-        // sans cela, rétrécir la liste laisserait des entrées orphelines.
+        // Slots beyond the new length disappear: otherwise, shrinking the
+        // list would leave orphan entries behind.
         for index in 0..MAX_RECENT {
             match paths.get(index) {
                 Some(value) => {
@@ -122,14 +120,14 @@ impl InterfacePrefs {
         self.flush();
     }
 
-    /// Écrit le fichier de préférences.
+    /// Writes the preferences file.
     fn flush(&self) {
         write_pairs(&self.path, &self.values);
     }
 }
 
-/// Chemin du fichier de préférences, dans le répertoire de configuration choisi
-/// par eframe pour l'application.
+/// Path of the preferences file, in the configuration directory chosen by
+/// eframe for the application.
 fn storage_path() -> Option<PathBuf> {
     let dir = eframe::storage_dir("pointimg")?;
     if std::fs::create_dir_all(&dir).is_err() {
@@ -138,7 +136,7 @@ fn storage_path() -> Option<PathBuf> {
     Some(dir.join(FILE_NAME))
 }
 
-/// Lit un fichier `clé = valeur`, le format le plus simple qui reste lisible.
+/// Reads a `key = value` file, the simplest format that stays readable.
 fn read_pairs(path: &Path) -> HashMap<String, String> {
     let Ok(contents) = std::fs::read_to_string(path) else {
         return HashMap::new();
@@ -150,8 +148,8 @@ fn read_pairs(path: &Path) -> HashMap<String, String> {
         .collect()
 }
 
-/// Écrit le fichier par fichier temporaire + remplacement atomique, comme le
-/// reste du projet (`frontend::atomic_text_write`).
+/// Writes the file through a temporary file + atomic replacement, like the
+/// rest of the project (`frontend::atomic_text_write`).
 fn write_pairs(path: &Path, values: &HashMap<String, String>) {
     let mut contents: Vec<String> = values
         .iter()
@@ -204,8 +202,8 @@ mod tests {
         assert_eq!(prefs.scale(), None, "une valeur aberrante est ignorée");
     }
 
-    /// Une liste numérotée à remplissage nul se relit dans l'ordre une fois les
-    /// lignes triées — c'est ce que garantit l'écriture, qui trie.
+    /// A zero-padded numbered list reads back in order once the lines are
+    /// sorted — that is what the write guarantees, since it sorts.
     #[test]
     fn les_cles_recentes_se_relisent_dans_lordre() {
         for nombre in [1, 9, 10, 11] {
@@ -226,7 +224,7 @@ mod tests {
                 path: PathBuf::new(),
             };
 
-            // Ce que l'écriture produit : les lignes triées par clé…
+            // What the write produces: the lines sorted by key…
             let ecrit: Vec<String> = {
                 let mut lignes: Vec<String> = prefs
                     .values
@@ -237,7 +235,7 @@ mod tests {
                 lignes.sort();
                 lignes
             };
-            // … et ce qu'on en relit doit être l'ordre d'insertion.
+            // … and what one reads back from it must be the insertion order.
             let relu: Vec<String> = ecrit
                 .iter()
                 .map(|ligne| ligne.split_once('=').unwrap().1.trim().to_string())
@@ -249,7 +247,7 @@ mod tests {
         }
     }
 
-    /// Rouvrir la même image ne doit pas la dupliquer.
+    /// Reopening the same image must not duplicate it.
     #[test]
     fn pousser_deux_fois_ne_duplique_pas() {
         let dir = std::env::temp_dir().join(format!(

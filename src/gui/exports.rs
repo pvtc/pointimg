@@ -1,14 +1,14 @@
-//! Mesure de la taille d'export, dans un thread de travail.
+//! Export size measurement, in a worker thread.
 //!
-//! La mesure encode réellement l'image pour chaque format ([`pointimg::export`]),
-//! ce qui coûte une compression complète par format. Elle est donc faite à
-//! part, sur le résultat *définitif* (jamais sur un aperçu rapide),
-//! invalidée dès que l'utilisateur continue de régler, et son résultat est un
-//! simple [`ExportSizes`] affiché dans la barre d'état.
+//! The measurement really encodes the image for each format
+//! ([`pointimg::export`]), which costs a full compression per format. It is
+//! therefore done apart, on the *final* result (never on a quick preview),
+//! invalidated as soon as the user keeps adjusting, and its result is a
+//! simple [`ExportSizes`] shown in the status bar.
 //!
-//! Sans elle, l'interface ne peut montrer que la taille de la source — et le
-//! bénéfice central de `pointimg`, « la même image en beaucoup plus léger »,
-//! resterait invisible jusqu'au premier enregistrement.
+//! Without it, the interface can only show the size of the source — and the
+//! central benefit of `pointimg`, "the same image, much lighter", would
+//! stay invisible until the first save.
 
 use std::sync::Arc;
 use std::sync::atomic::Ordering;
@@ -20,13 +20,13 @@ use pointimg::export::{ExportFormat, ExportSizes, measure_export_sizes};
 use super::App;
 
 impl App {
-    /// Lance la mesure si le résultat affiché est définitif et pas déjà mesuré.
+    /// Starts the measurement if the displayed result is final and not already measured.
     pub(crate) fn refresh_export_sizes(&mut self, ctx: &egui::Context) {
         if !self.has_final_result() {
             return;
         }
         let revision = self.result_revision.load(Ordering::Acquire);
-        // Déjà mesuré (ou en cours) pour ce résultat : on n'encode pas deux fois.
+        // Already measured (or in progress) for this result: we do not encode twice.
         if self.export_sizes_revision == revision
             && (self.export_sizes.is_some() || self.export_sizes_computing.load(Ordering::Relaxed))
         {
@@ -35,8 +35,8 @@ impl App {
         let Some(source_size) = self.source_size else {
             return;
         };
-        // On partage l'image (`Arc`) au lieu de la copier : sur 8 Mpx, un
-        // `cloned()` coûtait ~33 Mo recopiés à chaque mesure.
+        // The image is shared (`Arc`) instead of being copied: on 8 Mpx, a
+        // `cloned()` cost ~33 MB copied back on every measurement.
         let Some(img) = self
             .result
             .lock()
@@ -47,7 +47,7 @@ impl App {
             return;
         };
         let (transparent, bg) = (self.params.transparent, self.params.bg_color);
-        // Un nouveau résultat invalide la mesure en cours.
+        // A new result invalidates the measurement in progress.
         self.export_sizes_generation.fetch_add(1, Ordering::AcqRel);
         let generation = self.export_sizes_generation.load(Ordering::Acquire);
         self.export_sizes_computing.store(true, Ordering::Release);
@@ -67,7 +67,7 @@ impl App {
         });
     }
 
-    /// Récupère le résultat de la mesure si le worker l'a déposé.
+    /// Retrieves the measurement result if the worker has deposited it.
     pub(crate) fn poll_export_sizes(&mut self) -> Option<ExportSizes> {
         let taken = self
             .export_sizes_slot
@@ -81,12 +81,12 @@ impl App {
     }
 }
 
-/// Ligne d'information « taille de l'export » : `PNG 2.1 Mo · JPEG 380 Ko`.
+/// Information line "export size": `PNG 2.1 MB · JPEG 380 kB`.
 pub(crate) fn export_sizes_line(sizes: &ExportSizes) -> String {
     sizes.summary()
 }
 
-/// Comparaison avec la source, pour le format par défaut.
+/// Comparison with the source, for the default format.
 pub(crate) fn export_comparison(sizes: &ExportSizes) -> Option<String> {
     sizes.comparison(ExportFormat::default_export())
 }

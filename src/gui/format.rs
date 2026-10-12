@@ -1,7 +1,7 @@
-//! Formatage humain et garde des générations de worker.
+//! Human formatting and worker generation guard.
 //!
-//! Les implémentations vivent dans `pointimg::frontend`, partagées avec le
-//! frontend GTK4 ; ce module ne fait que les ré-exposer en `pub(crate)`.
+//! The implementations live in `pointimg::frontend`, shared with the GTK4
+//! frontend; this module only re-exposes them as `pub(crate)`.
 
 pub(crate) use pointimg::frontend::{
     describe_parameter_change, format_duration, generation_is_current,

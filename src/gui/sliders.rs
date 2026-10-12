@@ -1,21 +1,21 @@
-//! Curseurs de réglage, compléments des champs de saisie.
+//! Adjustment sliders, complements of the input fields.
 //!
-//! Un `DragValue` se pilote à la souris avec une sensibilité fixe (0,25 par
-//! point déplacé) : le même geste vaut 1,75 itération sur « Itérations » et
-//! 0,00175 sur « Rayon min ». Le curseur donne une course proportionnelle à la
-//! plage réelle, et le logarithmic une précision utilisable sur les plages
-//! larges (nombre de points : 10 → 100 000). La saisie chiffrée reste le moyen
-//! d'indiquer une valeur exacte.
+//! A `DragValue` is driven with the mouse at a fixed sensitivity (0.25 per
+//! pixel moved): the same gesture is worth 1.75 iteration on "Iterations" and
+//! 0.00175 on "Min radius". The slider gives a travel proportional to the real
+//! range, and the logarithmic one a usable precision over wide ranges
+//! (number of points: 10 → 100 000). Numeric entry remains the way to
+//! indicate an exact value.
 
 use std::ops::RangeInclusive;
 
 use pointimg::frontend::Curve;
 
-/// Décimales nécessaires pour écrire la valeur sans perte.
+/// Decimals needed to write the value without loss.
 ///
-/// Le calcul se fait sur le `f32` réellement stocké dans `FilterParams` :
-/// `0.003f32` s'écrit « 0.003 », alors que sa conversion en `f64` donnerait
-/// « 0.003000011920929 » — un affichage aussi long que trompeur.
+/// The computation is done on the `f32` really stored in `FilterParams`:
+/// `0.003f32` is written "0.003", while its conversion to `f64` would give
+/// "0.003000011920929" — a display as long as it is misleading.
 pub(crate) fn decimals_of(value: f32) -> usize {
     match value.to_string().split_once('.') {
         Some((_, decimals)) => decimals.len(),
@@ -23,37 +23,37 @@ pub(crate) fn decimals_of(value: f32) -> usize {
     }
 }
 
-/// Décimales d'affichage d'un réglage : celles de la valeur, ou celles de la
-/// plage si elles sont plus fines.
+/// Display decimals of an adjustment: those of the value, or those of the
+/// range if they are finer.
 ///
-/// Le résultat ne dépend que de la plage et de la valeur, pas de la position
-/// du pointeur : c'est indispensable, car egui choisit par lui-même une
-/// précision d'affichage selon la distance du pointeur au bord de l'écran. Une
-/// précision plus grossière que la valeur réécrirait la saisie à la perte de
-/// focus — et, en pareille occasion, déclencherait un recalcul.
+/// The result only depends on the range and the value, not on the pointer
+/// position: it is essential, since egui picks a display precision on its own
+/// depending on the distance from the pointer to the screen edge. A precision
+/// coarser than the value would rewrite the entry on loss of focus — and, on
+/// such an occasion, trigger a recompute.
 pub(crate) fn display_decimals(value: f32, range: &RangeInclusive<f32>) -> usize {
     decimals_of(value)
         .max(decimals_of(*range.start()))
         .max(decimals_of(*range.end()))
 }
 
-/// Curseur horizontal sous une ligne de saisie : réglage grossier à la souris.
-/// Arrondi à un nombre fixe de décimales, sans les flottants comme
-/// intermédiaires (`(0.1 + 0.2)` n'est pas représentable exactement).
+/// Horizontal slider under an input row: coarse adjustment with the mouse.
+/// Rounded to a fixed number of decimals, with no floating point as an
+/// intermediate (`(0.1 + 0.2)` is not exactly representable).
 pub(crate) fn round_to(value: f32, decimals: usize) -> f32 {
     let factor = 10f64.powi(decimals as i32);
     ((f64::from(value) * factor).round() / factor) as f32
 }
 
-/// Plage de chaque poignée du curseur à deux bornes.
+/// Range of each handle of the two-ended slider.
 ///
-/// Deux plages plutôt qu'une, parce que les deux bornes n'ont pas le même
-/// plafond : `validate_params` limite `halftone_min_radius_ratio` à 1,0 quand
-/// `halftone_max_dot_ratio` monte à 10. Les partager laissait la poignée basse
-/// franchir le plafond — erreur sèche du worker, sans cause visible.
+/// Two ranges rather than one, because the two ends do not share the same
+/// ceiling: `validate_params` caps `halftone_min_radius_ratio` at 1.0 when
+/// `halftone_max_dot_ratio` goes up to 10. Sharing them let the low handle
+/// cross the ceiling — a dry error from the worker, with no visible cause.
 ///
-/// `RangeInclusive` n'est pas `Copy`, donc `Bounds` ne l'est pas non plus ;
-/// elle passe cependant par valeur, ce qui copie deux plages et rien de plus.
+/// `RangeInclusive` is not `Copy`, so `Bounds` is not either; it does however
+/// go by value, which copies two ranges and nothing more.
 #[derive(Clone)]
 pub(crate) struct Bounds {
     pub low: RangeInclusive<f32>,
@@ -61,7 +61,7 @@ pub(crate) struct Bounds {
 }
 
 impl Bounds {
-    /// Les deux poignées partagent la plage — le cas courant.
+    /// The two handles share the range — the common case.
     pub(crate) fn both(range: RangeInclusive<f32>) -> Self {
         Self {
             low: range.clone(),
@@ -70,19 +70,19 @@ impl Bounds {
     }
 }
 
-/// Curseur à deux poignées pour une paire de bornes (Rayon min / Rayon max).
+/// Two-handle slider for a pair of ends (Min radius / Max radius).
 ///
-/// egui n'a pas d'équivalent du `GtkRange` à deux poignées : le widget est
-/// dessiné à la main. Le rail est coupé en deux zones de saisie disjointes,
-/// séparées à mi-chemin des poignées : chaque poignée se pilote donc
-/// indépendamment, sans état à conserver d'une frame à l'autre, et les deux
-/// ne peuvent pas se croiser (la borne basse ne dépasse jamais la haute).
+/// egui has no equivalent of the two-handle `GtkRange`: the widget is drawn by
+/// hand. The rail is split into two disjoint input zones, separated halfway
+/// between the handles: each handle is therefore driven independently, with no
+/// state to keep from one frame to the next, and the two cannot cross each
+/// other (the low end never goes past the high one).
 ///
-/// Le rail couvre l'union des deux plages, pour que les deux poignées restent
-/// comparables ; chacune est ensuite ramenée dans *sa* plage.
+/// The rail covers the union of both ranges, so that the two handles stay
+/// comparable; each one is then brought back into *its* range.
 ///
-/// Renvoie `true` si la paire a changé — la saisie chiffrée des deux lignes
-/// voisines reste le moyen d'indiquer une valeur exacte.
+/// Returns `true` if the pair changed — numeric entry in the two neighboring
+/// rows stays the way to indicate an exact value.
 pub(crate) fn range_slider(
     ui: &mut egui::Ui,
     id: &str,
@@ -115,12 +115,12 @@ pub(crate) fn range_slider(
     let radius = egui::CornerRadius::same(3);
     let painter = ui.painter_at(rect);
     let track = egui::Rect::from_center_size(rect.center(), egui::vec2(rect.width(), 4.0));
-    // Mêmes couleurs que le curseur simple d'egui : rail gris, poignée claire.
+    // Same colors as egui's simple slider: gray rail, light handle.
     let widgets = &ui.visuals().widgets;
     let (track_color, handle_color) = (widgets.inactive.bg_fill, widgets.active.bg_fill);
     painter.rect_filled(track, radius, track_color);
-    // Le segment entre les deux poignées porte la couleur d'accent : la
-    // largeur de la plage se lit d'un coup d'œil.
+    // The segment between the two handles carries the accent color: the
+    // width of the range can be read at a glance.
     painter.rect_filled(
         egui::Rect::from_x_y_ranges(x_low..=x_high, track.y_range()),
         radius,
@@ -128,13 +128,13 @@ pub(crate) fn range_slider(
     );
     for x in [x_low, x_high] {
         let center = egui::pos2(x, rect.center().y);
-        // Le disque extérieur isole la poignée du rail, l'intérieur la marque.
+        // The outer disk isolates the handle from the rail, the inner one marks it.
         painter.circle_filled(center, 6.5, track_color);
         painter.circle_filled(center, 4.5, handle_color);
     }
 
-    // Deux zones disjointes, séparées à mi-chemin des poignées : la zone de
-    // gauche pilote la borne basse, celle de droite la borne haute.
+    // Two disjoint zones, separated halfway between the handles: the left zone
+    // drives the low end, the right one the high end.
     let middle = (x_low + x_high) / 2.0;
     let low_response = ui.interact(
         egui::Rect::from_x_y_ranges(rect.left()..=middle, rect.y_range()),
@@ -148,10 +148,9 @@ pub(crate) fn range_slider(
     );
 
     let before = (*low, *high);
-    // Même arrondi que les curseurs simples : une poignée glissée ne doit pas
-    // laisser une valeur à sept décimales dans le champ voisin. On retient la
-    // précision la plus grossière des deux bornes, pour que la zone de saisie
-    // de chacune reste stable.
+    // Same rounding as the simple sliders: a dragged handle must not leave a
+    // seven-decimal value in the neighboring field. We keep the coarsest
+    // precision of the two ends, so that each one's input zone stays stable.
     let decimals = display_decimals(*low, &bounds.low).max(display_decimals(*high, &bounds.high));
     for (response, is_low) in [(low_response.clone(), true), (high_response.clone(), false)] {
         if !response.dragged() {
@@ -161,10 +160,9 @@ pub(crate) fn range_slider(
             continue;
         };
         let t = ((pointer.x - rect.left()) / rect.width()).clamp(0.0, 1.0);
-        // La valeur brute du rail est ensuite ramenée dans la plage de *cette*
-        // poignée : sans quoi la poignée basse pouvant partager la borne haute
-        // de la poignée haute, elle francherait le plafond de
-        // `validate_params`.
+        // The raw value of the rail is then brought back into the range of
+        // *this* handle: otherwise the low handle, which can share the high end
+        // of the high handle, would cross the ceiling of `validate_params`.
         let raw = round_to(to_value(t), decimals);
         if is_low {
             let borne = raw.clamp(low_lo, low_hi);
@@ -188,7 +186,7 @@ mod tests {
 
     #[test]
     fn decimals_of_counts_written_decimals() {
-        // Écrit en `f32` : 0,1 n'a pas de décimale parasite comme en `f64`.
+        // Written in `f32`: 0.1 has no stray decimal as in `f64`.
         assert_eq!(decimals_of(800.0), 0);
         assert_eq!(decimals_of(0.1), 1);
         assert_eq!(decimals_of(0.003), 3);
@@ -198,12 +196,12 @@ mod tests {
 
     #[test]
     fn display_decimals_follows_the_finest_of_value_and_range() {
-        // 0,06 dans une plage qui descend à 0,0005 : c'est la borne la plus
-        // fine qui impose l'affichage, sinon la saisie serait réécrite.
+        // 0.06 in a range that goes down to 0.0005: it is the finest end that
+        // imposes the display, otherwise the entry would be rewritten.
         assert_eq!(display_decimals(0.06, &(0.0005..=1.0)), 4);
-        // Un entier sur une plage entière s'affiche sans décimale.
+        // An integer on an integer range displays without a decimal.
         assert_eq!(display_decimals(800.0, &(10.0..=100_000.0)), 0);
-        // Une valeur plus fine que la plage garde sa précision.
+        // A value finer than the range keeps its precision.
         assert_eq!(display_decimals(0.12345, &(0.0..=1.0)), 5);
     }
 

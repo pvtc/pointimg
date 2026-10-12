@@ -1,7 +1,7 @@
-//! Confirmation de remplacement de fichier (dialogue `rfd`, spécifique egui).
+//! File overwrite confirmation (`rfd` dialog, egui-specific).
 //!
-//! La normalisation d'extension et les écritures atomiques sont partagées avec
-//! le frontend GTK4 via `pointimg::frontend`.
+//! Extension normalization and atomic writes are shared with the GTK4
+//! frontend via `pointimg::frontend`.
 
 pub(crate) fn confirm_overwrite(path: &std::path::Path) -> bool {
     if !path.exists() {

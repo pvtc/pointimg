@@ -1,4 +1,4 @@
-//! État applicatif de haut niveau : chargement, historique undo/redo.
+//! High-level application state: loading, undo/redo history.
 
 use eframe::egui;
 use image::ImageReader;
@@ -37,7 +37,7 @@ impl App {
         }
     }
 
-    /// Dossier proposé par défaut : celui de la dernière image ou export.
+    /// Folder offered by default: that of the last image or export.
     fn initial_folder(&self) -> Option<PathBuf> {
         self.last_dir.clone().or_else(|| {
             self.src_path
@@ -46,9 +46,9 @@ impl App {
         })
     }
 
-    /// Charge la première image d'un dossier et active la navigation `←`/`→`.
+    /// Loads the first image of a folder and enables `←`/`→` navigation.
     pub(crate) fn open_folder(&mut self, path: PathBuf, ctx: &egui::Context) {
-        // Le balayage et ses messages viennent de `frontend`, partagés avec GTK.
+        // The sweep and its messages come from `frontend`, shared with GTK.
         let images = match frontend::collect_folder_images(&path) {
             Ok(images) => images,
             Err(e) => {
@@ -63,7 +63,7 @@ impl App {
         self.load_image(first, ctx);
     }
 
-    /// Image suivante (`delta > 0`) ou précédente dans le dossier courant.
+    /// Next (`delta > 0`) or previous image in the current folder.
     pub(crate) fn step_folder(&mut self, delta: i32, ctx: &egui::Context) {
         let target = {
             let (Some(index), len) = (self.folder_index, self.folder_images.len()) else {
@@ -83,7 +83,7 @@ impl App {
             .map(|index| (index + 1, self.folder_images.len()))
     }
 
-    /// Description courte de l'image courante (« 1400×1050 · 1,5 Mpx »).
+    /// Short description of the current image ("1400×1050 · 1.5 Mpx").
     pub(crate) fn image_info(&self) -> Option<String> {
         let src = self.src_rgb.as_ref()?;
         Some(describe_image_size(src.width(), src.height()))
@@ -129,14 +129,14 @@ impl App {
                 self.src_dynamic = Some(img);
                 self.src_rgb = Some(rgb);
                 self.src_path = Some(path.clone());
-                // Image récente : l'état d'accueil la propose au lancement
-                // suivant. GTK lit la même information dans le gestionnaire du
-                // bureau ; egui n'a pas d'équivalent et tient sa propre liste.
+                // Recent image: the welcome state offers it on the next launch.
+                // GTK reads the same information in the desktop manager; egui has
+                // no equivalent and keeps its own list.
                 if let Some(prefs) = self.prefs.as_mut() {
                     prefs.push_recent(&path);
                 }
-                // Taille du fichier d'origine : c'est la référence contre
-                // laquelle la taille de l'export est comparée.
+                // Size of the original file: it is the reference against which
+                // the export size is compared.
                 self.source_size = std::fs::metadata(&path).ok().map(|meta| meta.len());
                 self.export_sizes = None;
                 self.src_texture = None;
@@ -171,10 +171,10 @@ impl App {
 
     // ─── Presets ─────────────────────────────────────────────────────────────
 
-    /// Annule puis relance le calcul courant (le nouveau calcul prend le relais).
+    /// Cancels then restarts the current compute (the new compute takes over).
     pub(crate) fn trigger_compute(&mut self, ctx: &egui::Context) {
         if self.computing.load(Ordering::Relaxed) {
-            // Annuler le calcul en cours, puis relancer
+            // Cancel the compute in progress, then restart
             self.cancel.store(true, Ordering::Relaxed);
             // The cached dots belong to the previous parameter set and must not
             // be offered for SVG export while the replacement is pending.
@@ -184,7 +184,7 @@ impl App {
         self.start_compute(ctx);
     }
 
-    /// Applique un preset intégré ( annulable comme n'importe quel changement).
+    /// Applies a built-in preset ( undoable like any other change).
     pub(crate) fn apply_preset(&mut self, index: usize, ctx: &egui::Context) {
         let Some(preset) = filter::builtin_presets().into_iter().nth(index) else {
             return;
@@ -199,7 +199,7 @@ impl App {
         self.notify(format!("Preset « {} » appliqué.", preset.name));
     }
 
-    /// Index du preset correspondant exactement aux réglages courants.
+    /// Index of the preset matching the current settings exactly.
     pub(crate) fn preset_index(&self) -> Option<usize> {
         frontend::matching_preset_index(&self.params)
     }
@@ -214,14 +214,14 @@ impl App {
         self.apply_preset(next as usize, ctx);
     }
 
-    /// Tire une nouvelle graine aléatoire et relance le calcul.
+    /// Draws a new random seed and restarts the compute.
     pub(crate) fn vary_seed(&mut self, ctx: &egui::Context) {
-        // Même tirage que GTK, donc une seule définition (voir `frontend`).
+        // Same draw as GTK, hence a single definition (see `frontend`).
         self.params.rng_seed = Some(frontend::random_seed());
         self.on_params_changed(ctx);
     }
 
-    // ─── Presets (fichiers) ──────────────────────────────────────────────────
+    // ─── Presets (files) ─────────────────────────────────────────────────────
 
     pub(crate) fn load_preset(&mut self, path: PathBuf, ctx: &egui::Context) {
         match frontend::load_preset(&path) {
@@ -247,11 +247,11 @@ impl App {
         }
     }
 
-    // ─── Historique ──────────────────────────────────────────────────────────
+    // ─── History ─────────────────────────────────────────────────────────────
 
-    /// Commit d'un nouvel état dans l'historique (undo stack). Le redo stack est
-    /// remis à zéro. On évite de pousser des entrées consécutives identiques
-    /// (ex: drag sans fin du même slider).
+    /// Commit of a new state into the history (undo stack). The redo stack is
+    /// reset to zero. We avoid pushing consecutive identical entries
+    /// (e.g.: endless drag of the same slider).
     pub(crate) fn commit_history(&mut self) {
         let cur = self.params.clone();
         if let Some(last) = &self.last_committed
@@ -259,7 +259,7 @@ impl App {
         {
             return;
         }
-        // Plafond à 50 entrées (FIFO).
+        // Ceiling at 50 entries (FIFO).
         if self.history.len() >= 50 {
             self.history.remove(0);
         }
@@ -271,7 +271,7 @@ impl App {
         self.future.clear();
     }
 
-    /// `Ctrl+Z` : restore le FilterParams précédent.
+    /// `Ctrl+Z`: restores the previous FilterParams.
     pub(crate) fn undo(&mut self, ctx: &egui::Context) {
         if self.pending_commit {
             self.commit_history();
@@ -297,7 +297,7 @@ impl App {
         ctx.request_repaint();
     }
 
-    /// `Ctrl+Y` (ou `Ctrl+Shift+Z`) : restore l'état suivant.
+    /// `Ctrl+Y` (or `Ctrl+Shift+Z`): restores the next state.
     pub(crate) fn redo(&mut self, ctx: &egui::Context) {
         let Some(next) = self.future.pop() else {
             self.notify(frontend::msg::NOTHING_TO_REDO);
@@ -319,8 +319,8 @@ impl App {
         ctx.request_repaint();
     }
 
-    /// Rétablit tous les réglages par défaut. Passe par l'historique pour rester
-    /// annulable (`Ctrl+Z`).
+    /// Resets every setting to its default. Goes through the history so it stays
+    /// undoable (`Ctrl+Z`).
     pub(crate) fn reset_params(&mut self, ctx: &egui::Context) {
         if self.params == FilterParams::default() {
             self.notify(frontend::msg::ALREADY_DEFAULT);
@@ -328,7 +328,7 @@ impl App {
         }
         self.params = FilterParams::default();
         self.commit_history();
-        // `bg_color` change : la source aplatie doit être reconstruite.
+        // `bg_color` changed: the flattened source must be rebuilt.
         self.refresh_src_rgb(ctx);
         self.on_params_changed(ctx);
         self.notify("Réglages réinitialisés.");
@@ -344,15 +344,15 @@ impl App {
         }
     }
 
-    /// Change le zoom en sortant du mode « Ajuster ».
+    /// Changes the zoom while leaving "Fit" mode.
     pub(crate) fn set_zoom(&mut self, value: f32) {
         self.zoom = value.clamp(frontend::ZOOM_MIN, frontend::ZOOM_MAX);
         self.zoom_fit = false;
     }
 
-    // ─── Divers ──────────────────────────────────────────────────────────────
+    // ─── Misc ────────────────────────────────────────────────────────────────
 
-    /// Recompose `src_rgb` depuis `src_dynamic` si bg_color a changé.
+    /// Rebuilds `src_rgb` from `src_dynamic` if bg_color has changed.
     pub(crate) fn refresh_src_rgb(&mut self, ctx: &egui::Context) {
         if let Some(img) = &self.src_dynamic {
             let new_rgb = filter::flatten_to_rgb(img, self.params.bg_color);

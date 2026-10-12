@@ -1,24 +1,24 @@
-//! Notifications éphémères : erreurs et confirmations.
+//! Ephemeral notifications: errors and confirmations.
 //!
-//! La ligne d'état ne décrit que l'état courant — et pendant un calcul elle
-//! affiche la progression, ce qui effaçait tout message. Une erreur de
-//! chargement ou d'export était donc invisible exactement au moment où elle
-//! comptait. Les notifications passent par-dessus, se superposent quelques
-//! secondes, puis s'effacent ; la ligne d'état garde son rôle.
+//! The status line only describes the current state — and during a compute it
+//! shows the progress, which erased any message. A loading or export error
+//! was therefore invisible exactly when it mattered. The notifications go on
+//! top, overlay for a few seconds, then fade away; the status line keeps its
+//! role.
 //!
-//! L'interface GTK a ses `adw::Toast` (`preview.rs`) : les deux fronts
-//! restent indépendants, seule la idée est commune.
+//! The GTK interface has its `adw::Toast` (`preview.rs`): the two frontends
+//! stay independent, only the idea is shared.
 
 use std::time::{Duration, Instant};
 
 use eframe::egui;
 
-/// Durée d'affichage. Une erreur reste plus longtemps qu'une confirmation :
-/// elle demande une action, alors qu'une confirmation n'en demande pas.
+/// Display duration. An error stays longer than a confirmation: it asks for
+/// an action, while a confirmation does not.
 const INFO_LIFETIME: Duration = Duration::from_secs(3);
 const ERROR_LIFETIME: Duration = Duration::from_secs(8);
 
-/// Nature du message : pilote la durée et la couleur.
+/// Nature of the message: drives the duration and the color.
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub(crate) enum ToastKind {
     Info,
@@ -34,7 +34,7 @@ impl ToastKind {
     }
 }
 
-/// Une notification affichée, avec sa date d'expiration.
+/// A displayed notification, with its expiry date.
 pub(crate) struct Toast {
     pub text: String,
     pub kind: ToastKind,
@@ -51,12 +51,12 @@ impl Toast {
     }
 }
 
-/// Empile les notifications et les dessine dans le coin de l'aperçu.
+/// Stacks the notifications and draws them in the corner of the preview.
 #[derive(Default)]
 pub(crate) struct Toasts {
     items: Vec<Toast>,
-    /// Nombre maximal affiché simultanément : au-delà, les plus anciens
-    /// disparaissent, sans quoi la pile recouvrirait l'image.
+    /// Maximum number shown at once: beyond it, the oldest ones
+    /// disappear, otherwise the stack would cover the image.
     capacity: usize,
 }
 
@@ -77,8 +77,8 @@ impl Toasts {
         }
     }
 
-    /// Retire les notifications expirées. Renvoie `true` si la pile a changé,
-    /// pour ne redessiner que lorsqu'il faut.
+    /// Removes the expired notifications. Returns `true` if the stack changed,
+    /// so as to redraw only when needed.
     pub(crate) fn expire(&mut self) -> bool {
         let now = Instant::now();
         let before = self.items.len();
@@ -86,7 +86,7 @@ impl Toasts {
         before != self.items.len()
     }
 
-    /// Durée avant la prochaine expiration, pour planifier un redessin.
+    /// Time before the next expiry, to schedule a redraw.
     pub(crate) fn next_expiry(&self) -> Option<Duration> {
         let now = Instant::now();
         self.items
@@ -95,17 +95,17 @@ impl Toasts {
             .min()
     }
 
-    /// Dessine la pile, ancrée en bas à droite de la place disponible.
+    /// Draws the stack, anchored to the bottom right of the available space.
     pub(crate) fn show(&self, ui: &mut egui::Ui) {
         if self.items.is_empty() {
             return;
         }
-        // Le panneau central entier, et non la place restante : les aperçus ont
-        // déjà consommé toute la hauteur disponible.
+        // The whole central panel, and not the remaining space: the previews
+        // have already consumed all the available height.
         let corner = ui.max_rect();
         let spacing = ui.spacing().item_spacing.y;
-        // Les hauteurs sont calculées avant le placement : la pile se monte
-        // depuis le bas, chaque message au-dessus du précédent.
+        // The heights are computed before placement: the stack is built from
+        // the bottom, each message above the previous one.
         let mut rects = Vec::with_capacity(self.items.len());
         let mut height_from_bottom = 0.0;
         for toast in &self.items {
@@ -120,8 +120,8 @@ impl Toasts {
             );
             let padding = egui::vec2(14.0, 9.0);
             let size = galley.size() + 2.0 * padding + egui::vec2(0.0, 2.0);
-            // Ancrage en bas à droite : `max.x` est le bord droit du message,
-            // pas son coin gauche — sinon la pile sortait de l'écran.
+            // Bottom right anchoring: `max.x` is the right edge of the message,
+            // not its left corner — otherwise the stack ran off the screen.
             let rect = egui::Rect::from_min_size(
                 egui::pos2(
                     corner.max.x - size.x,
@@ -134,8 +134,8 @@ impl Toasts {
         }
         for (toast, (rect, galley, padding)) in self.items.iter().zip(rects) {
             let (fill, text_color) = match toast.kind {
-                // Le rouge d'egui tire sur le orange : on prend la couleur
-                // d'avertissement du thème, qui reste lisible sur les deux.
+                // egui's red leans toward orange: we take the theme's
+                // warning color, which stays readable on both.
                 ToastKind::Info => (
                     ui.visuals().panel_fill.gamma_multiply(1.6),
                     ui.visuals().text_color(),

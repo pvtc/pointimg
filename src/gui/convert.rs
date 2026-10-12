@@ -1,4 +1,4 @@
-//! Conversion des images `image` vers les textures egui.
+//! Conversion of `image` images to egui textures.
 
 use eframe::egui;
 use egui::ColorImage;
@@ -14,18 +14,18 @@ pub(crate) fn rgb_to_color_image(img: &RgbImage) -> ColorImage {
     ColorImage::new([w as usize, h as usize], pixels)
 }
 
-/// Conversion RGBA → ColorImage avec **damier transparent** pour visualiser l'alpha.
-/// Les pixels opaques (alpha=255) affichent leur couleur ; les transparents
-/// montrent un damier gris clair/gris foncé (effet "Photoshop"), avec les
-/// pixels partiellement opaques mélangés proportionnellement.
+/// RGBA → ColorImage conversion with a **transparent checkerboard** to visualize
+/// alpha. Opaque pixels (alpha=255) show their color; transparent ones
+/// display a light gray/dark gray checkerboard ("Photoshop" effect), with
+/// partially opaque pixels blended proportionally.
 pub(crate) fn rgba_to_color_image_checker(img: &RgbaImage) -> ColorImage {
     let (w, h) = img.dimensions();
     let mut pixels = Vec::with_capacity((w * h) as usize);
     for y in 0..h {
         for x in 0..w {
             let p = img.get_pixel(x, y);
-            // Le composite vit dans `frontend` (partagé avec GTK) ; l'emballage
-            // en `Color32` est le seul travail qui reste ici.
+            // The composite lives in `frontend` (shared with GTK); wrapping it
+            // into `Color32` is the only work left to do here.
             let [r, g, b] = frontend::composite_on_checker(p.0, x, y);
             pixels.push(egui::Color32::from_rgb(r, g, b));
         }
@@ -33,7 +33,7 @@ pub(crate) fn rgba_to_color_image_checker(img: &RgbaImage) -> ColorImage {
     ColorImage::new([w as usize, h as usize], pixels)
 }
 
-/// Helper: convertir `RgbImage` en `RgbaImage` opaque (alpha=255 partout).
+/// Helper: convert `RgbImage` to opaque `RgbaImage` (alpha=255 everywhere).
 pub(crate) use pointimg::frontend::rgb_to_rgba_opaque;
 
 pub(crate) fn gray_to_color_image(img: &GrayImage) -> ColorImage {

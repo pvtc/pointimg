@@ -1,4 +1,4 @@
-//! Workers de calcul : filtre et density map, hors thread GUI.
+//! Compute workers: filter and density map, outside the GUI thread.
 
 use eframe::egui;
 use image::RgbImage;
@@ -12,8 +12,8 @@ use super::format::generation_is_current;
 use pointimg::filter::{self, Algorithm, FilterParams};
 use pointimg::frontend;
 
-/// Ensemble des canaux de communication partagés entre le thread GUI et un
-/// worker de calcul (fige les `Arc::clone` de `start_compute`).
+/// Set of communication channels shared between the GUI thread and a compute
+/// worker (freezes the `Arc::clone`s of `start_compute`).
 struct ComputeChannels {
     result: Arc<Mutex<Option<Arc<image::RgbaImage>>>>,
     result_revision: Arc<std::sync::atomic::AtomicU64>,
@@ -26,8 +26,8 @@ struct ComputeChannels {
 }
 
 impl App {
-    /// Lance un calcul. En mode aperçu rapide, l'image est sous-échantillonnée ;
-    /// `full_resolution` indique si le résultat sera exportable tel quel.
+    /// Starts a compute. In quick preview mode the image is downsampled;
+    /// `full_resolution` tells whether the result will be exportable as is.
     pub(crate) fn start_compute(&mut self, ctx: &egui::Context) {
         if self.computing.load(Ordering::Acquire) {
             self.cancel.store(true, Ordering::Release);
@@ -42,7 +42,7 @@ impl App {
             self.result_is_final.store(false, Ordering::Release);
         }
         let params = self.params.clone();
-        // La density map n'est réutilisable que par un calcul de même résolution.
+        // The density map is only reusable by a compute of the same resolution.
         let density_data = if (self.density_scale - self.quality.scale()).abs() < f32::EPSILON
             && !self.final_pass
         {
@@ -105,8 +105,8 @@ impl App {
             let (w, h) = src.dimensions();
             let density = filter::compute_density_map(&src, sensitivity);
             if density_generation.load(Ordering::Acquire) == generation {
-                // Construire l'image avant de déplacer `density` dans l'`Arc` :
-                // évite un clone complet de la density map (jusqu'à ~33 Mo).
+                // Build the image before moving `density` into the `Arc`: avoids
+                // a full clone of the density map (up to ~33 MB).
                 let image = filter::density_to_image(&density, w, h);
                 *data.lock().unwrap_or_else(|e| e.into_inner()) = Some(Arc::new(density));
                 *result.lock().unwrap_or_else(|e| e.into_inner()) = Some(image);
@@ -116,7 +116,7 @@ impl App {
     }
 }
 
-/// Corps du worker de calcul (exécuté hors thread GUI).
+/// Body of the compute worker (executed outside the GUI thread).
 #[allow(clippy::too_many_arguments)]
 fn run_compute_worker(
     src: RgbImage,
@@ -129,8 +129,8 @@ fn run_compute_worker(
     ctx: egui::Context,
 ) {
     let iters = params.iterations;
-    // Le résultat affiché n'est plus considered final tant qu'un aperçu rapide
-    // est en vol : l'export reste bloqué jusqu'à la passe pleine résolution.
+    // The displayed result is no longer considered final while a quick preview
+    // is in flight: the export stays blocked until the full resolution pass.
     let ComputeChannels {
         result,
         result_revision,
@@ -146,14 +146,14 @@ fn run_compute_worker(
     let mut last_preview = Instant::now();
     let preview_interval = Duration::from_millis(100);
 
-    // Halftone + transparent : pas de preview progressive, on appelle
-    // apply_rgba une fois et on convertit en RGBA pour stockage.
+    // Halftone + transparent: no progressive preview, we call apply_rgba once
+    // and convert to RGBA for storage.
     if params.transparent || params.algorithm == Algorithm::Halftone {
         let res = filter::apply_rgba(&src, &params);
         match res {
             Ok((dst_rgba, dots)) => {
                 if generation_is_current(&compute_generation, generation) {
-                    // Publier au moins une fois pour que la GUI voie une preview.
+                    // Publish at least once so that the GUI sees a preview.
                     *progress.lock().unwrap_or_else(|e| e.into_inner()) = (1, 1);
                     *result.lock().unwrap_or_else(|e| e.into_inner()) = Some(Arc::new(dst_rgba));
                     result_revision.fetch_add(1, Ordering::Release);

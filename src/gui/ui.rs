@@ -1,10 +1,10 @@
-//! Rendu egui : en-tête, panneau de réglages, zone d'aperçu, raccourcis.
+//! egui rendering: header, settings panel, preview area, shortcuts.
 //!
-//! L'interface reprend les décisions de la version GTK4 : actions visibles
-//! dans l'en-tête (rien d'important sous la ligne de flottaison), comparaison
-//! avant/après par balayage, réglages en saisie directe, aperçu rapide avec
-//! finalisation automatique, presets intégrés, et un état d'accueil qui donne
-//! quelque chose à faire.
+//! The interface takes over the decisions of the GTK4 version: actions visible
+//! in the header (nothing important below the waterline), before/after
+//! comparison by sweeping, settings in direct entry, quick preview with
+//! automatic finalization, built-in presets, and a welcome state that gives
+//! something to do.
 
 use eframe::egui;
 use std::sync::atomic::Ordering;
@@ -22,11 +22,11 @@ use pointimg::frontend::{
     self, Curve, Quality, ViewMode, sample_image, view_from_index, view_index,
 };
 
-/// Description courte d'un algorithme, affichée sous le sélecteur.
-/// Libellé d'un algorithme dans le sélecteur.
+/// Short description of an algorithm, displayed under the selector.
+/// Label of an algorithm in the selector.
 ///
-/// `match` total, sans `_` : ajouter une variante à `Algorithm` sans l'étiqueter
-/// ici est une erreur de compilation, pas une liste décalée.
+/// Total `match`, with no `_`: adding a variant to `Algorithm` without
+/// labeling it here is a compilation error, not a shifted list.
 fn algorithm_label(algorithm: Algorithm) -> &'static str {
     match algorithm {
         Algorithm::Grid => "Grille",
@@ -55,7 +55,7 @@ fn algorithm_help(algorithm: Algorithm) -> &'static str {
     }
 }
 
-/// Modes d'affichage, dans l'ordre de cycling.
+/// Display modes, in cycling order.
 const VIEWS: [(&str, ViewMode); 5] = [
     ("Comparaison", ViewMode::Compare),
     ("Côte à côte", ViewMode::Side),
@@ -64,16 +64,16 @@ const VIEWS: [(&str, ViewMode); 5] = [
     ("Carte de densité", ViewMode::DensityMap),
 ];
 
-/// Style global de l'interface.
+/// Global style of the interface.
 ///
-/// `scale` agrandit *tout* ce qui donne la densité perçue — corps de texte,
-/// espacements, hauteur des widgets, largeur des curseurs, arrondis — de sorte
-/// qu'un seul réglage rende l'interface confortable sans toucher à chaque
-/// sous-widget. 1.0 = confortable (valeur par défaut), 1.3 = grande.
+/// `scale` enlarges *everything* that gives the perceived density — text body,
+/// spacings, widget height, slider width, corner radii — so that a single
+/// setting makes the interface comfortable without touching every sub-widget.
+/// 1.0 = comfortable (default value), 1.3 = large.
 fn tuned_style(style: &mut egui::Style, scale: f32) {
     let scale = scale.clamp(0.85, 1.6);
 
-    // ── Textes ──────────────────────────────────────────────────────────────
+    // ── Texts ────────────────────────────────────────────────────────────────
     for (text, size) in [
         (egui::TextStyle::Body, 14.0),
         (egui::TextStyle::Button, 14.0),
@@ -86,21 +86,21 @@ fn tuned_style(style: &mut egui::Style, scale: f32) {
             .insert(text, egui::FontId::proportional(size * scale));
     }
 
-    // ── Rythme vertical et horizontal ───────────────────────────────────────
+    // ── Vertical and horizontal rhythm ───────────────────────────────────────
     style.spacing.item_spacing = egui::vec2(10.0, 8.0) * scale;
     style.spacing.button_padding = egui::vec2(10.0, 5.0) * scale;
     style.spacing.indent = 20.0 * scale;
     style.spacing.interact_size.y = 24.0 * scale;
-    // Les curseurs occupent la largeur du panneau (comme le curseur à deux
-    // poignées des rayons) : 120 px étaient trop étroits pour régler finement.
-    // C'est un plafond, pas une largeur imposée : `show_control_panel` le borne
-    // à la largeur disponible, sinon le panneau ne pouvait pas descendre sous
-    // ~440 px et mangeait la moitié d'une fenêtre de 900 px.
+    // The sliders take the width of the panel (like the two-handle slider of
+    // the radii): 120 px were too narrow to adjust finely. It is a ceiling,
+    // not an imposed width: `show_control_panel` bounds it to the available
+    // width, otherwise the panel could not go below ~440 px and ate half of a
+    // 900 px window.
     style.spacing.slider_width = 320.0 * scale;
     style.spacing.window_margin = egui::Margin::same((8.0 * scale) as i8);
     style.spacing.menu_margin = egui::Margin::same((6.0 * scale) as i8);
 
-    // ── Widgets plus généreux et moins anguleux ─────────────────────────────
+    // ── More generous and less angular widgets ───────────────────────────────
     let radius = ((7.0 * scale).round() as u8).min(14);
     let stroke = 1.0;
     for widget in [
@@ -113,7 +113,7 @@ fn tuned_style(style: &mut egui::Style, scale: f32) {
         widget.corner_radius = radius.into();
         widget.fg_stroke.width = stroke;
     }
-    // Un peu plus de contraste entre les panneaux et le fond de fenêtre.
+    // A bit more contrast between the panels and the window background.
     style.visuals.window_fill = style.visuals.window_fill.gamma_multiply(1.0);
     style.visuals.panel_fill = style.visuals.panel_fill.gamma_multiply(1.0);
 }
@@ -122,14 +122,14 @@ impl eframe::App for App {
     fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
         let ctx = ui.ctx().clone();
 
-        // Thème mémorisé : appliqué dès le premier rendu (le contexte n'existe
-        // qu'à partir de là, et « Auto » doit aussi corriger un éventuel thème
-        // laissé par eframe dans ses propres préférences).
+        // Memorized theme: applied from the very first render (the context only
+        // exists from there, and "Auto" must also correct an eventual theme left
+        // by eframe in its own preferences).
         self.apply_theme(&ctx);
 
-        // `eframe::App::style` n'est pas exposé par eframe 0.36 : le style est
-        // appliqué ici, et réappliqué quand l'utilisateur change l'échelle
-        // d'interface.
+        // `eframe::App::style` is not exposed by eframe 0.36: the style is
+        // applied here, and reapplied when the user changes the interface
+        // scale.
         if self.applied_style != Some(self.ui_scale) {
             let scale = self.ui_scale;
             ctx.all_styles_mut(|style| tuned_style(style, scale));
@@ -147,13 +147,13 @@ impl eframe::App for App {
 
         let computing = self.computing.load(Ordering::Relaxed);
         self.finish_pending_compute(computing);
-        // Taille d'export : relancée à chaque résultat définitif, invalidée
-        // dès que l'utilisateur revient à régler l'image.
+        // Export size: relaunched at every definitive result, invalidated as
+        // soon as the user goes back to adjusting the image.
         self.refresh_export_sizes(&ctx);
         self.sync_window_title(&ctx);
 
-        // L'ordre compte : le panneau du bas doit être réservé avant le
-        // panneau de gauche, sinon celui-ci déborde dessus.
+        // The order matters: the bottom panel must be reserved before the left
+        // panel, otherwise the latter overflows onto it.
         self.show_view_bar(ui, &ctx, computing);
         self.show_status_bar(ui, computing);
         self.show_control_panel(ui, &ctx);
@@ -162,7 +162,7 @@ impl eframe::App for App {
 }
 
 impl App {
-    // ─── Cycle de vie ────────────────────────────────────────────────────────
+    // ─── Lifecycle ───────────────────────────────────────────────────────────
 
     fn poll_worker_results(&mut self) {
         if let Some(density) = self
@@ -177,21 +177,21 @@ impl App {
     }
 
     fn collect_errors(&mut self) {
-        // L'emprunt du verrou est clos avant d'appeler `notify_error` : le
-        // garde-fou doit être relâché d'abord.
+        // The borrow of the lock closes before calling `notify_error`: the
+        // guard must be released first.
         let error = self
             .compute_error
             .lock()
             .unwrap_or_else(|e| e.into_inner())
             .take();
         if let Some(err) = error {
-            // Une erreur de calcul doit survivre à la durée du message, que la
-            // ligne de statut remplacerait à la frame suivante.
+            // A compute error must outlive the duration of the message, which
+            // the status line would replace on the next frame.
             self.notify_error(err);
         }
     }
 
-    /// Clôt le calcul en cours : durée, message, commit d'historique.
+    /// Closes the compute in progress: duration, message, history commit.
     fn finish_pending_compute(&mut self, computing: bool) {
         if computing {
             return;
@@ -210,7 +210,7 @@ impl App {
                 self.pending_commit = false;
             }
         }
-        // Un aperçu rapide terminé déclenche la passe en pleine résolution.
+        // A finished quick preview triggers the full resolution pass.
         if !self.has_final_result()
             && !self.computing.load(Ordering::Relaxed)
             && self.has_any_result()
@@ -219,8 +219,8 @@ impl App {
         }
     }
 
-    /// Programme la passe en pleine résolution quand l'utilisateur arrête de
-    /// manipuler les réglages (mode aperçu rapide).
+    /// Schedules the full resolution pass when the user stops
+    /// manipulating the settings (quick preview mode).
     fn schedule_finalize(&mut self) {
         if self.quality.is_full() || self.finalize_at.is_some() {
             return;
@@ -238,12 +238,12 @@ impl App {
         }
     }
 
-    /// Le résultat affiché est-il exploitable (pleine résolution, à jour) ?
+    /// Is the displayed result usable (full resolution, up to date)?
     pub(crate) fn has_final_result(&self) -> bool {
         self.result_is_final.load(Ordering::Acquire) && self.has_any_result()
     }
 
-    /// Le résultat affiché ne correspond plus aux réglages courants.
+    /// The displayed result no longer matches the current settings.
     pub(crate) fn result_is_stale(&self) -> bool {
         (!self.result_is_final.load(Ordering::Acquire) && self.has_any_result())
             || self.computing.load(Ordering::Relaxed)
@@ -273,24 +273,24 @@ impl App {
         }
     }
 
-    /// Palette de commandes (`Ctrl+K`).
+    /// Command palette (`Ctrl+K`).
     ///
-    /// Elle intercepte le clavier et se dessine par-dessus tout : c'est un `Window`
-    /// egui, alors que l'équivalent GTK est un menu et une fenêtre de raccourcis.
+    /// It intercepts the keyboard and draws above everything: it is an egui
+    /// `Window`, while the GTK equivalent is a menu and a shortcuts window.
     fn show_palette(&mut self, ctx: &egui::Context) {
         let Some(query) = self.palette.take() else {
             return;
         };
-        // `None` = la palette se ferme ; le texte restant la rouvre à la frame
-        // suivante.
+        // `None` = the palette closes; the remaining text reopens it on the
+        // next frame.
         self.palette = super::palette::show(self, ctx, query);
     }
 
-    /// Retire les notifications expirées et redessine à l'heure.
+    /// Removes the expired notifications and redraws on time.
     ///
-    /// egui n'ayant pas d'horloge, il faut demander explicitement une frame à
-    /// l'expiration : sans ce `request_repaint_after`, un message resterait affiché
-    /// indéfiniment tant que l'utilisateur ne manipulatorait rien.
+    /// egui having no clock, a frame must be explicitly requested at the
+    /// expiry: without this `request_repaint_after`, a message would stay
+    /// displayed indefinitely as long as the user did not interact.
     fn expire_toasts(&mut self, ctx: &egui::Context) {
         if self.toasts.expire() {
             ctx.request_repaint();
@@ -300,11 +300,10 @@ impl App {
         }
     }
 
-    /// Ouvre le chemin reçu en ligne de commande, une fois la fenêtre prête.
+    /// Opens the path received on the command line, once the window is ready.
     ///
-    /// `main` le reçoit avant l'existence du contexte : il ne peut charger que
-    /// maintenant. Le dossier active la navigation entre images, comme un
-    /// glisser-déposer.
+    /// `main` receives it before the context exists: it can only load it now.
+    /// A folder enables navigation between images, like a drag and drop.
     fn handle_pending_open(&mut self, ctx: &egui::Context) {
         let Some(path) = self.pending_open.take() else {
             return;
@@ -316,7 +315,7 @@ impl App {
         }
     }
 
-    // ─── Raccourcis et glisser-déposer ───────────────────────────────────────
+    // ─── Shortcuts and drag and drop ─────────────────────────────────────────
 
     fn handle_shortcuts(&mut self, ctx: &egui::Context) {
         #[derive(Default)]
@@ -358,9 +357,9 @@ impl App {
                 redo: command
                     && (i.key_pressed(egui::Key::Y) || (shift && i.key_pressed(egui::Key::Z))),
                 preset: command && i.key_pressed(egui::Key::P),
-                // `Tab` avance, `Maj+Tab` recule : la fenêtre de raccourcis de
-                // l'interface GTK annonce les deux, et c'est aussi le geste
-                // attendu de toute liste d'onglets.
+                // `Tab` moves forward, `Shift+Tab` moves backward: the shortcuts
+                // window of the GTK interface announces both, and it is also the
+                // expected gesture for any tab list.
                 view: plain && i.key_pressed(egui::Key::Tab),
                 view_back: plain && shift && i.key_pressed(egui::Key::Tab),
                 zoom_in: plain
@@ -375,8 +374,8 @@ impl App {
             }
         });
 
-        // Tant qu'un champ de saisie a le focus, les raccourcis « lettre »
-        // seraient tapés dans le champ.
+        // As long as an input field has focus, "letter" shortcuts would be
+        // typed into the field.
         let wants_text = ctx.egui_wants_keyboard_input();
 
         if keys.open {
@@ -401,9 +400,9 @@ impl App {
             self.reset_params(ctx);
         }
         if keys.palette && !wants_text {
-            // La palette intercepte tout le clavier : la garde est indispensable,
-            // car ses propres champs sont les seuls où `Ctrl+K` peut être une
-            // commande (dans un nom de fichier, par exemple).
+            // The palette intercepts the whole keyboard: the guard is
+            // essential, since its own fields are the only ones where `Ctrl+K`
+            // can be a command (in a file name, for example).
             self.palette = if self.palette.is_some() {
                 None
             } else {
@@ -475,7 +474,7 @@ impl App {
         if let Some(t) = self.last_param_change {
             if t.elapsed() >= Duration::from_millis(300) && self.src_rgb.is_some() {
                 self.last_param_change = None;
-                // La density map suit le même debounce que le filtre.
+                // The density map follows the same debounce as the filter.
                 if self.density_pending {
                     self.density_pending = false;
                     self.start_density_compute(ctx);
@@ -489,9 +488,9 @@ impl App {
         }
     }
 
-    // ─── En-tête ─────────────────────────────────────────────────────────────
+    // ─── Header ──────────────────────────────────────────────────────────────
 
-    /// Tout ce qui est action vit dans l'en-tête : plus rien à faire défiler.
+    /// Everything that is an action lives in the header: nothing left to scroll.
     fn show_view_bar(&mut self, ui: &mut egui::Ui, ctx: &egui::Context, computing: bool) {
         let has_final = self.has_final_result();
         let has_dots = self
@@ -500,8 +499,8 @@ impl App {
             .unwrap_or_else(|e| e.into_inner())
             .is_some()
             || self.src_rgb.is_some();
-        // L'infobulle du bouton d'export annonce la taille obtenue, pour éviter
-        // d'ouvrir le dialogue juste pour la découvrir.
+        // The tooltip of the export button announces the resulting size, to
+        // avoid opening the dialog just to discover it.
         let export_hint = match self
             .poll_export_sizes()
             .as_ref()
@@ -592,7 +591,7 @@ impl App {
         });
     }
 
-    // ─── Panneau de réglages ────────────────────────────────────────────────
+    // ─── Settings panel ──────────────────────────────────────────────────────
 
     fn show_control_panel(&mut self, ui: &mut egui::Ui, ctx: &egui::Context) {
         egui::Panel::left("controls")
@@ -612,11 +611,11 @@ impl App {
                     });
                     ui.separator();
 
-                    // Un seul garde-fou pour tout le panneau : on ne relance un
-                    // calcul que si les paramètres ont *réellement* changé.
-                    // Sinon, un simple changement de focus entre deux champs —
-                    // ou la revalidation d'un curseur par egui — suffirait à
-                    // faire recalculer l'image.
+                    // A single guard for the whole panel: a compute is only
+                    // restarted if the parameters have *really* changed.
+                    // Otherwise, a simple focus change between two fields — or
+                    // the revalidation of a slider by egui — would be enough to
+                    // recompute the image.
                     let before = self.params.clone();
                     self.show_display_preferences(ui);
                     self.show_presets(ui, ctx);
@@ -643,9 +642,9 @@ impl App {
             });
     }
 
-    /// Confort d'affichage : taille de l'interface et thème.
+    /// Display comfort: interface size and theme.
     fn show_display_preferences(&mut self, ui: &mut egui::Ui) {
-        // `horizontal_wrapped` : la ligne se replie au lieu d'élargir le panneau.
+        // `horizontal_wrapped`: the row folds instead of widening the panel.
         ui.horizontal_wrapped(|ui| {
             ui.label(egui::RichText::new("Interface").size(13.0));
             let mut percent = (self.ui_scale * 100.0).round();
@@ -679,20 +678,20 @@ impl App {
         ui.separator();
     }
 
-    /// Presets intégrés : le point de départ le plus rapide.
+    /// Built-in presets: the fastest starting point.
     fn show_presets(&mut self, ui: &mut egui::Ui, ctx: &egui::Context) {
         let presets = filter::builtin_presets();
         let current = self.preset_index();
         group_title(ui, "Réglages rapides");
 
-        // Grille de vignettes : un preset se choisit sur son rendu, pas sur son
-        // nom. Sans image (`assets/presets/` absent), on retombe sur une liste
-        // de noms — même information, forme différente.
-        // Une fois, pas à chaque frame : le panneau est redessiné bien plus
-        // souvent que les vignettes ne changent.
+        // Thumbnail grid: a preset is chosen on its render, not on its name.
+        // Without an image (`assets/presets/` missing), we fall back on a list
+        // of names — same information, different form.
+        // Once, not on every frame: the panel is redrawn much more often than
+        // the thumbnails change.
         self.ensure_preset_thumbnails(ctx);
-        // Le clone est une poignée `Arc` par vignette, pas une image. Sans lui
-        // l'emprunt de `self` traverserait les appels `&mut self` ci-dessous.
+        // The clone is one `Arc` handle per thumbnail, not an image. Without it,
+        // the borrow of `self` would cross the `&mut self` calls below.
         let textures: Vec<Option<egui::TextureHandle>> =
             self.preset_thumbnails.clone().unwrap_or_default();
         let avec_vignettes = textures.iter().any(|t| t.is_some());
@@ -713,11 +712,11 @@ impl App {
         });
     }
 
-    /// Grille de vignettes, trois par ligne.
+    /// Thumbnail grid, three per row.
     ///
-    /// La vignette courante est encadrée : sans ce repère, on ne sait pas quel
-    /// preset est appliqué quand on a personnalisé les réglages — le nom seul
-    /// ne le dit plus.
+    /// The current thumbnail is framed: without that marker, one does not know
+    /// which preset is applied once the settings have been customized — the
+    /// name alone no longer says it.
     fn show_preset_grid(
         &mut self,
         ui: &mut egui::Ui,
@@ -748,7 +747,7 @@ impl App {
                     ui.end_row();
                 }
             });
-        // Le nom du preset courant, et ce que « Personnalisé » veut dire.
+        // The name of the current preset, and what "Custom" means.
         let legende = match current {
             Some(index) => presets[index].name.to_string(),
             None => "Personnalisé — les réglages ne correspondent à aucun preset".to_string(),
@@ -760,7 +759,7 @@ impl App {
         );
     }
 
-    /// Une vignette cliquable, encadrée si elle est la sélection courante.
+    /// A clickable thumbnail, framed if it is the current selection.
     fn preset_button(
         &self,
         ui: &mut egui::Ui,
@@ -779,8 +778,8 @@ impl App {
             );
         }
         if let Some(texture) = texture {
-            // `uv` pleine image, et un rectangle calculé pour garder le ratio :
-            // les vignettes sont en 4:3, la case aussi.
+            // Full-image `uv`, and a rectangle computed to keep the ratio:
+            // the thumbnails are in 4:3, and so is the cell.
             ui.painter().image(
                 texture.id(),
                 egui::Rect::from_min_size(rect.min, egui::vec2(taille.x, taille.x * 0.75)),
@@ -791,7 +790,7 @@ impl App {
         reponse
     }
 
-    /// Liste de noms, pour une installation sans vignettes.
+    /// List of names, for an installation without thumbnails.
     fn show_preset_list(
         &mut self,
         ui: &mut egui::Ui,
@@ -830,10 +829,10 @@ impl App {
     }
 
     fn show_algorithm_section(&mut self, ui: &mut egui::Ui) {
-        // L'ordre vient de `frontend::ALGORITHMS`, partagé avec GTK — seule la
-        // liste est commune, les libellés restent propres à egui. Le repli est
-        // explicite plutôt qu'un `unwrap_or("Voronoi")` qui masquerait un algo
-        // absent de la table.
+        // The order comes from `frontend::ALGORITHMS`, shared with GTK — only
+        // the list is common, the labels stay specific to egui. The fallback is
+        // explicit rather than an `unwrap_or("Voronoi")` that would hide an algo
+        // missing from the table.
         let current = algorithm_label(self.params.algorithm);
         ui.horizontal(|ui| {
             ui.label("Placement");
@@ -870,9 +869,10 @@ impl App {
             "0 = répartition uniforme · 1 = détail maximal",
         );
         if variance_before != self.params.variance_sensitivity {
-            // La density map dépend de ce seul réglage : on la recalcule sans
-            // relancer le filtre — mais au même moment que lui (le debounce),
-            // sinon un glissement de curseur lancerait un calcul par pixel.
+            // The density map depends on this single setting: we recompute it
+            // without restarting the filter — but at the same time as it (the
+            // debounce), otherwise a slider drag would launch a compute per
+            // pixel.
             self.density_pending = true;
         }
 
@@ -890,8 +890,8 @@ impl App {
             0.0005..=1.0,
             None,
         );
-        // Curseur à deux poignées : la plage se règle d'un geste, et l'ordre
-        // des bornes ne peut pas s'inverser.
+        // Two-handle slider: the range is set with a single gesture, and the
+        // order of the ends cannot be inverted.
         range_slider(
             ui,
             "rayon",
@@ -913,17 +913,17 @@ impl App {
             "Boost zones uniformes",
             &mut self.params.max_boost,
             1.0..=8.0,
-            // Logarithme, comme dans l'interface GTK : `max_boost` est un
-            // multiplicateur, dont la perception est logarithmique. Passer de
-            // 1 à 2 doit coûter le même geste que de 4 à 8.
+            // Logarithmic, as in the GTK interface: `max_boost` is a
+            // multiplier, whose perception is logarithmic. Going from 1 to 2
+            // must cost the same gesture as from 4 to 8.
             true,
             "Agrandit les points dans les zones sans détail. 1 = aucun agrandissement.",
         );
 
         match self.params.algorithm {
             Algorithm::Grid => {
-                // 2 → 8 192 : logarithmique, sinon les petites grilles
-                // n'occupent qu'un pixel de la piste.
+                // 2 → 8 192: logarithmic, otherwise the small grids
+                // occupy a single pixel of the track.
                 let mut cols = self.params.cols as usize;
                 slider_int_row(
                     ui,
@@ -1157,9 +1157,9 @@ impl App {
         match &mut self.params.halftone {
             HalftoneMode::Dominant { n, base_angle_deg } => {
                 let mut channels = *n;
-                // `slider_int_row` et non `int_number_row` : celui-ci dessinait
-                // aussi un second curseur sans libellé, et « Canaux »
-                // apparaissait deux fois dans la même section.
+                // `slider_int_row` and not `int_number_row`: the latter also
+                // drew a second slider without a label, and "Channels"
+                // appeared twice in the same section.
                 slider_int_row(
                     ui,
                     "Canaux",
@@ -1190,8 +1190,7 @@ impl App {
                     "Trame stochastique : la densité des dots code la couverture d'encre",
                 );
         });
-        // 4 → 400 : logarithmique, la plage est trop large pour une course
-        // linéaire.
+        // 4 → 400: logarithmic, the range is too wide for a linear travel.
         slider_number_row(
             ui,
             "Fréquence de trame",
@@ -1214,8 +1213,8 @@ impl App {
             0.05..=10.0,
             None,
         );
-        // Même paire de bornes que pour les points : curseur à deux poignées,
-        // échelle logarithmique (le rayon varie d'un facteur 100).
+        // Same pair of ends as for the points: two-handle slider, logarithmic
+        // scale (the radius varies by a factor of 100).
         range_slider(
             ui,
             "halftone_rayon",
@@ -1230,11 +1229,11 @@ impl App {
         );
     }
 
-    /// Charge (une seule fois) les textures egui correspondant aux images.
-    /// Charge une fois pour toutes les vignettes des presets.
+    /// Loads (only once) the egui textures matching the images.
+    /// Loads once and for all the thumbnails of the presets.
     ///
-    /// Un fichier illisible donne `None` : si aucune ne passe, la grille
-    /// basculera sur la liste de noms, et le panneau n'aura rien perdu.
+    /// An unreadable file gives `None`: if none of them works, the grid will
+    /// switch to the list of names, and the panel will have lost nothing.
     fn ensure_preset_thumbnails(&mut self, ctx: &egui::Context) {
         if self.preset_thumbnails.is_some() {
             return;
@@ -1295,17 +1294,17 @@ impl App {
         }
     }
 
-    /// Passe au mode d'affichage suivant (`Tab`) ou précédent (`Maj+Tab`).
+    /// Moves to the next (`Tab`) or previous (`Shift+Tab`) display mode.
     ///
-    /// `rem_euclid` fait boucler dans les deux sens : passer du dernier mode au
-    /// premier, et du premier au dernier.
+    /// `rem_euclid` makes it loop in both directions: going from the last mode
+    /// to the first, and from the first to the last.
     pub(crate) fn cycle_view(&mut self, delta: i32) {
         let index = view_index(self.view_mode) as i32;
         let next = (index + delta).rem_euclid(pointimg::frontend::VIEW_COUNT as i32) as u32;
         self.view_mode = view_from_index(next);
     }
 
-    // ─── Zone centrale ───────────────────────────────────────────────────────
+    // ─── Central area ────────────────────────────────────────────────────────
 
     fn show_central_panel(&mut self, ui: &mut egui::Ui, ctx: &egui::Context, computing: bool) {
         egui::CentralPanel::default().show(ui, |ui| {
@@ -1360,15 +1359,15 @@ impl App {
             let zoom = self.zoom;
             let zoom_fit = self.zoom_fit;
             let stale = self.result_is_stale();
-            // Hauteur restante pour les aperçus (barre d'outils déjà posée).
+            // Remaining height for the previews (toolbar already laid out).
             let height = (ui.available_height() - 8.0).max(120.0);
             match self.view_mode {
                 ViewMode::Compare => self.show_compare(ui, stale),
                 ViewMode::Side => {
-                    // Deux moitiés *plus* le séparateur doivent tenir dans la
-                    // largeur disponible, sinon le second panneau est rogné.
-                    // En dessous de 640 px (soit ~300 px par image), on
-                    // empile : deux images côte à côte deviennent illisibles.
+                    // Two halves *plus* the separator must fit into the
+                    // available width, otherwise the second panel is cropped.
+                    // Below 640 px (i.e. ~300 px per image), we
+                    // stack them: two images side by side become unreadable.
                     let available = ui.available_size();
                     let separator = ui.spacing().item_spacing.x * 3.0;
                     if available.x < 640.0 {
@@ -1454,14 +1453,14 @@ impl App {
                     },
                 ),
             }
-            // La pile de notifications se dessine par-dessus l'aperçu : elle ne
-            // doit dépendre ni de la vue affichée ni de l'image chargée.
+            // The notification stack draws over the preview: it must depend
+            // neither on the displayed view nor on the loaded image.
             self.toasts.show(ui);
         });
     }
 
-    /// Comparaison avant/après : source à gauche d'un curseur, résultat à
-    /// droite, dans la même zone — la comparaison porte sur la même zone pixel.
+    /// Before/after comparison: source on the left of a handle, result on the
+    /// right, in the same area — the comparison bears on the same pixel area.
     fn show_compare(&mut self, ui: &mut egui::Ui, stale: bool) {
         let (Some(source), Some(result)) = (&self.src_texture, &self.result_texture) else {
             ui.centered_and_justified(|ui| {
@@ -1510,7 +1509,7 @@ impl App {
                 let cursor_x = rect.min.x + split;
                 let uv = egui::Rect::from_min_max(egui::Pos2::ZERO, egui::Pos2::new(1.0, 1.0));
 
-                // Source à gauche, résultat à droite, découpés au curseur.
+                // Source on the left, result on the right, cut at the handle.
                 ui.painter()
                     .with_clip_rect(egui::Rect::from_min_max(
                         rect.min,
@@ -1535,11 +1534,11 @@ impl App {
                     );
 
                 let painter = ui.painter();
-                // Double trait, sombre puis clair : poignée et ligne de
-                // séparation étaient invisibles sur un rendu à fond blanc, alors
-                // qu'elles sont le seul repère de la comparaison. Le halo les
-                // détache de n'importe quel fond, le trait clair les détache du
-                // halo.
+                // Double stroke, dark then light: the handle and the separation
+                // line were invisible on a white-background render, even though
+                // they are the sole reference of the comparison. The halo
+                // detaches them from any background, the light line detaches
+                // them from the halo.
                 painter.line_segment(
                     [
                         egui::pos2(cursor_x, rect.min.y),
@@ -1558,8 +1557,8 @@ impl App {
                 painter.circle_filled(center, 12.0, egui::Color32::from_black_alpha(140));
                 painter.circle_filled(center, 10.0, egui::Color32::WHITE);
                 if stale {
-                    // Plaque opaque derrière le texte : blanc nu, il était
-                    // illisible sur un ciel clair.
+                    // Opaque plate behind the text: bare white, it was
+                    // unreadable on a light sky.
                     let text = frontend::msg::STALE;
                     let galley = ui.painter().layout_no_wrap(
                         text.to_owned(),
@@ -1576,7 +1575,7 @@ impl App {
                     );
                     painter.galley(plate.min + pad, galley, egui::Color32::WHITE);
                 }
-                // Chevrons de glissement, sur le disque blanc.
+                // Drag chevrons, on the white disk.
                 for direction in [-1.0f32, 1.0] {
                     painter.line_segment(
                         [
@@ -1598,7 +1597,7 @@ impl App {
             });
     }
 
-    /// État d'accueil : quelque chose à faire tant qu'aucune image n'est chargée.
+    /// Welcome state: something to do as long as no image is loaded.
     fn show_empty_state(&mut self, ui: &mut egui::Ui, ctx: &egui::Context) {
         ui.vertical_centered(|ui| {
             ui.add_space((ui.available_height() * 0.18).max(24.0));
@@ -1622,11 +1621,11 @@ impl App {
         });
     }
 
-    /// Images récemment ouvertes, sous les boutons de l'état d'accueil.
+    /// Recently opened images, under the buttons of the welcome state.
     ///
-    /// GTK lit la même information dans `GtkRecentManager`, la liste du
-    /// bureau ; egui n'a pas d'équivalent, la sienne vit dans le fichier de
-    /// préférences. Même intention, chaque front-end son mécanisme.
+    /// GTK reads the same information in `GtkRecentManager`, the desktop's
+    /// list; egui has no equivalent, its own lives in the preferences file.
+    /// Same intent, each frontend its own mechanism.
     fn show_recent_images(&mut self, ui: &mut egui::Ui, ctx: &egui::Context) {
         let Some(prefs) = self.prefs.as_ref() else {
             return;
@@ -1643,9 +1642,8 @@ impl App {
                 .color(ui.visuals().weak_text_color()),
         );
         ui.add_space(2.0);
-        // Une colonne étroite : les chemins complets rendraient la liste
-        // illisible, et le nom du dossier suffit à distinguer deux images
-        // homonymes.
+        // A narrow column: the full paths would make the list unreadable, and
+        // the folder name is enough to tell two homonymous images apart.
         egui::Grid::new("recent_images")
             .num_columns(1)
             .spacing([0.0, 2.0])
@@ -1664,8 +1662,8 @@ impl App {
                     let sous_titre = egui::RichText::new(dossier)
                         .size(10.5)
                         .color(ui.visuals().weak_text_color());
-                    // Deux lignes par image : le nom, puis son dossier. egui n'a pas
-                    // de bouton à sous-titre, la disposition se fait ici.
+                    // Two rows per image: the name, then its folder. egui has no
+                    // button with a subtitle, the layout is done here.
                     let reponse = ui
                         .vertical(|ui| {
                             ui.set_min_width(280.0);
@@ -1682,14 +1680,14 @@ impl App {
             });
     }
 
-    // ─── Barre d'état ───────────────────────────────────────────────────────
+    // ─── Status bar ──────────────────────────────────────────────────────────
 
     fn show_status_bar(&mut self, ui: &mut egui::Ui, computing: bool) {
         let stale = self.result_is_stale();
         let timing = self.last_compute_ms;
         let quick = !self.quality.is_full() && self.src_rgb.is_some();
         let status = self.status.clone();
-        // Taille d'export : mesurée sur le résultat définitif, encodage réel.
+        // Export size: measured on the definitive result, real encoding.
         let sizes = self.poll_export_sizes();
         let sizes_label = sizes
             .as_ref()
@@ -1700,12 +1698,12 @@ impl App {
         egui::Panel::bottom("status_bar").show(ui, |ui| {
             ui.horizontal_wrapped(|ui| {
                 if computing {
-                    // Ordre de dessin : barre de progression puis spinner. Dans
-                    // l'ordre inverse les deux se chevauchent.
+                    // Drawing order: progress bar then spinner. In the reverse
+                    // order the two overlap.
                     let (done, total) = *self.progress.lock().unwrap_or_else(|e| e.into_inner());
                     if total > 0 {
-                        // La couleur de remplissage par défaut est trop sombre
-                        // sur le fond du panneau : on prend l'accent du thème.
+                        // The default fill color is too dark on the panel
+                        // background: we take the accent of the theme.
                         let fill = ui.visuals().selection.bg_fill;
                         ui.add(
                             egui::ProgressBar::new(done as f32 / total as f32)
@@ -1749,13 +1747,13 @@ impl App {
     }
 }
 
-// ─── Aides ───────────────────────────────────────────────────────────────────
+// ─── Helpers ─────────────────────────────────────────────────────────────────
 
-/// Panneau d'aperçu : cadre, légende, image avec zoom et défilement.
-/// Un panneau d'aperçu : ce qu'il faut pour le dessiner dans une place donnée.
+/// Preview panel: frame, caption, image with zoom and scrolling.
+/// A preview panel: what is needed to draw it in a given space.
 ///
-/// Regroupé dans une structure plutôt qu'en huit paramètres : la place
-/// allouée, la texture et l'état du zoom voyagent toujours ensemble.
+/// Gathered into a structure rather than in eight parameters: the allocated
+/// space, the texture and the zoom state always travel together.
 struct Pane<'a> {
     caption: &'a str,
     texture: Option<&'a egui::TextureHandle>,
@@ -1774,9 +1772,9 @@ fn show_pane(ui: &mut egui::Ui, pane: Pane<'_>) {
         zoom_fit,
         spinning,
     } = pane;
-    // La place est imposée par l'appelant : dans une mise en page horizontale,
-    // `available_width()` est la largeur restante *pour chaque enfant*, donc un
-    // enfant en prendrait tout l'espace et en expulserait l'autre.
+    // The space is imposed by the caller: in a horizontal layout,
+    // `available_width()` is the remaining width *for each child*, so one
+    // child would take all the space and expel the other.
     ui.allocate_ui(egui::vec2(size.x.max(64.0), size.y.max(64.0)), |ui| {
         egui::Frame::central_panel(ui.style())
             .inner_margin(8.0)
@@ -1817,24 +1815,24 @@ fn show_pane(ui: &mut egui::Ui, pane: Pane<'_>) {
     });
 }
 
-/// Titre de sous-groupe, à l'intérieur d'une section repliable.
+/// Subgroup title, inside a collapsible section.
 fn group_title(ui: &mut egui::Ui, title: &str) {
     ui.add_space(6.0);
     ui.strong(title);
     ui.separator();
 }
 
-/// Section repliable du panneau de réglages.
+/// Collapsible section of the settings panel.
 ///
-/// Le panneau aligne une trentaine de réglages sur une seule colonne : sans
-/// repli, il faut le parcourir en entier à chaque fois qu'on cherche une
-/// option. `CollapsingState` est rangé dans la mémoire d'egui, que eframe
-/// persiste d'une session à l'autre — la section ouverte au lancement
-/// précédent l'est encore.
+/// The panel lines up about thirty settings in a single column: without
+/// folding, one has to walk through it entirely every time one looks for an
+/// option. `CollapsingState` is stored in egui's memory, which eframe
+/// persists from one session to the next — the section open at the previous
+/// launch still is.
 ///
-/// Le repli est purement d'affichage : rien n'est masqué côté moteur, et
-/// l'interface GTK garde ses propres `PreferencesGroup` — les deux fronts
-/// restent indépendants, y compris sur ce point.
+/// The folding is purely visual: nothing is hidden on the engine side, and the
+/// GTK interface keeps its own `PreferencesGroup` — the two frontends stay
+/// independent, including on this point.
 fn section<R>(
     ui: &mut egui::Ui,
     title: &str,
@@ -1842,9 +1840,9 @@ fn section<R>(
     open_by_default: bool,
     add: impl FnOnce(&mut egui::Ui) -> R,
 ) -> egui::CollapsingResponse<R> {
-    // L'en-tête est le seul repère de navigation du panneau : il doit se
-    // détacher du corps des réglages, sans pour autant ressembler à un titre
-    // de fenêtre. 15 px en gras, contre 13 px pour un libellé de réglage.
+    // The header is the only navigation reference of the panel: it must stand
+    // out from the body of the settings, without however looking like a window
+    // title. 15 px in bold, against 13 px for a setting label.
     let header = egui::CollapsingHeader::new(egui::RichText::new(title).strong().size(15.0))
         .id_salt(id_salt)
         .default_open(open_by_default);
@@ -1852,28 +1850,28 @@ fn section<R>(
 }
 
 impl App {
-    /// Message éphémère : la ligne d'état ne le décrivait que le temps d'une
-    /// frame, et disparaissait entièrement pendant un calcul.
+    /// Ephemeral message: the status line only described it for the duration of
+    /// a frame, and disappeared entirely during a compute.
     pub(crate) fn notify(&mut self, text: impl Into<String>) {
         self.toasts.push(text, super::notify::ToastKind::Info);
     }
 
-    /// Message d'erreur, avec une durée de lecture plus longue.
+    /// Error message, with a longer reading duration.
     pub(crate) fn notify_error(&mut self, text: impl Into<String>) {
         self.toasts.push(text, super::notify::ToastKind::Error);
     }
 }
 
-/// Ligne « libellé + curseur à valeur intégrée ».
+/// Row "label + slider with integrated value".
 ///
-/// Une ligne par réglage : champ de saisie et curseur fusionnés, `egui::Slider`
-/// affichant sa valeur *dans* le rail, saisissable au clic.
+/// One row per setting: input field and slider merged, `egui::Slider`
+/// displaying its value *in* the rail, enterable by click.
 ///
-/// La disposition est `[libellé] [rail + valeur]`, comme les lignes de saisie :
-/// `Slider::text` aurait posé le libellé *à droite* du rail, et le panneau
-/// aurait affiché deux conventions côte à côte. Le rail prend la place
-/// restante plutôt que les 320 px du style, sans quoi il fixerait de nouveau le
-/// minimum du panneau.
+/// The layout is `[label] [rail + value]`, like the input rows:
+/// `Slider::text` would have put the label *to the right* of the rail, and the
+/// panel would have displayed two conventions side by side. The rail takes the
+/// remaining space rather than the 320 px of the style, without which it would
+/// fix the panel minimum again.
 fn slider_number_row(
     ui: &mut egui::Ui,
     label: &str,
@@ -1889,8 +1887,9 @@ fn slider_number_row(
     ui.spacing_mut().slider_width = rail;
     let rail = (ui.available_width() * 0.55).max(80.0);
     ui.spacing_mut().slider_width = rail;
-    // La réponse du curseur est capturée : celle de `ui.horizontal` est celle du
-    // dernier widget dessiné, et l'on veut savoir si la *valeur* a bougé.
+    // The response of the slider is captured: that of `ui.horizontal` is that
+    // of the last widget drawn, and what we want to know is whether the *value*
+    // moved.
     let mut curseur = None;
     ui.horizontal(|ui| {
         ui.label(egui::RichText::new(label).size(13.0));
@@ -1909,15 +1908,15 @@ fn slider_number_row(
     let reponse = curseur.expect("le curseur vient d'être dessiné");
     let reponse = reponse.on_hover_text(format!("{hint}\nPlage autorisée : {range_label}"));
     if reponse.changed() {
-        // Le pas s'applique au glissement, pas à la valeur écrite : sans cet
-        // arrondi l'affichage portait les décimales parasites du pointeur.
+        // The step applies to the drag, not to the written value: without this
+        // rounding the display carried the stray decimals of the pointer.
         *value = round_to(*value, decimals);
     }
     reponse
 }
 
-/// Variante entière de [`slider_number_row`] : la valeur est arrondie à
-/// l'unité après chaque geste.
+/// Integer variant of [`slider_number_row`]: the value is rounded to
+/// the unit after each gesture.
 fn slider_int_row(
     ui: &mut egui::Ui,
     label: &str,
@@ -1935,8 +1934,8 @@ fn slider_int_row(
     reponse
 }
 
-/// Ligne « libellé + saisie directe » : la plage réelle (celle de
-/// `validate_params`) est donnée en infobulle, plus une indication d'unité.
+/// Row "label + direct entry": the real range (that of
+/// `validate_params`) is given as a tooltip, plus a unit indication.
 fn number_row(
     ui: &mut egui::Ui,
     label: &str,
@@ -1958,22 +1957,23 @@ fn number_row_with_hint(
         Some(hint) => format!("{hint}\nPlage autorisée : {range_label}"),
         None => format!("Plage autorisée : {range_label}"),
     };
-    // egui choisit la précision d'affichage selon la distance du pointeur au
-    // bord de l'écran : près d'un bord, « Rayon min » s'afficherait « 0,000 »
-    // puis la saisie serait réécrite en 0 à la perte de focus. On impose donc
-    // les décimales utiles au réglage (cf. `display_decimals`).
+    // egui picks the display precision according to the distance from the
+    // pointer to the screen edge: near an edge, "Min radius" would display
+    // "0.000" then the entry would be rewritten to 0 on loss of focus. We
+    // therefore impose the decimals useful to the setting (see
+    // `display_decimals`).
     let decimals = display_decimals(*value, &range);
-    // Le champ est dimensionné à son contenu, pas à la largeur restante : sans
-    // cette borne, `DragValue` s'étirait et le panneau ne pouvait pas descendre
-    // sous ~440 px — il prenait alors la moitié d'une fenêtre de 900 px.
+    // The field is sized to its content, not to the remaining width: without
+    // that bound, `DragValue` stretched and the panel could not go below
+    // ~440 px — it then took half of a 900 px window.
     let field_width = 56.0 + 7.0 * decimals as f32;
-    // Le `right_to_left` intérieur renvoie la réponse du champ, que la rangée
-    // restitue : les appelants testent `.changed()` pour détecter une saisie.
+    // The inner `right_to_left` returns the response of the field, which the
+    // row gives back: callers test `.changed()` to detect an entry.
     ui.horizontal(|ui| {
         ui.label(egui::RichText::new(label).size(13.0));
         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-            // `DragValue` n'a pas de pas en 0.36 : la vitesse fixe l'incrément
-            // de la molette, la saisie directe accepte n'importe quelle valeur.
+            // `DragValue` has no step in 0.36: the speed sets the wheel
+            // increment, direct entry accepts any value.
             ui.add_sized(
                 [field_width, ui.spacing().interact_size.y],
                 egui::DragValue::new(value)
@@ -1990,7 +1990,7 @@ fn number_row_with_hint(
     .inner
 }
 
-/// Sélecteur d'algorithme de dithering, avec l'aide correspondant à chacun.
+/// Dithering algorithm selector, with the help matching each one.
 fn show_dithering_selector(ui: &mut egui::Ui, dithering: &mut Dithering) {
     const CHOICES: [(Dithering, &str, &str); 5] = [
         (Dithering::Off, "Aucun", "Palette franche, sans motif"),
@@ -2030,17 +2030,17 @@ fn show_dithering_selector(ui: &mut egui::Ui, dithering: &mut Dithering) {
                         .on_hover_text(help);
                 }
             });
-        // L'aide de l'algorithme choisi, puis son avertissement de poids s'il
-        // y en a un (texte commun aux deux interfaces, cf. `size_caveat`).
+        // The help of the chosen algorithm, then its size warning if there is
+        // one (text shared by both interfaces, see `size_caveat`).
         let text = match dithering.size_caveat() {
             Some(caveat) => format!("{hint}\n\n{caveat}"),
             None => hint.to_string(),
         };
         response.response.on_hover_text(text);
     });
-    // L'avertissement est aussi visible sans survol : c'est une information
-    // sur le poids du fichier, pas un détail d'interface. Version courte, le
-    // détail restant dans l'infobulle.
+    // The warning is also visible without hovering: it is information about
+    // the file size, not an interface detail. Short version, the detail
+    // remaining in the tooltip.
     if let Some(short) = dithering.size_caveat_short() {
         ui.add_space(2.0);
         ui.add(
@@ -2055,9 +2055,9 @@ fn show_dithering_selector(ui: &mut egui::Ui, dithering: &mut Dithering) {
     }
 }
 
-/// Ligne « libellé + saisie directe + curseur » pour un réglage entier : la
-/// saisie comme le glissement sont arrondis à l'unité.
-/// Sélecteur de forme des points.
+/// Row "label + direct entry + slider" for an integer setting: entry and
+/// dragging are both rounded to the unit.
+/// Point shape selector.
 fn show_shape_selector(ui: &mut egui::Ui, shape: &mut DotShape) {
     let current = match shape {
         DotShape::Circle => "Cercle",
@@ -2108,8 +2108,9 @@ fn show_shape_selector(ui: &mut egui::Ui, shape: &mut DotShape) {
 mod tests {
     use super::*;
 
-    /// `Tab` avance et `Maj+Tab` recule, en rebouclant dans les deux sens —
-    /// c'est ce que la fenêtre de raccourcis GTK annonce des deux côtés.
+    /// `Tab` moves forward and `Shift+Tab` backward, looping in both
+    /// directions — that is what the GTK shortcuts window announces on both
+    /// sides.
     #[test]
     fn le_cycle_des_apercus_boucle_dans_les_deux_sens() {
         let total = pointimg::frontend::VIEW_COUNT as i32;
@@ -2118,7 +2119,7 @@ mod tests {
             .collect();
         assert_eq!(modes.len() as i32, total);
 
-        // Un pas puis un pas inverse revient au point de départ.
+        // A step then an inverse step comes back to the starting point.
         for mode in &modes {
             let mut app = App {
                 view_mode: *mode,
@@ -2128,7 +2129,7 @@ mod tests {
             app.cycle_view(-1);
             assert_eq!(app.view_mode, *mode, "un aller-retour doit revenir");
         }
-        // Le dernier mode reboucle sur le premier, et l'inverse.
+        // The last mode loops onto the first, and the reverse.
         let mut app = App {
             view_mode: modes[0],
             ..App::default()
@@ -2137,7 +2138,7 @@ mod tests {
         assert_eq!(app.view_mode, modes[modes.len() - 1]);
         app.cycle_view(1);
         assert_eq!(app.view_mode, modes[0]);
-        // Les deux sens couvrent la liste entière sans la répéter.
+        // Both directions cover the whole list without repeating it.
         let mut vus = Vec::new();
         app.cycle_view(1);
         for _ in 0..total {

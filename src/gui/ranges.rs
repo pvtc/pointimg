@@ -1,23 +1,23 @@
-//! Cohérence entre les plages de l'interface et celles du moteur.
+//! Consistency between the ranges of the interface and those of the engine.
 //!
-//! Chaque interface déclare ses propres bornes, et ce module vérifie qu'elles
-//! restent acceptables par `filter::validate_params`. Rien n'est partagé entre
-//! les deux fronts au-delà de cette vérification : les plages ne sont pas un
-//! contrat d'interface, mais une conséquence de ce que le moteur accepte.
+//! Each interface declares its own bounds, and this module checks that they
+//! stay acceptable to `filter::validate_params`. Nothing is shared between the
+//! two frontends beyond that check: the ranges are not an interface contract,
+//! but a consequence of what the engine accepts.
 //!
-//! Une plage qui glisse hors des bornes ne casse pas l'interface : le champ
-//! devient insaisissable, l'aperçu se fige, et l'utilisateur découvre le refus
-//! au pire moment. D'où le test.
+//! A range that drifts out of the bounds does not break the interface: the field
+//! becomes impossible to type into, the preview freezes, and the user discovers
+//! the refusal at the worst moment. Hence the test.
 
 use std::ops::RangeInclusive;
 
 use pointimg::filter::{Algorithm, DotShape, FilterParams, HalftoneMode, validate_params};
 
-/// Bornes déclarées par les curseurs du panneau de réglages.
+/// Bounds declared by the control panel sliders.
 ///
-/// Volontairement regroupées ici plutôt qu'éparpillées dans les appels de
-/// widgets : c'est ce qui rend la liste vérifiable, tout en restant une
-/// déclaration propre à l'interface egui.
+/// Deliberately gathered here rather than scattered across widget calls: that
+/// is what makes the list checkable, while staying a declaration specific to
+/// the egui interface.
 mod bornes {
     use super::RangeInclusive;
 
@@ -29,15 +29,14 @@ mod bornes {
     pub const COLONNES: RangeInclusive<f32> = 2.0..=8192.0;
     pub const ANGLE_GRILLE: RangeInclusive<f32> = -180.0..=180.0;
     pub const FREQUENCE_TRAME: RangeInclusive<f32> = 4.0..=400.0;
-    /// Bornes basse et haute du rayon de trame, séparément.
+    /// Low and high bounds of the screen radius, separately.
     ///
-    /// Le moteur plafonne `halftone_min_radius_ratio` à 1,0 quand
-    /// `halftone_max_dot_ratio` monte à 10 (`validate_params`). Une
-    /// constante partagée laissait le curseur de la borne basse franchir
-    /// ce plafond : l'utilisateur obtenait une erreur sèche du worker,
-    /// et les tests de plage ne le voyaient pas puisqu'ils n'exercaient
-    /// que la borne basse de la borne basse et la borne haute de la
-    /// borne haute.
+    /// The engine caps `halftone_min_radius_ratio` at 1.0 when
+    /// `halftone_max_dot_ratio` goes up to 10 (`validate_params`). A shared
+    /// constant let the low end's slider cross that ceiling: the user got a
+    /// dry error from the worker, and the range tests did not see it since
+    /// they only exercised the low end of the low end and the high end of the
+    /// high end.
     pub const RAYON_TRAME_MIN: RangeInclusive<f32> = 0.0..=1.0;
     pub const RAYON_TRAME_MAX: RangeInclusive<f32> = 0.05..=10.0;
     pub const PALETTE: RangeInclusive<f32> = 2.0..=256.0;
@@ -45,13 +44,13 @@ mod bornes {
     pub const COTES: RangeInclusive<f32> = 3.0..=12.0;
 }
 
-/// Réglages par défaut, plus un mode d'encre valide.
+/// Default settings, plus a valid ink mode.
 ///
-/// `FilterParams::default()` combine `Algorithm::Grid` et
-/// `HalftoneMode::Off` : passer le curseur sur « Halftone (rosette) » sans
-/// choisir de mode donne un réglage que le moteur refuse. Les tests de plage
-/// du halftone doivent donc partir d'une base valide, comme le fait l'interface
-/// (qui force CMJN à la sélection).
+/// `FilterParams::default()` combines `Algorithm::Grid` and
+/// `HalftoneMode::Off`: moving the slider to "Halftone (rosette)" without
+/// choosing a mode gives a setting the engine refuses. The halftone range
+/// tests must therefore start from a valid base, as the interface does
+/// (which forces CMYK on selection).
 fn base() -> FilterParams {
     FilterParams {
         halftone: HalftoneMode::Cmyk {
@@ -61,20 +60,20 @@ fn base() -> FilterParams {
     }
 }
 
-/// Vérifie que des réglages sont acceptés par le moteur.
+/// Checks that settings are accepted by the engine.
 ///
-/// Les deux bornes de chaque curseur sont testées : c'est la borne haute qui
-/// glisse le plus souvent (un rayon agrandi, une trame accélérée).
+/// Both ends of each slider are tested: it is the high end that drifts the
+/// most often (an enlarged radius, a faster screen).
 fn accepte(applique: impl Fn(&mut FilterParams)) {
     let mut params = base();
     applique(&mut params);
     validate_params(64, 64, &params).unwrap_or_else(|e| panic!("réglages refusés : {e}"));
 }
 
-/// Vérifie qu'une valeur *hors* plage est refusée par le moteur.
+/// Checks that a value *outside* the range is refused by the engine.
 ///
-/// Le complément de [`accepte`] : une borne devenue trop large passerait
-/// inaperçue si seule la borne basse est testée.
+/// The complement of [`accepte`]: a bound that became too wide would go
+/// unnoticed if only the low end were tested.
 fn refuse(applique: impl Fn(&mut FilterParams)) {
     let mut params = base();
     applique(&mut params);
@@ -133,9 +132,9 @@ fn les_deux_bornes_de_chaque_curseur_sont_acceptees() {
         p.algorithm = Algorithm::Halftone;
         p.halftone_min_radius_ratio = *bornes::RAYON_TRAME_MIN.start();
     });
-    // Le sommet de la plage de la borne *basse* : c'est le cas que le
-    // partage d'une constante unique laissait passer. Tant qu'il n'est pas
-    // exercé, un curseur partagé peut franchir 1,0 sans qu'aucun test rougeoie.
+    // The top of the *low* end's range: this is the case a single shared
+    // constant let through. As long as it is not exercised, a shared slider
+    // can cross 1.0 without any test turning red.
     accepte(|p| {
         p.algorithm = Algorithm::Halftone;
         p.halftone_min_radius_ratio = *bornes::RAYON_TRAME_MIN.end();
@@ -205,10 +204,10 @@ fn juste_au_dela_de_chaque_borne_le_moteur_refuse() {
 
 #[test]
 fn voronoi_et_kmeans_ont_leur_propre_plafond_de_points() {
-    // Plus bas que le plafond générique : `validate_params` refuse 50 001
-    // points pour ces deux algorithmes, alors que Quadtree en accepte 100 000.
-    // Le curseur « Nombre de points » est commun aux trois — c'est donc la
-    // validation qui doit rester la source de vérité, pas la borne du curseur.
+    // Lower than the generic ceiling: `validate_params` refuses 50 001
+    // points for these two algorithms, while Quadtree accepts 100 000.
+    // The "Number of points" slider is common to all three — it is therefore
+    // the validation that must remain the source of truth, not the slider bound.
     let mut params = base();
     params.algorithm = Algorithm::Voronoi;
     params.num_points = 50_001;

@@ -1,4 +1,4 @@
-//! Export des résultats : image raster, SVG, presse-papiers.
+//! Result exports: raster image, SVG, clipboard.
 
 use std::path::{Path, PathBuf};
 
@@ -11,14 +11,14 @@ use pointimg::filter;
 use pointimg::frontend;
 
 impl App {
-    /// Mémorise le dossier d'un fichier écrit, proposé aux dialogues suivants.
+    /// Memorizes the directory of a written file, offered to the next dialogs.
     fn remember_dir(&mut self, path: &Path) {
         if let Some(parent) = path.parent().filter(|p| p.is_dir()) {
             self.last_dir = Some(parent.to_path_buf());
         }
     }
 
-    // ─── Dialogues ───────────────────────────────────────────────────────────
+    // ─── Dialogs ──────────────────────────────────────────────────────────────
 
     pub(crate) fn choose_export(&mut self) {
         let Some(name) = self.default_name("png") else {
@@ -78,18 +78,18 @@ impl App {
         }
     }
 
-    /// Nom proposé par défaut : `photo.jpg` → `photo-pointimg.png`.
+    /// Default proposed name: `photo.jpg` → `photo-pointimg.png`.
     fn default_name(&self, extension: &str) -> Option<String> {
         let nom = frontend::derived_export_name(self.src_path.as_deref(), extension);
-        // egui refuse d'exporter sans image, là où GTK retombe sur
-        // `pointimg.<ext>` : la formule du nom est partagée, la décision de
-        // l'accepter appartient à chaque interface.
+        // egui refuses to export without an image, where GTK falls back on
+        // `pointimg.<ext>`: the name formula is shared, the decision to accept
+        // it belongs to each interface.
         self.src_path.as_ref().map(|_| nom)
     }
 
-    // ─── Exports ─────────────────────────────────────────────────────────────
+    // ─── Exports ──────────────────────────────────────────────────────────────
 
-    /// Export sans dialogue, à côté de l'image source.
+    /// Export without a dialog, next to the source image.
     pub(crate) fn quick_export(&mut self) {
         let Some(path) = self.src_path.as_ref().map(|source| {
             source.with_file_name(frontend::derived_export_name(Some(source), "png"))
@@ -100,7 +100,7 @@ impl App {
         self.save_result(path);
     }
 
-    /// Copie le rendu courant dans le presse-papiers système.
+    /// Copies the current render into the system clipboard.
     pub(crate) fn copy_to_clipboard(&mut self, ctx: &egui::Context) {
         let image = {
             let guard = self.result.lock().unwrap_or_else(|e| e.into_inner());
@@ -115,7 +115,7 @@ impl App {
     }
 
     pub(crate) fn save_result(&mut self, path: PathBuf) {
-        // On n'exporte jamais un aperçu réduit par inadvertance.
+        // We never export a downscaled preview by inadvertence.
         if !self.has_final_result() {
             self.status =
                 "Rendu en pleine résolution en cours — réessayez dans un instant.".to_string();
@@ -127,14 +127,14 @@ impl App {
             self.notify(frontend::msg::SAVE_CANCELLED);
             return;
         }
-        // Le garde est relâché avant de muter `self` (voir `remember_dir`).
+        // The guard is released before mutating `self` (see `remember_dir`).
         let result = {
             let guard = self.result.lock().unwrap_or_else(|e| e.into_inner());
             let Some(img) = guard.as_ref() else {
                 return;
             };
-            // PNG/WebP/TIFF préservent l'alpha ; JPEG/BMP compositent sur la
-            // bg_color si le rendu est transparent (logique partagée avec GTK).
+            // PNG/WebP/TIFF preserve alpha; JPEG/BMP composite onto the
+            // bg_color if the render is transparent (logic shared with GTK).
             frontend::save_rgba_image(&path, img, self.params.transparent, self.params.bg_color)
         };
 
@@ -153,7 +153,7 @@ impl App {
             self.notify(frontend::msg::SAVE_CANCELLED);
             return;
         }
-        // Réutiliser les dots du dernier rendu évite de relancer le pipeline.
+        // Reusing the dots of the last render avoids restarting the pipeline.
         let rendered = {
             let dots_guard = self.last_dots.lock().unwrap_or_else(|e| e.into_inner());
             match (dots_guard.as_ref(), &self.src_rgb) {
@@ -168,7 +168,7 @@ impl App {
             self.write_svg(path, rendered);
             return;
         }
-        // Fallback : aucun dot en cache, on recalcule depuis l'image source.
+        // Fallback: no cached dot, we recompute from the source image.
         if let Some(src) = &self.src_rgb {
             let rendered = filter::render_svg(src, &self.params);
             self.write_svg(path, rendered);

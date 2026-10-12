@@ -1,22 +1,20 @@
-//! Palette de commandes (`Ctrl+K`).
+//! Command palette (`Ctrl+K`).
 //!
-//! L'interface GTK dispose d'un menu principal et d'une fenêtre de raccourcis
-//! (`src/gtk/wire.rs`, `src/gtk/shortcuts.rs`). egui n'avait ni l'un ni
-//! l'autre : ses dix-sept raccourcis n'étaient découvrables qu'au survol, et
-//! la carte de densité comme le plein écran n'étaient atteignables que par le
-//! cycle `Tab` ou pas du tout.
+//! The GTK interface has a main menu and a shortcuts window
+//! (`src/gtk/wire.rs`, `src/gtk/shortcuts.rs`). egui had neither: its
+//! seventeen shortcuts were only discoverable by hovering, and the density map
+//! like full screen were only reachable through the `Tab` cycle or not at all.
 //!
-//! La palette donne accès à toutes les actions depuis un champ unique. Elle
-//! reste une implémentation propre à egui — `egui::Window`, pas de
-//! `adw::Dialog`, pas de `GMenu` — pour que les deux interfaces continuent
-//! d'exploiter leur toolkit.
+//! The palette gives access to every action from a single field. It stays an
+//! egui-specific implementation — `egui::Window`, no `adw::Dialog`, no
+//! `GMenu` — so that both interfaces keep using their own toolkit.
 
 use eframe::egui;
 
-/// Une action exécutable depuis la palette.
+/// An action that can be run from the palette.
 ///
-/// `enabled` décide de l'apparence : une action indisponible reste visible
-/// mais grisée, pour que l'utilisateur découvre ce qui existe.
+/// `enabled` decides the appearance: an unavailable action stays visible but
+/// greyed out, so that the user discovers what exists.
 pub(crate) struct Command {
     pub label: &'static str,
     pub hint: &'static str,
@@ -24,10 +22,10 @@ pub(crate) struct Command {
     pub run: fn(&mut crate::App, &egui::Context),
 }
 
-/// Toutes les commandes, dans l'ordre d'affichage.
+/// All the commands, in display order.
 ///
-/// Chaque entrée porte son raccourci dans `hint` : c'est la seule façon, en
-/// egui, de rendre les raccourcis découvrables.
+/// Each entry carries its shortcut in `hint`: it is the only way, in egui, to
+/// make the shortcuts discoverable.
 pub(crate) fn all(app: &crate::App) -> Vec<Command> {
     let has_final = app.has_final_result();
     let has_dots = app.src_rgb.is_some();
@@ -172,12 +170,12 @@ pub(crate) fn all(app: &crate::App) -> Vec<Command> {
     ]
 }
 
-/// Dessine la palette pour une frame.
+/// Draws the palette for one frame.
 ///
-/// Renvoie `Some(texte)` tant qu'elle reste ouverte, `None` dès qu'une commande
-/// a été jouée ou que l'utilisateur l'a fermée (croix ou `Échap`).
+/// Returns `Some(text)` as long as it stays open, `None` as soon as a command
+/// has been played or the user closed it (cross or `Esc`).
 pub(crate) fn show(app: &mut crate::App, ctx: &egui::Context, mut query: String) -> Option<String> {
-    // Entrée déclenche la première commande proposée, comme dans toute palette.
+    // Enter triggers the first proposed command, as in every palette.
     let enter_pressed = ctx.input(|i| i.key_pressed(egui::Key::Enter));
     let commands = all(app);
     let filter = query.to_lowercase();
@@ -192,8 +190,8 @@ pub(crate) fn show(app: &mut crate::App, ctx: &egui::Context, mut query: String)
 
     let mut open = true;
     let mut run: Option<fn(&mut crate::App, &egui::Context)> = None;
-    // `open` est emprunté par `.open(&mut open)` pendant tout le dessin ; la
-    // fermeture demandée depuis l'intérieur passe par un drapeau distinct.
+    // `open` is borrowed by `.open(&mut open)` for the whole drawing; closing
+    // requested from the inside goes through a separate flag.
     let mut triggered = false;
 
     egui::Window::new("Commandes")
@@ -208,8 +206,8 @@ pub(crate) fn show(app: &mut crate::App, ctx: &egui::Context, mut query: String)
                     .hint_text("Rechercher une commande…")
                     .desired_width(f32::INFINITY),
             );
-            // Le focus suit le champ à chaque frame : sans cela il faut cliquer
-            // dedans une fois la palette ouverte.
+            // Focus follows the field on every frame: without that, one has to
+            // click inside it once the palette is open.
             response.request_focus();
             ui.separator();
             if matching.is_empty() {

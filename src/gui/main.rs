@@ -1,24 +1,24 @@
-//! Point d'entrée de la GUI pointimg.
+//! Entry point of the pointimg GUI.
 //!
-//! Architecture :
-//! - Thread principal = thread egui (obligatoire sur macOS/Windows)
-//! - Calcul du filtre dans un thread séparé via `std::thread::spawn`
-//! - Communication : `Arc<Mutex<Option<DynamicImage>>>` + `AtomicBool` computing
+//! Architecture:
+//! - Main thread = egui thread (mandatory on macOS/Windows)
+//! - Filter compute in a separate thread via `std::thread::spawn`
+//! - Communication: `Arc<Mutex<Option<DynamicImage>>>` + `AtomicBool` computing
 //!   + cancel token
-//! - Density map de preview : calculée hors thread GUI et publiée quand prête
-//! - Preview progressive : pour Voronoï/K-means, chaque itération publie un
-//!   résultat intermédiaire
-//! - Dots cachés : stockés dans App après chaque calcul complet, utilisés pour
-//!   l'export SVG
+//! - Preview density map: computed outside the GUI thread and published when ready
+//! - Progressive preview: for Voronoi/K-means, each iteration publishes an
+//!   intermediate result
+//! - Cached dots: stored in App after every full compute, used for
+//!   the SVG export
 //!
-//! Découpage :
-//! - [`convert`] : conversion d'images `image` → textures egui
-//! - `format` : formatage humain (durées) + garde des générations
-//! - [`io`] : écritures atomiques et validation des chemins de sortie
-//! - [`app`] : état applicatif et logique de haut niveau (chargement, undo/redo)
-//! - [`compute`] : workers de calcul du filtre et de la density map
-//! - [`save`] : export des résultats (preset, image, SVG)
-//! - [`ui`] : rendu egui (en-tête, panneau de contrôle, zone centrale)
+//! Breakdown:
+//! - [`convert`]: conversion of `image` images → egui textures
+//! - `format`: human formatting (durations) + generation guard
+//! - [`io`]: atomic writes and validation of output paths
+//! - [`app`]: application state and high-level logic (loading, undo/redo)
+//! - [`compute`]: compute workers of the filter and of the density map
+//! - [`save`]: result exports (preset, image, SVG)
+//! - [`ui`]: egui rendering (header, control panel, central area)
 
 mod app;
 mod compute;
@@ -48,10 +48,10 @@ fn main() -> eframe::Result {
     env_logger::init();
     use eframe::egui_wgpu::{WgpuConfiguration, WgpuSetup, WgpuSetupCreateNew};
 
-    // Backend GPU : sur Linux on force Vulkan + GL (fallback pour Wayland/EGL
-    // selon le driver NVIDIA/AMD/Intel). Sur macOS on laisse wgpu choisir
-    // Metal automatiquement. Sur Windows, le backend par défaut (DX12/Vulkan)
-    // fonctionne nativement.
+    // GPU backend: on Linux we force Vulkan + GL (fallback for Wayland/EGL
+    // depending on the NVIDIA/AMD/Intel driver). On macOS we let wgpu choose
+    // Metal automatically. On Windows, the default backend (DX12/Vulkan)
+    // works natively.
     #[cfg(target_os = "linux")]
     let backends = wgpu::Backends::VULKAN | wgpu::Backends::GL;
     #[cfg(not(target_os = "linux"))]
@@ -75,9 +75,9 @@ fn main() -> eframe::Result {
         wgpu_options,
         ..Default::default()
     };
-    // Chemin passé en argument : `pointimg-gui photo.jpg`. La fenêtre n'existe
-    // pas encore ici, le chargement attend la première frame — c'est
-    // `App::pending_open` qui s'en charge.
+    // Path given as an argument: `pointimg-gui photo.jpg`. The window does not
+    // exist yet here, loading waits for the first frame — that is
+    // `App::pending_open` that takes care of it.
     let requested = pending_open_from_args();
     eframe::run_native(
         "pointimg",
@@ -90,14 +90,14 @@ fn main() -> eframe::Result {
     )
 }
 
-/// Icône de la fenêtre, lue dans le binaire.
+/// Window icon, read into the binary.
 ///
-/// egui n'a pas de thème d'icônes : contrairement à GTK, qui va chercher
-/// `pointimg` dans le thème du bureau, il faut fournir les pixels. Le PNG est
-/// embarqué — c'est le coût de 20 ko — plutôt que lu sur disque, pour ne pas
-/// dépendre du répertoire d'installation.
+/// egui has no icon theme: unlike GTK, which looks for `pointimg` in the
+/// desktop theme, the pixels must be provided. The PNG is embedded — that is
+/// the cost of 20 kB — rather than read from disk, so as not to depend on the
+/// installation directory.
 ///
-/// Le SVG maître est dans `assets/logo/` ; les PNG en sont dérivés par
+/// The master SVG is in `assets/logo/`; the PNGs are derived from it by
 /// `packaging/icons/regenerate.sh`.
 fn window_icon() -> egui::IconData {
     let png = include_bytes!("../../assets/logo/pointimg-256.png");
@@ -112,8 +112,8 @@ fn window_icon() -> egui::IconData {
             }
         }
         Err(e) => {
-            // Une icône absente ne doit pas empêcher l'application de
-            // démarrer : on le signale et on ouvre sans.
+            // A missing icon must not prevent the application from
+            // starting: we report it and open without it.
             log::warn!("icône de fenêtre illisible : {e}");
             egui::IconData {
                 rgba: Vec::new(),
@@ -124,11 +124,11 @@ fn window_icon() -> egui::IconData {
     }
 }
 
-/// Chemins d'images ou de dossiers reçus sur la ligne de commande.
+/// Image or folder paths received on the command line.
 ///
-/// egui ne gère pas l'activation D-Bus comme GTK : seule la ligne de commande
-/// est lue ici, ce qui couvre `pointimg-gui photo.jpg` et l'association de
-/// fichiers du bureau.
+/// egui does not handle D-Bus activation like GTK: only the command line is
+/// read here, which covers `pointimg-gui photo.jpg` and the desktop's file
+/// associations.
 fn pending_open_from_args() -> Option<PathBuf> {
     std::env::args_os()
         .skip(1)
@@ -136,148 +136,146 @@ fn pending_open_from_args() -> Option<PathBuf> {
         .find(|path| pointimg::frontend::is_supported_image(path) || path.is_dir())
 }
 
-/// Entrée d'historique : les paramètres d'un état passé + son libellé.
+/// History entry: the parameters of a past state + its label.
 pub(crate) struct HistoryEntry {
     pub params: pointimg::filter::FilterParams,
-    /// « Algorithme : Grid → Voronoi », « Nombre de points : 800 → 1500 »…
+    /// "Algorithm: Grid → Voronoi", "Number of points: 800 → 1500"…
     pub label: String,
 }
 
-/// État de l'application : partage le type entre les modules `app`, `compute`,
-/// `save` et `ui` (un `impl App` par module pour sa partie de logique).
+/// Application state: shares the type between the `app`, `compute`,
+/// `save` and `ui` modules (one `impl App` per module for its part of logic).
 pub(crate) struct App {
     pub params: pointimg::filter::FilterParams,
 
-    // Image source originale (DynamicImage pour supporter RGBA)
+    // Original source image (DynamicImage to support RGBA)
     pub src_dynamic: Option<DynamicImage>,
-    // Image source convertie en RGB8 (mise en cache, recalculée si bg_color change)
+    // Source image converted to RGB8 (cached, recomputed if bg_color changes)
     pub src_rgb: Option<RgbImage>,
     pub src_path: Option<PathBuf>,
-    /// Taille du fichier source en octets, pour comparer l'export à l'original.
+    /// Size of the source file in bytes, to compare the export to the original.
     pub source_size: Option<u64>,
-    /// Dernier dossier d'enregistrement (proposé ensuite aux dialogues).
+    /// Last save directory (then offered to the dialogs).
     pub last_dir: Option<PathBuf>,
-    /// Images du dossier courant, pour la navigation `←`/`→`.
+    /// Images of the current folder, for `←`/`→` navigation.
     pub folder_images: Vec<PathBuf>,
     pub folder_index: Option<usize>,
     pub src_texture: Option<egui::TextureHandle>,
 
-    // Résultat du filtre (mis à jour à chaque preview intermédiaire aussi).
-    // Stocké en RGBA pour supporter le mode transparent (canal alpha préservé).
-    // L'`Arc` intérieur permet à la mesure de taille d'export d'emprunter
-    // l'image sans la copier (elle pèse jusqu'à ~33 Mo) — c'est le même motif
-    // que `density_data`.
+    // Filter result (also updated at every intermediate preview).
+    // Stored in RGBA to support transparent mode (alpha channel preserved).
+    // The inner `Arc` lets the export size measurement borrow the image without
+    // copying it (it weighs up to ~33 MB) — the same pattern as `density_data`.
     pub result: Arc<Mutex<Option<Arc<RgbaImage>>>>,
     pub result_texture: Option<egui::TextureHandle>,
     pub result_revision: Arc<AtomicU64>,
     pub result_texture_revision: u64,
 
-    // Dots du dernier calcul terminé (utilisés pour export SVG)
+    // Dots of the last completed compute (used for the SVG export)
     pub last_dots: Arc<Mutex<Option<Vec<Dot>>>>,
 
-    // Density map de preview, calculée hors thread GUI.
+    // Preview density map, computed outside the GUI thread.
     pub density_image: Option<ImgGrayImage>,
     pub density_texture: Option<egui::TextureHandle>,
     pub density_result: Arc<Mutex<Option<ImgGrayImage>>>,
     pub density_data: Arc<Mutex<Option<Arc<Vec<f32>>>>>,
-    /// Échelle de l'image servant au calcul en cours (1.0 = pleine résolution).
+    /// Scale of the image used by the current compute (1.0 = full resolution).
     pub density_scale: f32,
 
-    // Progression (iter_courant, iter_total)
+    // Progress (iter_current, iter_total)
     pub progress: Arc<Mutex<(usize, usize)>>,
 
-    // Calcul en cours ?
+    // Compute in progress?
     pub computing: Arc<AtomicBool>,
-    // Token d'annulation
+    // Cancel token
     pub cancel: Arc<AtomicBool>,
-    // Identifie le dernier calcul demandé. Les workers obsolètes ne publient rien.
+    // Identifies the last requested compute. Obsolete workers publish nothing.
     pub compute_generation: Arc<AtomicU64>,
-    // Identifie la dernière density map demandée.
+    // Identifies the last requested density map.
     pub density_generation: Arc<AtomicU64>,
 
-    // Erreur du thread de calcul
+    // Error from the compute thread
     pub compute_error: Arc<Mutex<Option<String>>>,
 
-    // Temps de calcul du dernier rendu terminé
+    // Compute time of the last finished render
     pub last_compute_ms: Option<u64>,
     pub compute_start: Option<Instant>,
 
     // Last instant at which a parameter changed, used for debounce.
     pub last_param_change: Option<Instant>,
 
-    // Mode aperçu rapide + finalisation automatique.
+    // Quick preview mode + automatic finalization.
     pub quality: Quality,
-    /// Passe de finalisation en cours (pleine résolution malgré le mode rapide).
+    /// Finalization pass in progress (full resolution despite quick mode).
     pub final_pass: bool,
-    /// Le résultat affiché est-il en pleine résolution ? Partagé avec le
-    /// worker, qui le publie en fin de calcul.
+    /// Is the displayed result in full resolution? Shared with the worker,
+    /// which publishes it at the end of the compute.
     pub result_is_final: Arc<AtomicBool>,
-    /// Instant auquel déclencher la finalisation.
+    /// Instant at which to trigger the finalization.
     pub finalize_at: Option<Instant>,
 
-    // Undo/redo : historique des FilterParams commités.
+    // Undo/redo: history of the committed FilterParams.
     pub history: Vec<HistoryEntry>,
     pub future: Vec<HistoryEntry>,
-    // `last_committed` est la version "live" au moment du dernier commit
-    // (sert à éviter de pousser 50 entrées consécutives sur un même slider).
+    // `last_committed` is the "live" version at the time of the last commit
+    // (serves to avoid pushing 50 consecutive entries on the same slider).
     pub last_committed: Option<pointimg::filter::FilterParams>,
-    // Drapeau : un changement vient d'être détecté, mais le debounce est en
-    // cours. Quand le compute se termine (et sans nouveau commit prévu),
-    // on pousse l'état actuel dans l'historique.
+    // Flag: a change has just been detected, but the debounce is in
+    // progress. When the compute finishes (and with no new commit planned),
+    // the current state is pushed into the history.
     pub pending_commit: bool,
-    /// La density map est à recalculer (la variance a bougé). Elle part avec
-    /// le debounce du filtre : sans cela, chaque pixel de glissement d'un
-    /// curseur lancerait un calcul de density map sur toute l'image.
+    /// The density map needs recomputing (the variance changed). It goes with
+    /// the filter debounce: without that, every pixel of a slider drag would
+    /// launch a density map compute over the whole image.
     pub density_pending: bool,
 
-    // Taille d'export, mesurée par encodage réel dans un thread de travail
-    // (cf. `exports.rs`). `export_sizes_revision` est la révision du résultat
-    // pour laquelle la mesure affichée a été faite.
+    // Export size, measured by real encoding in a worker thread
+    // (see `exports.rs`). `export_sizes_revision` is the revision of the
+    // result for which the displayed measurement was made.
     pub export_sizes: Option<pointimg::export::ExportSizes>,
     pub export_sizes_revision: u64,
     pub export_sizes_generation: Arc<AtomicU64>,
     pub export_sizes_computing: Arc<std::sync::atomic::AtomicBool>,
     pub export_sizes_slot: Arc<Mutex<Option<pointimg::export::ExportSizes>>>,
 
-    // Mode d'affichage
+    // Display mode
     pub view_mode: ViewMode,
 
-    // Niveau de zoom (1.0 = 100 %)
+    // Zoom level (1.0 = 100 %)
     pub zoom: f32,
     // Whether the preview should fit the available panel.
     pub zoom_fit: bool,
-    // Zoom réellement appliqué (mode « Ajuster » : déduit du viewport).
+    // Zoom actually applied ("Fit" mode: deduced from the viewport).
     pub effective_zoom: f32,
-    // Position du curseur de comparaison (0 = tout à droite).
+    // Position of the comparison handle (0 = all the way to the right).
     pub compare_split: f32,
 
-    // Message de statut
+    // Status message
     pub status: String,
-    // Titre de la fenêtre (nom du fichier), pour éviter de le renvoyer à chaque frame.
+    // Window title (file name), to avoid sending it again on every frame.
     pub window_title: String,
-    /// Notifications éphémères (erreurs, confirmations).
+    /// Ephemeral notifications (errors, confirmations).
     pub toasts: notify::Toasts,
-    /// Palette de commandes ouverte (`Ctrl+K`) et son texte de recherche.
+    /// Command palette open (`Ctrl+K`) and its search text.
     pub palette: Option<String>,
-    /// Chemin donné en ligne de commande, chargé à la première frame : la
-    /// fenêtre n'existe pas encore au moment où `main` le reçoit.
+    /// Path given on the command line, loaded on the first frame: the window
+    /// does not exist yet when `main` receives it.
     pub pending_open: Option<PathBuf>,
-    /// Échelle d'interface appliquée au style egui (1.0 = confortable).
+    /// Interface scale applied to the egui style (1.0 = comfortable).
     pub ui_scale: f32,
-    /// Thème imposé par l'utilisateur ; `None` suit la préférence du système.
+    /// Theme forced by the user; `None` follows the system preference.
     pub ui_theme: Option<egui::Theme>,
-    /// Préférences d'interface persistées (échelle, thème).
+    /// Persisted interface preferences (scale, theme).
     pub prefs: Option<prefs::InterfacePrefs>,
-    /// Vignettes des presets, décodées et montées au GPU une seule fois.
+    /// Preset thumbnails, decoded and uploaded to the GPU only once.
     ///
-    /// Elles étaient reconstruites à chaque frame (neuf `read_dir`, neuf
-    /// décodages PNG de ~130 Ko et neuf montées de texture), ce qu'un panneau
-    /// redessiné plusieurs fois par seconde ne peut pas se permettre. `None`
-    /// tant que le chargement n'a pas eu lieu — c'est ce qui distingue « pas
-    /// encore fait » de « fait et vide ».
+    /// They were rebuilt on every frame (nine `read_dir`, nine PNG decodes of
+    /// ~130 kB and nine texture uploads), which a panel redrawn several times
+    /// per second cannot afford. `None` as long as loading has not happened —
+    /// that is what distinguishes "not done yet" from "done and empty".
     pub preset_thumbnails: Option<Vec<Option<egui::TextureHandle>>>,
-    /// Échelle pour laquelle le style a été appliqué (evite de le refaire à
-    /// chaque frame).
+    /// Scale for which the style has been applied (avoids redoing it on
+    /// every frame).
     pub applied_style: Option<f32>,
 }
 
@@ -346,58 +344,58 @@ impl Default for App {
 }
 
 impl App {
-    /// Construit l'application en relisant les préférences d'interface
-    /// enregistrées au lancement précédent.
+    /// Builds the application by rereading the interface preferences saved at
+    /// the previous launch.
     pub fn new() -> Self {
         let mut app = Self::default();
         if let Some(prefs) = prefs::InterfacePrefs::load() {
             if let Some(scale) = prefs.scale() {
                 app.ui_scale = scale.clamp(0.85, 1.6);
             }
-            // Une absence de clé signifie « suivre le système ».
+            // A missing key means "follow the system".
             app.ui_theme = prefs.theme();
             app.prefs = Some(prefs);
         }
         app
     }
 
-    /// Enregistre une préférence d'interface (immédiatement : quitter aussitôt
-    /// après le changement ne perd rien).
+    /// Saves an interface preference (immediately: quitting right after the
+    /// change loses nothing).
     pub fn persist_display_preferences(&mut self) {
         if let Some(prefs) = &mut self.prefs {
             prefs.save(self.ui_scale, self.ui_theme);
         }
     }
 
-    /// Applique le thème choisi au contexte. « Auto » rend la main à egui,
-    /// qui suit alors la préférence du système.
+    /// Applies the chosen theme to the context. "Auto" hands control back to
+    /// egui, which then follows the system preference.
     pub(crate) fn apply_theme(&self, ctx: &egui::Context) {
         let preference = match self.ui_theme {
             Some(egui::Theme::Dark) => egui::ThemePreference::Dark,
             Some(egui::Theme::Light) => egui::ThemePreference::Light,
             None => egui::ThemePreference::System,
         };
-        // Écrire les options à chaque rendu redemanderait un rendu : on ne
-        // touche au contexte que si la préférence a vraiment changé.
+        // Writing the options on every render would ask for another render: we
+        // only touch the context if the preference has really changed.
         if ctx.options(|options| options.theme_preference) != preference {
             ctx.set_theme(preference);
         }
     }
 
-    /// Un changement de réglage : armement du debounce + historique.
+    /// A setting change: arming the debounce + history.
     pub(crate) fn on_params_changed(&mut self, ctx: &egui::Context) {
         if self.src_rgb.is_none() {
             return;
         }
         self.last_param_change = Some(Instant::now());
         self.pending_commit = true;
-        // Une modification annule la finalisation en attente : c'est le
-        // nouveau réglage qui sera passé en pleine résolution.
+        // A modification cancels the pending finalization: it is the new
+        // setting that will be passed to full resolution.
         self.finalize_at = None;
         ctx.request_repaint();
     }
 
-    /// Change la qualité de l'aperçu et relance un calcul.
+    /// Changes the preview quality and restarts a compute.
     pub(crate) fn set_quality(&mut self, quality: Quality, ctx: &egui::Context) {
         if self.quality == quality {
             return;
@@ -410,8 +408,8 @@ impl App {
         }
     }
 
-    /// Recalcule en pleine résolution sans changer le mode choisi ( bouton
-    /// Recalculer, Espace, finalisation automatique).
+    /// Recomputes in full resolution without changing the chosen mode (
+    /// Recompute button, Space, automatic finalization).
     pub(crate) fn request_full_compute(&mut self, ctx: &egui::Context) {
         if self.src_rgb.is_none() {
             return;
@@ -424,19 +422,19 @@ impl App {
         self.start_compute(ctx);
     }
 
-    /// Le calcul en cours est-il en pleine résolution ?
+    /// Is the compute in progress in full resolution?
     pub(crate) fn computes_full_resolution(&self) -> bool {
         self.quality.is_full() || self.final_pass
     }
 
-    /// Image source utilisée pour un calcul, sous-échantillonnée en mode rapide.
+    /// Source image used for a compute, downsampled in quick mode.
     pub(crate) fn compute_source(&self) -> Option<RgbImage> {
         let src = self.src_rgb.as_ref()?;
         if self.final_pass {
             return Some(src.clone());
         }
-        // Le sous-échantillonnage est partagé avec GTK : un aperçu doit montrer
-        // les mêmes pixels des deux côtés.
+        // The downsampling is shared with GTK: a preview must show the same
+        // pixels on both sides.
         Some(pointimg::frontend::downsample(src, self.quality.scale()))
     }
 }
@@ -445,17 +443,17 @@ impl App {
 mod tests {
     use super::*;
 
-    /// L'icône embarquée doit être décodable, sinon la fenêtre s'ouvre sans
-    /// icône et rien ne le signale à l'utilisateur.
+    /// The embedded icon must be decodable, otherwise the window opens without
+    /// an icon and nothing signals it to the user.
     #[test]
     fn licone_de_fenetre_est_decodable() {
         let icon = window_icon();
         assert_eq!(icon.width, 256);
         assert_eq!(icon.height, 256);
         assert_eq!(icon.rgba.len(), 256 * 256 * 4);
-        // Le centre du grand point cyan, à (163, 169) sur la grille 512,
-        // soit (81, 84) en 256. Le coin haut-gauche est transparent : le
-        // cercle n'y passe pas.
+        // The center of the big cyan dot, at (163, 169) on the 512 grid,
+        // i.e. (81, 84) in 256. The top-left corner is transparent: the
+        // circle does not go through it.
         let x = 81 * 4;
         let y = 84 * icon.width as usize * 4;
         let centre = &icon.rgba[x + y..x + y + 4];
@@ -464,8 +462,8 @@ mod tests {
             &[0x00, 0xAE, 0xEF, 0xFF],
             "le centre du logo devrait être le cyan du point principal"
         );
-        // Et le coin, lui, doit être transparent : une icône de bureau ne doit
-        // pas poser un carré opaque.
+        // And the corner, itself, must be transparent: a desktop icon must not
+        // set an opaque square.
         assert_eq!(&icon.rgba[..4], &[0, 0, 0, 0]);
     }
 }
