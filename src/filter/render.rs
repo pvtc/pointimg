@@ -3,25 +3,25 @@ use image::{Rgb, RgbImage, Rgba, RgbaImage};
 use rayon::prelude::*;
 use std::f32::consts::PI;
 
-// ─── Rendu commun ─────────────────────────────────────────────────────────────
+// ─── Common render ────────────────────────────────────────────────────────────
 
 // ─── Anti-aliasing ───────────────────────────────────────────────────────────
 
-/// Facteur de supersampling : 4×4 = 16 sous-pixels par pixel.
-/// Compromis qualité/perf : couvre 16 niveaux d'opacity par pixel de bord.
+/// Supersampling factor: 4×4 = 16 sub-pixels per pixel.
+/// Quality/perf compromise: covers 16 opacity levels per edge pixel.
 const AA_SS: u32 = 4;
 const AA_TOTAL: u32 = AA_SS * AA_SS;
 const AA_STEP: f32 = 1.0 / AA_SS as f32;
 
-/// Couverture (en 16ès de pixel) d'un pixel par une forme convexe,
-/// en coords locales `(lx, ly)` centrées sur le dot.
+/// Coverage (in sixteenths of a pixel) of a pixel by a convex shape,
+/// in local coords `(lx, ly)` centered on the dot.
 ///
-/// Prétest des 4 coins du pixel : pour une forme convexe,
-///   - 4 coins dedans ⇒ pixel entièrement couvert (chemin rapide).
-///   - 4 coins dehors + centroïde dehors ⇒ pixel entièrement découvert (skip).
-///   - sinon ⇒ supersampling 4×4 (chemin lent ≈ pixels de bord).
+/// Pretest of the 4 corners of the pixel: for a convex shape,
+///   - 4 corners inside ⇒ fully covered pixel (fast path).
+///   - 4 corners outside + centroid outside ⇒ fully uncovered pixel (skip).
+///   - otherwise ⇒ 4×4 supersampling (slow path ≈ edge pixels).
 ///
-/// `cx`, `cy` : position float du centre du dot en coords image.
+/// `cx`, `cy`: float position of the dot center in image coords.
 #[inline]
 fn coverage_aa<F>(px: i32, py: i32, cx: f32, cy: f32, inside: F) -> u32
 where
@@ -65,8 +65,8 @@ pub(crate) fn render(src: &RgbImage, dots: &[Dot], params: &FilterParams) -> Rgb
     let bg_rgb = params.bg_color;
     let mut dst = RgbImage::from_pixel(w, h, Rgb(bg_rgb));
 
-    // Si palette + dithering, on garde les couleurs moyennes originales des dots
-    // et on post-quantifie l'image rendue avec l'algorithme choisi.
+    // With a palette + dithering, the original average colors of the dots are
+    // kept and the rendered image is post-quantized with the chosen algorithm.
     let quantized: Vec<Dot>;
     let palette_centers: Vec<[u8; 3]>;
     let (dots_to_draw, dither_palette): (&[Dot], &[[u8; 3]]) = match params.palette_size {
@@ -82,7 +82,7 @@ pub(crate) fn render(src: &RgbImage, dots: &[Dot], params: &FilterParams) -> Rgb
         None => (dots, &[][..]),
     };
 
-    // Trier : les plus gros points d'abord (arrière-plan), les petits en dernier (avant-plan)
+    // Sort: the biggest dots first (background), the small ones last (foreground)
     let mut sorted: Vec<&Dot> = dots_to_draw.iter().collect();
     sorted.sort_unstable_by(|a, b| b.radius.total_cmp(&a.radius));
 
@@ -94,9 +94,9 @@ pub(crate) fn render(src: &RgbImage, dots: &[Dot], params: &FilterParams) -> Rgb
     dst
 }
 
-/// Dessine les dots par bandes horizontales parallèles (rayon). Chaque bande
-/// applique les dots dans l'ordre global (rayon décroissant) en bornant les
-/// pixels à ses lignes — résultat identique au dessin séquentiel.
+/// Draws the dots in parallel horizontal bands (by radius). Each band applies
+/// the dots in the global order (decreasing radius) while bounding the pixels
+/// to its own lines — a result identical to sequential drawing.
 fn draw_sorted_bands_rgb(dst: &mut RgbImage, sorted: &[&Dot], shape: DotShape) {
     let (w, h) = dst.dimensions();
     let stride = w as usize * 3;
@@ -123,11 +123,11 @@ fn draw_sorted_bands_rgb(dst: &mut RgbImage, sorted: &[&Dot], shape: DotShape) {
                     dot.radius,
                     shape,
                     (y0 as u32, y1 as u32),
-                    // `impl FnMut` plutôt que `&mut dyn FnMut` : la fermeture
-                    // est monomorphisée avec l'appel, donc `(py - y0) * stride`
-                    // est remonté hors de la boucle sur `px` et l'appel n'est
-                    // plus indirect. Sortie identique, un appel en moins par
-                    // pixel mélangé.
+                    // `impl FnMut` rather than `&mut dyn FnMut`: the closure
+                    // is monomorphized with the call, so `(py - y0) * stride`
+                    // is hoisted out of the loop over `px` and the call is no
+                    // longer indirect. Identical output, one call fewer per
+                    // blended pixel.
                     &mut |px: u32, py: u32, cov: u32| {
                         let off = (py as usize - y0) * stride + px as usize * 3;
                         blend_rgb_band(band, off, color, cov);
@@ -137,7 +137,7 @@ fn draw_sorted_bands_rgb(dst: &mut RgbImage, sorted: &[&Dot], shape: DotShape) {
         });
 }
 
-/// Blend RGB d'un pixel (même formule que le chemin séquentiel).
+/// RGB blend of a pixel (same formula as the sequential path).
 #[inline]
 fn blend_rgb_band(band: &mut [u8], off: usize, color: [u8; 3], coverage: u32) {
     debug_assert!(coverage > 0 && coverage <= AA_TOTAL);
@@ -154,12 +154,12 @@ fn blend_rgb_band(band: &mut [u8], off: usize, color: [u8; 3], coverage: u32) {
     }
 }
 
-/// Dessine un dot anti-aliasé selon la forme choisie, borné aux lignes
-/// `y_clip = (y0, y1)` (lignes hors-clip ignorées → dessin par bandes).
+/// Draws an anti-aliased dot according to the chosen shape, bounded to the
+/// lines `y_clip = (y0, y1)` (out-of-clip lines ignored → band drawing).
 ///
-/// `(cx_f, cy_f)` : centre en pixels (float, préserve la sous-pixel position).
-/// `r_f` : rayon en pixels (float).
-/// `blend(px, py, coverage)` peint le pixel touché (coverage ∈ (0, AA_TOTAL]).
+/// `(cx_f, cy_f)`: center in pixels (float, preserves the sub-pixel position).
+/// `r_f`: radius in pixels (float).
+/// `blend(px, py, coverage)` paints the touched pixel (coverage ∈ (0, AA_TOTAL]).
 #[allow(clippy::too_many_arguments)]
 fn draw_dot_clipped(
     img_w: u32,
@@ -186,7 +186,7 @@ fn draw_dot_clipped(
     let px_max = (cx_f + b).floor() as i32;
     let py_min = (cy_f - b).ceil() as i32;
     let py_max = (cy_f + b).floor() as i32;
-    // Clip à la bande y_clip puis aux bornes de l'image.
+    // Clip to the y_clip band then to the image bounds.
     let px0 = px_min.max(0);
     let px1 = px_max.min(iw - 1);
     let py0 = py_min.max(y_clip.0 as i32).max(0);
@@ -227,7 +227,7 @@ fn draw_dot_clipped(
             for py in py0..=py1 {
                 for px in px0..=px1 {
                     let cov = coverage_aa(px, py, cx_f, cy_f, |lx, ly| {
-                        // Rotation inverse : repère de l'ellipse.
+                        // Inverse rotation: frame of the ellipse.
                         let rx = lx * cos_a + ly * sin_a;
                         let ry = -lx * sin_a + ly * cos_a;
                         (rx / a).powi(2) + (ry / b_axis).powi(2) <= 1.0
@@ -254,7 +254,7 @@ fn draw_dot_clipped(
     }
 }
 
-/// Test si (px, py) est dans un polygone régulier à `n` côtés de rayon `r`.
+/// Tests whether (px, py) is inside a regular polygon with `n` sides of radius `r`.
 pub(crate) fn point_in_regular_polygon(px: f32, py: f32, r: f32, n: usize) -> bool {
     let d = (px * px + py * py).sqrt();
     if d > r {
@@ -272,14 +272,14 @@ pub(crate) fn point_in_regular_polygon(px: f32, py: f32, r: f32, n: usize) -> bo
     d <= dist_to_edge
 }
 
-/// K-means sur les couleurs des `dots`, retournant `n` centres en f32.
-/// Facteur commun entre `quantize_dots` (nearest-color mapping) et
-/// `quantize_palette_centers` (centres seuls, pour dithering).
+/// K-means over the colors of the `dots`, returning `n` centers in f32.
+/// Common factor between `quantize_dots` (nearest-color mapping) and
+/// `quantize_palette_centers` (centers alone, for dithering).
 fn compute_centers(dots: &[Dot], n: usize) -> Vec<[f32; 3]> {
     if dots.is_empty() || n >= dots.len() {
         return Vec::new();
     }
-    // Initialisation : sous-échantillonnage uniforme des dots comme centres
+    // Initialization: uniform subsampling of the dots as centers
     let step = dots.len() / n;
     let mut centers: Vec<[f32; 3]> = (0..n)
         .map(|i| {
@@ -288,18 +288,18 @@ fn compute_centers(dots: &[Dot], n: usize) -> Vec<[f32; 3]> {
         })
         .collect();
 
-    // Les couleurs des dots ne changent pas entre les itérations : on les
-    // déduplique une seule fois et on ne cherche le centre le plus proche
-    // qu'une fois par couleur unique. La distance ne dépend que de la couleur,
-    // donc le résultat reste bit-à-bit identique à une recherche par dot, mais
-    // on évite de répéter `n` multiplications pour des couleurs identiques.
+    // The colors of the dots do not change between iterations: they are
+    // deduplicated once and the closest center is searched only once per
+    // unique color. The distance only depends on the color, so the result
+    // stays bit-for-bit identical to a per-dot search, but repeating `n`
+    // multiplications for identical colors is avoided.
     let (unique_colors, dot_to_unique) = unique_dot_colors(dots);
 
     // Stop early when the color centers have converged.
     for _ in 0..10 {
-        // Meilleur centre par couleur unique : balayage croissant, le premier
-        // minimum l'emporte (comportement de `min_by` sur l'index du centre),
-        // sortie anticipée sur une correspondance exacte.
+        // Best center per unique color: increasing scan, the first minimum
+        // wins (the behavior of `min_by` on the center index), with an early
+        // exit on an exact match.
         let best_per_unique: Vec<usize> = unique_colors
             .iter()
             .map(|&color| {
@@ -327,8 +327,8 @@ fn compute_centers(dots: &[Dot], n: usize) -> Vec<[f32; 3]> {
 
         let mut sums = vec![[0f64; 3]; n];
         let mut counts = vec![0u64; n];
-        // Accumulation dans l'ordre d'origine des dots pour préserver
-        // exactement la somme f64 (donc le résultat bit-à-bit).
+        // Accumulation in the original order of the dots to preserve the f64
+        // sum exactly (hence the bit-for-bit result).
         for (dot, &unique_idx) in dots.iter().zip(&dot_to_unique) {
             let best = best_per_unique[unique_idx];
             sums[best][0] += dot.color[0] as f64;
@@ -362,8 +362,8 @@ fn compute_centers(dots: &[Dot], n: usize) -> Vec<[f32; 3]> {
     centers
 }
 
-/// Déduplique les couleurs des dots. Retourne la liste des couleurs uniques
-/// (ordre d'apparition) et, pour chaque dot, l'index de sa couleur unique.
+/// Deduplicates the colors of the dots. Returns the list of unique colors (in
+/// order of appearance) and, for every dot, the index of its unique color.
 fn unique_dot_colors(dots: &[Dot]) -> (Vec<[u8; 3]>, Vec<usize>) {
     use std::collections::HashMap;
     let mut index_of: HashMap<[u8; 3], usize> = HashMap::with_capacity(dots.len());
@@ -380,7 +380,7 @@ fn unique_dot_colors(dots: &[Dot]) -> (Vec<[u8; 3]>, Vec<usize>) {
     (unique, mapping)
 }
 
-/// Centres de palette en u8 (utile pour le dithering Floyd-Steinberg).
+/// Palette centers in u8 (useful for Floyd-Steinberg dithering).
 pub(crate) fn quantize_palette_centers(dots: &[Dot], n: usize) -> Vec<[u8; 3]> {
     compute_centers(dots, n)
         .iter()
@@ -388,15 +388,15 @@ pub(crate) fn quantize_palette_centers(dots: &[Dot], n: usize) -> Vec<[u8; 3]> {
         .collect()
 }
 
-/// Quantifie les couleurs des dots en `n` couleurs via k-means simple sur RGB,
-/// puis remappe chaque dot sur son centre le plus proche (nearest-color).
+/// Quantizes the colors of the dots to `n` colors via simple k-means over RGB,
+/// then remaps every dot to its closest center (nearest-color).
 pub(crate) fn quantize_dots(dots: &[Dot], n: usize) -> Vec<Dot> {
     if dots.is_empty() || n >= dots.len() {
         return dots.to_vec();
     }
     let centers = compute_centers(dots, n);
 
-    // Remapper chaque dot à la couleur de son centre le plus proche
+    // Remap every dot to the color of its closest center
     dots.iter()
         .map(|dot| {
             let best_color = centers
@@ -420,31 +420,32 @@ pub(crate) fn quantize_dots(dots: &[Dot], n: usize) -> Vec<Dot> {
         .collect()
 }
 
-// ─── Calcul du rayon ─────────────────────────────────────────────────────────
+// ─── Radius computation ──────────────────────────────────────────────────────
 
 pub(crate) fn radius_for_dot(
     lum: f32,
-    local_density: f32, // 0=uniforme 1=détaillé
+    local_density: f32, // 0=uniform 1=detailed
     img_min_side: f32,
     params: &FilterParams,
 ) -> f32 {
     let r_min = params.min_radius_ratio * img_min_side;
     let r_max = params.max_radius_ratio * img_min_side;
 
-    // Halftone : sombre → grand (lum=0 → r_max, lum=1 → r_min)
+    // Halftone: dark → large (lum=0 → r_max, lum=1 → r_min)
     let r_lum = r_max - (r_max - r_min) * lum;
 
-    // Uniformité : zone plate → on pousse encore plus grand
+    // Uniformity: flat zone → pushed even larger
     let uniformity = 1.0 - local_density;
     let boost = 1.0 + uniformity * params.variance_sensitivity * (params.max_boost - 1.0);
     (r_lum * boost).min(params.max_boost * r_max)
 }
 
-// ─── Rendu RGBA (background transparent) ─────────────────────────────────────
+// ─── RGBA rendering (transparent background) ─────────────────────────────────
 
-/// Variant RGBA de `render`. Quand `params.transparent`, le fond initial est
-/// transparent (alpha 0) ; les pixels non couverts par un dot restent transparents.
-/// Sinon, le fond initial est `bg_color` opaque (identique à `render` mais en RGBA).
+/// RGBA variant of `render`. When `params.transparent`, the initial background
+/// is transparent (alpha 0); the pixels not covered by a dot stay transparent.
+/// Otherwise the initial background is `bg_color` opaque (identical to `render`
+/// but in RGBA).
 pub fn render_rgba(src: &RgbImage, dots: &[Dot], params: &FilterParams) -> RgbaImage {
     let (w, h) = src.dimensions();
     let bg_pixel = if params.transparent {
@@ -484,7 +485,7 @@ pub fn render_rgba(src: &RgbImage, dots: &[Dot], params: &FilterParams) -> RgbaI
     draw_sorted_bands_rgba(&mut dst, &sorted, params.dot_shape);
 
     if !dither_palette.is_empty() {
-        // Le dithering travaille sur RGB ; l'alpha déjà calculé est conservé.
+        // The dithering works on RGB; the already computed alpha is preserved.
         let mut rgb = RgbImage::from_fn(w, h, |x, y| {
             let p = dst.get_pixel(x, y);
             Rgb([p[0], p[1], p[2]])
@@ -502,9 +503,10 @@ pub fn render_rgba(src: &RgbImage, dots: &[Dot], params: &FilterParams) -> RgbaI
     dst
 }
 
-/// Dessine les dots RGBA par bandes horizontales parallèles (rayon).
-/// Chaque bande applique les dots dans l'ordre global (rayon décroissant) en
-/// bornant les pixels à ses lignes — résultat identique au dessin séquentiel.
+/// Draws the RGBA dots in parallel horizontal bands (by radius).
+/// Each band applies the dots in the global order (decreasing radius) while
+/// bounding the pixels to its own lines — a result identical to sequential
+/// drawing.
 fn draw_sorted_bands_rgba(dst: &mut RgbaImage, sorted: &[&Dot], shape: DotShape) {
     let (w, h) = dst.dimensions();
     let stride = w as usize * 4;
@@ -540,8 +542,8 @@ fn draw_sorted_bands_rgba(dst: &mut RgbaImage, sorted: &[&Dot], shape: DotShape)
         });
 }
 
-/// Blend RGBA (opérateur "over" sur l'alpha) d'un pixel (même formule que le
-/// chemin séquentiel).
+/// RGBA blend ("over" operator on alpha) of a pixel (same formula as the
+/// sequential path).
 #[inline]
 fn blend_rgba_band(band: &mut [u8], off: usize, color: [u8; 3], coverage: u32) {
     debug_assert!(coverage > 0 && coverage <= AA_TOTAL);
@@ -567,18 +569,19 @@ fn blend_rgba_band(band: &mut [u8], off: usize, color: [u8; 3], coverage: u32) {
     p[3] = (out_a * 255.0 + 0.5) as u8;
 }
 
-// ─── Rendu halftone (composite multiply, ink-over-ink) ────────────────────────
+// ─── Halftone rendering (multiply composite, ink-over-ink) ────────────────────
 
-/// Peint un dot sur un canvas RGBA en mode **multiply** : chaque pixel déjà peint
-/// est multiplié par le mask de transmission de l'encre (modulé par coverage alpha).
+/// Paints a dot on an RGBA canvas in **multiply** mode: every already painted
+/// pixel is multiplied by the transmission mask of the ink (modulated by the
+/// alpha coverage).
 ///
-/// Ceci simule le mélange soustractif des encres : partant du papier blanc, deux
-/// encres successives font que chacune absorbe une partie complémentaire. À
-/// l'inverse du mode "over", le résultat de Magenta + Jaune est bien Rouge et non
-/// du jaune/magenta qui se superposent.
+/// This simulates the subtractive mixing of inks: starting from white paper,
+/// two successive inks make each of them absorb a complementary part. Unlike
+/// "over" mode, the result of Magenta + Yellow is truly Red and not a
+/// yellow/magenta stacking.
 fn blend_multiply_coverage(dst: &mut RgbaImage, px: u32, py: u32, ink: [u8; 3], coverage: u32) {
     debug_assert!(coverage > 0 && coverage <= AA_TOTAL);
-    // alpha en [0, 1] = fraction du pixel couverte par le dot.
+    // alpha in [0, 1] = fraction of the pixel covered by the dot.
     let a = coverage as f32 / AA_TOTAL as f32;
     if a >= 1.0 {
         // Multiply pleine : dst[i] = dst[i] * mask[i] / 255.
@@ -586,7 +589,7 @@ fn blend_multiply_coverage(dst: &mut RgbaImage, px: u32, py: u32, ink: [u8; 3], 
         p[0] = ((p[0] as u32 * ink[0] as u32) / 255) as u8;
         p[1] = ((p[1] as u32 * ink[1] as u32) / 255) as u8;
         p[2] = ((p[2] as u32 * ink[2] as u32) / 255) as u8;
-        // En mode multiply, le papier reste opaque : on force alpha à 255.
+        // In multiply mode, the paper stays opaque: alpha is forced to 255.
         p[3] = 255;
         return;
     }
@@ -711,13 +714,13 @@ fn draw_dot_halftone(
     }
 }
 
-/// Rendu halftone : part du papier (bg_color, ou blanc si multiplicatif), et
-/// applique chaque dot en mode multiply. L'ordre n'a pas d'importance
-/// (commutatif). Les pixels non couverts restent du papier.
+/// Halftone rendering: starts from the paper (bg_color, or white if
+/// multiplicative), and applies every dot in multiply mode. The order does not
+/// matter (commutative). The uncovered pixels stay paper.
 pub fn render_halftone(src: &RgbImage, dots: &[Dot], params: &FilterParams) -> RgbaImage {
     let (w, h) = src.dimensions();
-    // Papier : en halftone on part de blanc par défaut (multiply ne marche pas sur
-    // noir). Si l'utilisateur a explicitement demandé une couleur, on l'utilise.
+    // Paper: in halftone white is the default starting point (multiply does not
+    // work on black). If the user has explicitly requested a color, it is used.
     let paper = if params.transparent {
         Rgba([255, 255, 255, 0])
     } else {
@@ -730,8 +733,8 @@ pub fn render_halftone(src: &RgbImage, dots: &[Dot], params: &FilterParams) -> R
     };
     let mut dst = RgbaImage::from_pixel(w, h, paper);
 
-    // Pas de tri nécessaire : multiply est commutatif. Mais on garde l'ordre de
-    // génération (par canal) pour cohérence avec les tests Jest-like.
+    // No sorting needed: multiply is commutative. But the generation order
+    // (per channel) is kept for consistency with the Jest-like tests.
     for dot in dots {
         if dot.radius <= 0.0 {
             continue;
@@ -752,8 +755,8 @@ pub fn render_halftone(src: &RgbImage, dots: &[Dot], params: &FilterParams) -> R
 mod tests {
     use super::*;
 
-    /// Ancienne implémentation (itérateur + `min_by`) conservée comme référence
-    /// pour vérifier que l'optimisation dédupliquée reste bit-à-bit identique.
+    /// Old implementation (iterator + `min_by`) kept as a reference to verify
+    /// that the deduplicated optimization stays bit-for-bit identical.
     fn compute_centers_reference(dots: &[Dot], n: usize) -> Vec<[f32; 3]> {
         if dots.is_empty() || n >= dots.len() {
             return Vec::new();
@@ -824,8 +827,8 @@ mod tests {
 
     #[test]
     fn deduplicated_centers_match_reference_bit_for_bit() {
-        // Couleurs issues d'une petite palette → beaucoup de doublons, ce qui
-        // exerce la déduplication.
+        // Colors drawn from a small palette → many duplicates, which exercises
+        // the deduplication.
         let palette: [[u8; 3]; 8] = [
             [0, 0, 0],
             [255, 255, 255],

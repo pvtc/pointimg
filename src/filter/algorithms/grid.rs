@@ -5,7 +5,7 @@ use crate::filter::util::{luminance, pixel_sum};
 use image::RgbImage;
 use std::f32::consts::PI;
 
-// ─── Algorithme 1 : Grille ────────────────────────────────────────────────────
+// ─── Algorithm 1: Grid ────────────────────────────────────────────────────────
 
 pub(crate) fn dots_grid(src: &RgbImage, density: &[f32], params: &FilterParams) -> Vec<Dot> {
     let (width, height) = src.dimensions();
@@ -14,7 +14,7 @@ pub(crate) fn dots_grid(src: &RgbImage, density: &[f32], params: &FilterParams) 
     let cols = width / cell;
     let rows = height / cell;
 
-    // Centre de rotation = centre de l'image (coordDevice 0..W, 0..H).
+    // Rotation center = image center (device coords 0..W, 0..H).
     let cx = width as f32 / 2.0;
     let cy = height as f32 / 2.0;
     let angle = params.grid_angle_deg * PI / 180.0;
@@ -34,10 +34,10 @@ pub(crate) fn dots_grid(src: &RgbImage, density: &[f32], params: &FilterParams) 
             let lum = luminance(avg[0], avg[1], avg[2]);
             let d = zone_density(density, x0, y0, cell, cell, width, height);
             let r_nn_cap = cell as f32 * 0.5 * 0.8;
-            // Centre de la cellule.
+            // Cell center.
             let cell_cx = x0 as f32 + cell as f32 / 2.0;
             let cell_cy = y0 as f32 + cell as f32 / 2.0;
-            // Rotation autour du centre de l'image (effet halftone screen).
+            // Rotation around the image center (halftone screen effect).
             let (dot_x, dot_y) = if rotated {
                 let dx = cell_cx - cx;
                 let dy = cell_cy - cy;

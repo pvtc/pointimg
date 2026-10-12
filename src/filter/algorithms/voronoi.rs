@@ -10,13 +10,14 @@ use image::RgbImage;
 use rayon::prelude::*;
 use std::sync::atomic::{AtomicBool, Ordering};
 
-// ─── Algorithme 3 : Voronoï / Lloyd ──────────────────────────────────────────
-// (la version canonique est dots_voronoi_progressive, utilisée via apply_with_progress)
+// ─── Algorithm 3: Voronoi / Lloyd ────────────────────────────────────────────
+// (the canonical version is dots_voronoi_progressive, used via apply_with_progress)
 
-/// Itère le Lloyd pondéré et retourne les graines finales.
+/// Iterates the weighted Lloyd algorithm and returns the final seeds.
 ///
-/// `on_iter(iter, seeds)` est appelé après chaque itération effective. Le calcul
-/// est partagé entre le chemin progressif (previews) et le chemin direct.
+/// `on_iter(iter, seeds)` is called after each effective iteration. The
+/// computation is shared between the progressive path (previews) and the
+/// direct path.
 fn run_lloyd<F>(
     src: &RgbImage,
     density: &[f32],
@@ -38,17 +39,17 @@ where
             .collect();
 
     let power = 1.0 + params.variance_sensitivity * 3.0;
-    // Parallèle : un `powf` par pixel sur 8,4 Mpx valait ~100 ms d'un seul
-    // thread, pour un résultat où chaque élément est indépendant. L'ordre de la
-    // collecte est conservé (`into_par_iter().collect()` préserve l'index), donc
-    // le vecteur est identique à la version série.
+    // Parallel: one `powf` per pixel on 8.4 Mpx cost ~100 ms single-threaded,
+    // for a result where every element is independent. The collection order is
+    // preserved (`into_par_iter().collect()` preserves the index), so the
+    // vector is identical to the serial version.
     let lloyd_weights: Vec<f64> = density
         .par_iter()
         .map(|&d| (d as f64).powf(power as f64))
         .collect();
 
     for iter in 0..iters {
-        // ── Vérifier le cancel AVANT la lourde par_iter ─────────────────────
+        // ── Check the cancel BEFORE the heavy par_iter ─────────────────────────
         if cancel.load(Ordering::Relaxed) {
             return Err(cancelled());
         }
@@ -113,9 +114,9 @@ where
     let mut last: Option<(RgbImage, Vec<Dot>)> = None;
     let seeds = run_lloyd(src, density, params, cancel, |iter, seeds| {
         if previews == Previews::None {
-            // Pas de rendu, mais la progression reste annoncée : la CLI s'en
-            // sert pour afficher « Iteration n/total » sur stderr. `last` vide
-            // reportera le rendu après la boucle, et une seule fois.
+            // No rendering, but progress is still announced: the CLI uses it to
+            // print "Iteration n/total" on stderr. An empty `last` defers the
+            // render until after the loop, and only once.
             on_progress(iter + 1, iters, None);
             return;
         }

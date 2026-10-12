@@ -1,17 +1,17 @@
-//! Logique du filtre pointilliste.
+//! Pointillist filter logic.
 //!
-//! Quatre algorithmes de partitionnement :
+//! Four partitioning algorithms:
 //!
-//! - `Grid`     : grille uniforme
-//! - `Kmeans`   : k-means spatial (x, y, r, g, b)
-//! - `Voronoi`  : stippling de Lloyd pondéré par la density map
-//! - `Quadtree` : subdivision récursive par contraste
+//! - `Grid`     : uniform grid
+//! - `Kmeans`   : spatial k-means (x, y, r, g, b)
+//! - `Voronoi`  : Lloyd stippling weighted by the density map
+//! - `Quadtree` : recursive subdivision by contrast
 //!
-//! La `density_map` contrôle la distribution des points :
-//!   densité élevée (zone détaillée) → plus de points, petits
-//!   densité faible  (zone uniforme)  → moins de points, gros
+//! The `density_map` controls the distribution of the dots:
+//!   high density (detailed zone) → more dots, small
+//!   low density  (uniform zone)  → fewer dots, big
 //!
-//! `variance_sensitivity` règle à quel point cette redistribution est forte.
+//! `variance_sensitivity` tunes how strong this redistribution is.
 
 pub use anyhow::{Result, anyhow};
 
@@ -36,9 +36,9 @@ pub use density::{
 pub use dither::Dithering;
 pub use halftone::{HalftoneMode, Screening};
 
-/// Erreur retournée quand le calcul a été interrompu via le token `cancel`.
+/// Error returned when the computation was interrupted via the `cancel` token.
 ///
-/// À détecter avec [`is_cancelled`] plutôt qu'une comparaison sur le message :
+/// Detect it with [`is_cancelled`] rather than by comparing the message:
 ///
 /// ```
 /// use std::sync::atomic::AtomicBool;
@@ -62,8 +62,8 @@ impl std::fmt::Display for Cancelled {
 
 impl std::error::Error for Cancelled {}
 
-/// Retourne `true` si l'erreur provient de l'annulation du calcul
-/// (voir [`Cancelled`]).
+/// Returns `true` when the error comes from cancelling the computation
+/// (see [`Cancelled`]).
 pub fn is_cancelled(err: &anyhow::Error) -> bool {
     err.downcast_ref::<Cancelled>().is_some()
 }
@@ -91,13 +91,13 @@ use render::render;
 
 use image::{DynamicImage, RgbImage};
 
-// ─── Entrée principale ────────────────────────────────────────────────────────
+// ─── Main entry point ─────────────────────────────────────────────────────────
 
-// Helpers gamma pour les wrappers ci-dessous.
+// Gamma helpers for the wrappers below.
 fn linearized_clone(params: &FilterParams) -> FilterParams {
     let mut p = params.clone();
     p.bg_color = gamma::srgb_to_linear_rgb(params.bg_color);
-    p.gamma_correct = false; // évite le double-wrap quand un *_inner rappelle un wrapper.
+    p.gamma_correct = false; // avoids double-wrapping when an *_inner calls back a wrapper.
     p
 }
 
@@ -110,20 +110,20 @@ fn dots_to_srgb(dots: &[Dot]) -> Vec<Dot> {
         .collect()
 }
 
-// ── Versions « inner » : le pipeline historique, sans correction gamma.
+// ── "inner" versions: the historical pipeline, without gamma correction.
 
-/// Faut-il rendre un aperçu à chaque itération de Lloyd ?
+/// Should a preview be rendered at every Lloyd iteration?
 ///
-/// [`Previews::Each`] alimente l'affichage progressif d'une interface ;
-/// [`Previews::None`] ne calcule que les points, et laisse le rendu final se
-/// faire une seule fois. La différence n'est pas cosmétique : un rendu sur 8,4 Mpx
-/// coûte un passage plein-pixel plus ~25 Mo d'image — en mode [`Previews::Each`],
-/// un par itération.
+/// [`Previews::Each`] feeds the progressive display of an interface;
+/// [`Previews::None`] only computes the dots, and lets the final render happen
+/// only once. The difference is not cosmetic: a render on 8.4 Mpx costs a
+/// full-pixel pass plus ~25 MB of image — in [`Previews::Each`] mode, one per
+/// iteration.
 ///
-/// La *progression* reste annoncée dans les deux cas : seule l'image disparaît.
-/// Le contrat interne est donc `Option<&RgbImage>`, `None` signifiant « pas
-/// d'aperçu », et l'entrée publique qui promet une image la reconstruit à partir
-/// de ce `Option` (avec [`Previews::Each`] elle est toujours présente).
+/// *Progress* is still announced in both cases: only the image disappears.
+/// The internal contract is therefore `Option<&RgbImage>`, with `None` meaning
+/// "no preview", and the public entry point that promises an image rebuilds it
+/// from that `Option` (with [`Previews::Each`] it is always present).
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub(crate) enum Previews {
     Each,
@@ -145,9 +145,9 @@ where
     let (w, h) = src.dimensions();
     validate_params(w, h, params)?;
 
-    // Le quadtree segmente sur le contraste via ses propres tables intégrales et
-    // n'utilise jamais la density map. La calculer coûterait un passage
-    // O(pixels) et deux tables `f64` pleine résolution pour rien.
+    // The quadtree segments on contrast through its own integral tables and
+    // never uses the density map. Computing it would cost an O(pixels) pass
+    // and two full-resolution `f64` tables for nothing.
     let owned_density;
     let density: &[f32] = match cached_density {
         Some(cached) => cached,
@@ -199,17 +199,17 @@ fn apply_inner(src: &RgbImage, params: &FilterParams) -> Result<RgbImage> {
             Ok(render(src, &dots, params))
         }
         Algorithm::Voronoi | Algorithm::Kmeans => {
-            // Chemin direct : les previews intermédiaires seraient calculés
-            // puis jetés à chaque itération — on rend une seule fois.
+            // Direct path: the intermediate previews would be computed then
+            // thrown away at every iteration, so render only once.
             let dots = compute_dots_inner(src, params)?;
             Ok(render(src, &dots, params))
         }
         Algorithm::Halftone if params.halftone == HalftoneMode::Off => {
-            // Halftone sélectionné mais mode Off → image vide (cas dégénéré).
+            // Halftone selected but mode Off → empty image (degenerate case).
             Ok(RgbImage::new(src.width(), src.height()))
         }
         Algorithm::Halftone => {
-            // Déjà géré par la guard Halftone+!Off ci-dessus.
+            // Already handled by the Halftone+!Off guard above.
             unreachable!()
         }
     }
@@ -222,7 +222,7 @@ fn compute_dots_inner(src: &RgbImage, params: &FilterParams) -> Result<Vec<Dot>>
         let cfg = params.halftone_config();
         return Ok(dots_halftone(src, &cfg));
     }
-    // Le quadtree n'utilise pas la density map (voir `apply_with_progress_inner`).
+    // The quadtree does not use the density map (see `apply_with_progress_inner`).
     let owned_density;
     let density: &[f32] = if params.algorithm == Algorithm::Quadtree {
         &[]
@@ -243,8 +243,8 @@ fn compute_dots_inner(src: &RgbImage, params: &FilterParams) -> Result<Vec<Dot>>
             compute_dots_kmeans(src, density, params, &never_cancel)?
         }
         Algorithm::Halftone => {
-            // Halftone est sélectionné mais mode = Off → pas de dots.
-            // (Cas dégénéré : on retombe sur un rendu vide.)
+            // Halftone is selected but mode = Off → no dots.
+            // (Degenerate case: falls back to an empty render.)
             Vec::new()
         }
     };
@@ -252,7 +252,7 @@ fn compute_dots_inner(src: &RgbImage, params: &FilterParams) -> Result<Vec<Dot>>
 }
 
 fn apply_rgba_inner(src: &RgbImage, params: &FilterParams) -> Result<(image::RgbaImage, Vec<Dot>)> {
-    // Halftone : pipeline dédié (composite multiply, ink-over-ink).
+    // Halftone: dedicated pipeline (multiply composite, ink-over-ink).
     if params.algorithm == Algorithm::Halftone && params.halftone != HalftoneMode::Off {
         let (w, h) = src.dimensions();
         validate_params(w, h, params)?;
@@ -270,33 +270,35 @@ fn is_cmyk_halftone(params: &FilterParams) -> bool {
     params.algorithm == Algorithm::Halftone && matches!(params.halftone, HalftoneMode::Cmyk { .. })
 }
 
-// ── API publique : wrappers appliquant la correction gamma si `params.gamma_correct`.
+// ── Public API: wrappers applying the gamma correction if `params.gamma_correct`.
 
-/// Applique le filtre sur une `DynamicImage` (supporte RGBA, niveaux de gris, etc.)
-/// Le fond transparent est composé sur `params.bg_color`. Quand `gamma_correct`
-/// est vrai, le pipeline s'opère en espace linéaire puis ré-encode le résultat.
+/// Applies the filter to a `DynamicImage` (supports RGBA, grayscale, etc.).
+/// The transparent background is composited over `params.bg_color`. When
+/// `gamma_correct` is true, the pipeline works in linear space then re-encodes
+/// the result.
 ///
-/// Délègue à [`apply`] après aplatissement : gère ainsi uniformément le gamma,
-/// le halftone CMJN (chemin `f32`) et tous les algorithmes, par le même chemin
-/// que le reste du pipeline.
+/// Delegates to [`apply`] after flattening: it therefore handles gamma, the
+/// CMYK halftone (`f32` path) and all the algorithms uniformly, through the
+/// same path as the rest of the pipeline.
 pub fn apply_dynamic(src: &DynamicImage, params: &FilterParams) -> Result<RgbImage> {
     let rgb = flatten_to_rgb(src, params.bg_color);
     apply(&rgb, params)
 }
 
-/// Applique le filtre itération par itération (Voronoï/K-means).
-/// Appelle `on_progress(iter, total, image_intermediaire)` après chaque itération Lloyd.
-/// Pratique pour la preview progressive dans la GUI.
-/// Pour les autres algorithmes, appelle `on_progress` une seule fois à la fin.
+/// Applies the filter iteration by iteration (Voronoi/K-means).
+/// Calls `on_progress(iter, total, intermediate_image)` after each Lloyd
+/// iteration. Handy for the progressive preview in the GUI.
+/// For the other algorithms, calls `on_progress` once at the end.
 ///
-/// Retourne `(image_finale, dots)` — les dots correspondent exactement à l'image
-/// rendue, ce qui évite un second rendu.
+/// Returns `(final_image, dots)` — the dots match the rendered image exactly,
+/// which avoids a second render.
 ///
-/// Le token `cancel` est vérifié entre chaque itération. Si `cancel` est vrai,
-/// la fonction retourne une erreur [`Cancelled`], détectable avec [`is_cancelled`].
+/// The `cancel` token is checked between every iteration. When `cancel` is
+/// true, the function returns a [`Cancelled`] error, detectable with
+/// [`is_cancelled`].
 ///
-/// Quand `params.gamma_correct` est vrai, les previews intermédiaires publiées au
-/// callback sont déjà ré-encodées en sRGB (donc affichables telles quelles).
+/// When `params.gamma_correct` is true, the intermediate previews published to
+/// the callback are already re-encoded to sRGB (so displayable as they are).
 pub fn apply_with_progress<F>(
     src: &RgbImage,
     params: &FilterParams,
@@ -307,7 +309,7 @@ where
     F: FnMut(usize, usize, &RgbImage),
 {
     use std::sync::atomic::Ordering;
-    // Halftone : pas d'itérations Lloyd → un seul pass, pas de preview progressive.
+    // Halftone: no Lloyd iterations → a single pass, no progressive preview.
     if params.algorithm == Algorithm::Halftone && params.halftone != HalftoneMode::Off {
         if cancel.load(Ordering::Relaxed) {
             return Err(cancelled());
@@ -326,8 +328,9 @@ where
     if params.gamma_correct {
         let lin = gamma::srgb_to_linear_image(src);
         let params_lin = linearized_clone(params);
-        // Wrapper de callback : réencode chaque preview linéaire vers sRGB pour la GUI.
-        // L'image est garantie par `Previews::Each`, passé une ligne plus bas.
+        // Callback wrapper: re-encodes every linear preview into sRGB for the
+        // GUI. The image is guaranteed by `Previews::Each`, passed one line
+        // below.
         let mut wrapped = |iter, total, preview_lin: Option<&RgbImage>| {
             let preview_lin = preview_lin.expect("Previews::Each produit une image");
             let preview_srgb = gamma::linear_to_srgb_image(preview_lin);
@@ -346,8 +349,8 @@ where
             dots_to_srgb(&dots_lin),
         ))
     } else {
-        // `Previews::Each` : l'image est toujours là, l'adaptateur ne peut pas
-        // perdre l'aperçu en route.
+        // `Previews::Each`: the image is always there, the adapter cannot lose
+        // the preview on the way.
         apply_with_progress_inner(
             src,
             params,
@@ -365,16 +368,16 @@ where
     }
 }
 
-/// Variante de [`apply_with_progress`] qui ne rend aucun aperçu intermédiaire.
+/// Variant of [`apply_with_progress`] that renders no intermediate preview.
 ///
-/// Le callback ne reçoit que `(itération, total)`. C'est le chemin de la CLI :
-/// son callback annonçait une progression sur stderr en jetant l'image, alors
-/// que chaque itération de Lloyd lui coûtait un `build_dots_from_seeds` (une
-/// passe plein-pixel) plus un `render` (25 Mo d'image à 8,4 Mpx) — le poste
-/// dominant d'un traitement Voronoï. Les points sont calculés une fois puis
-/// rendus une seule fois, comme le chemin direct `apply`.
+/// The callback only receives `(iteration, total)`. This is the CLI path: its
+/// callback announced progress on stderr while throwing the image away, when
+/// every Lloyd iteration cost it a `build_dots_from_seeds` (a full-pixel pass)
+/// plus a `render` (25 MB of image at 8.4 Mpx) — the dominant cost of a
+/// Voronoi run. The dots are computed once then rendered only once, like the
+/// direct `apply` path.
 ///
-/// Une interface qui *affiche* les aperçus garde [`apply_with_progress`].
+/// An interface that *displays* the previews keeps [`apply_with_progress`].
 pub fn apply_with_iteration_counts<F>(
     src: &RgbImage,
     params: &FilterParams,
@@ -384,9 +387,10 @@ pub fn apply_with_iteration_counts<F>(
 where
     F: FnMut(usize, usize),
 {
-    // Le halftone actif n'a pas de boucle de Lloyd : une seule passe, comme dans
-    // `apply_with_progress`. La garde est hors de la branche gamma, sinon un
-    // halftone sans gamma atteindrait l'`unreachable!()` du chemin pointilliste.
+    // An active halftone has no Lloyd loop: a single pass, as in
+    // `apply_with_progress`. The guard sits outside the gamma branch, otherwise
+    // a halftone without gamma would reach the pointillist path's
+    // `unreachable!()`.
     if params.algorithm == Algorithm::Halftone && params.halftone != HalftoneMode::Off {
         let (rgba, dots) = apply_rgba(src, params)?;
         let rgb = image::DynamicImage::ImageRgba8(rgba).to_rgb8();
@@ -397,8 +401,8 @@ where
         let lin = gamma::srgb_to_linear_image(src);
         let params_lin = linearized_clone(params);
         let total = params.iterations.max(1);
-        // Le callback d'itération est le seul qui reste : l'image n'est plus
-        // produite, donc rien à ré-encoder pour elle.
+        // The iteration callback is the only one left: the image is no longer
+        // produced, so there is nothing to re-encode for it.
         let mut wrapped = |iter, _total, _preview: Option<&RgbImage>| {
             on_iter(iter, total);
         };
@@ -426,7 +430,7 @@ where
     )
 }
 
-/// Variante de `apply_with_progress` utilisant une density map deja calculee.
+/// Variant of `apply_with_progress` using an already computed density map.
 pub fn apply_with_progress_cached<F>(
     src: &RgbImage,
     params: &FilterParams,
@@ -450,9 +454,9 @@ where
     if params.gamma_correct
         || (params.algorithm == Algorithm::Halftone && params.halftone != HalftoneMode::Off)
     {
-        // Le chemin cached ne gère ni le gamma ni le halftone (pipeline dédié) :
-        // on délègue à `apply_with_progress` plutôt que d'atteindre
-        // `unreachable!()` dans `apply_with_progress_inner`.
+        // The cached path handles neither gamma nor halftone (dedicated
+        // pipeline): delegate to `apply_with_progress` rather than reaching
+        // `unreachable!()` in `apply_with_progress_inner`.
         return apply_with_progress(src, params, cancel, on_progress);
     }
     apply_with_progress_inner(
@@ -461,7 +465,7 @@ where
         cancel,
         Some(density),
         Previews::Each,
-        // `on_progress` reçoit une image; le chemin `Each` en garantit toujours.
+        // `on_progress` receives an image; the `Each` path always guarantees one.
         &mut |iter, total, preview: Option<&RgbImage>| {
             (on_progress)(
                 iter,
@@ -472,17 +476,18 @@ where
     )
 }
 
-/// Applique le filtre à une `RgbImage` et rend le résultat.
+/// Applies the filter to an `RgbImage` and renders the result.
 ///
-/// C'est le chemin direct, sans preview intermédiaire : les dots sont calculés
-/// une fois puis rendus une seule fois. Quand `gamma_correct` est vrai, le
-/// pipeline s'opère en espace linéaire puis ré-encode le résultat ; le halftone
-/// actif passe par le compositeur `apply_rgba` (donc `render_halftone`).
+/// This is the direct path, without intermediate preview: the dots are
+/// computed once then rendered only once. When `gamma_correct` is true, the
+/// pipeline works in linear space then re-encodes the result; an active
+/// halftone goes through the `apply_rgba` compositor (hence `render_halftone`).
 pub fn apply(src: &RgbImage, params: &FilterParams) -> Result<RgbImage> {
     if params.gamma_correct {
-        // Tout halftone actif (CMJN ou dominant) passe par `apply_rgba`, qui
-        // gère le chemin gamma. Sans ce garde général, un halftone dominant en
-        // gamma atteindrait `unreachable!()` dans `apply_with_progress_inner`.
+        // Every active halftone (CMYK or dominant) goes through `apply_rgba`,
+        // which handles the gamma path. Without this general guard, a dominant
+        // halftone under gamma would reach `unreachable!()` in
+        // `apply_with_progress_inner`.
         if params.algorithm == Algorithm::Halftone && params.halftone != HalftoneMode::Off {
             let (rgba, _) = apply_rgba(src, params)?;
             return Ok(image::DynamicImage::ImageRgba8(rgba).to_rgb8());
@@ -503,14 +508,15 @@ pub fn apply(src: &RgbImage, params: &FilterParams) -> Result<RgbImage> {
     }
 }
 
-/// Variante RGBA de `apply` : rend sur un canvas RGBA (pratique quand
-/// `params.transparent` est vrai pour produire un PNG avec alpha).
+/// RGBA variant of `apply`: renders onto an RGBA canvas (handy when
+/// `params.transparent` is true to produce a PNG with alpha).
 ///
-/// Résultat : `(image RGBA, dots)`. Les dots correspondent à l'image rendue.
-/// Contrairement à `apply_with_progress`, ce chemin ne publie pas de preview
-/// intermédiaire — il calcule les dots puis rend l'image finale.
-/// Quand `params.gamma_correct` est vrai, le pipeline s'opère en espace linéaire
-/// puis ré-encode les canaux RGB du buffer RGBA (alpha inchangé) en sRGB.
+/// Result: `(RGBA image, dots)`. The dots match the rendered image.
+/// Unlike `apply_with_progress`, this path publishes no intermediate preview —
+/// it computes the dots then renders the final image.
+/// When `params.gamma_correct` is true, the pipeline works in linear space
+/// then re-encodes the RGB channels of the RGBA buffer (alpha unchanged) to
+/// sRGB.
 pub fn apply_rgba(src: &RgbImage, params: &FilterParams) -> Result<(image::RgbaImage, Vec<Dot>)> {
     if params.gamma_correct {
         if is_cmyk_halftone(params) {
@@ -532,7 +538,7 @@ pub fn apply_rgba(src: &RgbImage, params: &FilterParams) -> Result<(image::RgbaI
     }
 }
 
-/// Calcule les dots (sans rendu PNG) — permet de mettre en cache pour la GUI.
+/// Computes the dots (without PNG rendering) — lets the GUI cache them.
 /// Computes dots directly without rendering an intermediate image.
 pub fn compute_dots(src: &RgbImage, params: &FilterParams) -> Result<Vec<Dot>> {
     if params.gamma_correct {
@@ -550,7 +556,7 @@ pub fn compute_dots(src: &RgbImage, params: &FilterParams) -> Result<Vec<Dot>> {
     }
 }
 
-// Imports uniquement nécessaires aux tests.
+// Imports only needed by the tests.
 #[cfg(test)]
 use crate::filter::render::point_in_regular_polygon;
 #[cfg(test)]
@@ -809,7 +815,7 @@ mod tests {
         }
     }
 
-    // ── apply (intégration) ──────────────────────────────────────────────────
+    // ── apply (integration) ───────────────────────────────────────────────────
 
     #[test]
     fn apply_produces_correct_dimensions() {
@@ -972,7 +978,7 @@ mod tests {
 
     #[test]
     fn validate_iterations_zero_accepted() {
-        // 0 est valide : pas de relaxation Lloyd, dots bruts depuis seeds
+        // 0 is valid: no Lloyd relaxation, raw dots from the seeds
         let p = FilterParams {
             iterations: 0,
             ..FilterParams::default()
@@ -1086,7 +1092,7 @@ mod tests {
             iterations: 10,
             ..FilterParams::default()
         };
-        let cancel = AtomicBool::new(true); // déjà annulé
+        let cancel = AtomicBool::new(true); // already cancelled
         let result = apply_with_progress(&img, &params, &cancel, |_, _, _| {});
         assert!(result.is_err(), "doit retourner Err quand cancel=true");
         assert!(

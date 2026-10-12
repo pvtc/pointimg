@@ -1,4 +1,4 @@
-// ─── Grille spatiale pour nearest-seed ───────────────────────────────────────
+// ─── Spatial grid for nearest-seed ───────────────────────────────────────────
 
 pub(crate) struct SeedGrid {
     cells: Vec<Vec<usize>>,
@@ -35,16 +35,16 @@ impl SeedGrid {
         }
     }
 
-    /// Renvoie l'indice du seed le plus proche de (fx, fy).
+    /// Returns the index of the seed closest to (fx, fy).
     ///
     /// Uses the squared minimum possible distance for early stopping.
-    /// comparé à best_dist qui est aussi une distance au carré.
+    /// compared to best_dist, which is also a squared distance.
     pub(crate) fn nearest(&self, fx: f32, fy: f32, seeds: &[(f32, f32)]) -> usize {
         let cx = ((fx / self.cell_w) as i64).clamp(0, self.cols as i64 - 1);
         let cy = ((fy / self.cell_h) as i64).clamp(0, self.rows as i64 - 1);
 
         let mut best_idx = 0usize;
-        let mut best_dist = f32::MAX; // distance AU CARRE
+        let mut best_dist = f32::MAX; // SQUARED distance
 
         let mut radius = 0i64;
         loop {
@@ -93,22 +93,22 @@ impl SeedGrid {
         best_idx
     }
 
-    /// Seed minimisant `dist(i)`, avec arrêt précoce basé sur une borne
-    /// inférieure de la distance spatiale. `dist` doit être ≥ la distance
-    /// spatiale² (dans des unités quelconques) pour que la borne soit valide.
+    /// Seed minimizing `dist(i)`, with early stopping based on a lower bound
+    /// of the spatial distance. `dist` must be >= the squared spatial
+    /// distance (in whatever units) for the bound to be valid.
     ///
-    /// `norm_x`/`norm_y` : facteurs convertissant les unités de la grille
-    /// (pixels) vers les unités spatiales de `dist` (ex. k-means normalisé :
-    /// `1/largeur`, `1/hauteur`).
+    /// `norm_x`/`norm_y`: factors converting the grid units (pixels) into the
+    /// spatial units of `dist` (e.g. normalized k-means: `1/width`,
+    /// `1/height`).
     ///
-    /// Les distances égales sont départagées par le plus petit indice —
-    /// même sémantique « premier minimum » que `Iterator::min_by`.
+    /// Ties on equal distances are broken by the smallest index, the same
+    /// "first minimum" semantics as `Iterator::min_by`.
     pub(crate) fn nearest_by<F>(&self, fx: f32, fy: f32, norm_x: f32, norm_y: f32, dist: F) -> usize
     where
         F: Fn(usize) -> f32,
     {
-        // Déflation d'un ulp : la borne doit être ≤ la vraie distance
-        // normalisée, malgré l'arrondi de la conversion d'unités.
+        // ULP deflation: the bound must stay <= the true normalized distance,
+        // despite the rounding of the unit conversion.
         let cell_bw = self.cell_w * norm_x * (1.0 - f32::EPSILON);
         let cell_bh = self.cell_h * norm_y * (1.0 - f32::EPSILON);
         let cx = ((fx / self.cell_w) as i64).clamp(0, self.cols as i64 - 1);
@@ -119,8 +119,8 @@ impl SeedGrid {
 
         let mut radius = 0i64;
         loop {
-            // Borne inférieure de la distance spatiale² vers l'anneau `radius`,
-            // dans les unités normalisées de `dist`.
+            // Lower bound of the squared spatial distance to the ring
+            // `radius`, in the normalized units of `dist`.
             let min_possible_sq = if radius <= 1 {
                 0.0f32
             } else {

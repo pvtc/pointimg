@@ -12,22 +12,22 @@ use image::RgbImage;
 use rayon::prelude::*;
 use std::sync::atomic::{AtomicBool, Ordering};
 
-// ─── Algorithme 2 : K-means spatial ──────────────────────────────────────────
+// ─── Algorithm 2: spatial K-means ────────────────────────────────────────────
 
-/// Itère le Lloyd k-means et retourne les centres finaux (x, y, r, g, b).
+/// Iterates Lloyd k-means and returns the final centers (x, y, r, g, b).
 ///
-/// Optimisations par rapport à la boucle naïve :
-/// - positions/couleurs normalisées précalculées (LUT) hors de la boucle ;
-/// - distance 5D déroulée, scalarisée (pas d'itérateur `zip`) ;
-/// - recherche du centre le plus proche via `SeedGrid` avec borne inférieure
-///   sur la distance spatiale² (exact : départage par plus petit index comme
-///   `Iterator::min_by`) ;
-/// - accumulation par chunks de lignes fixes combinés dans l'ordre des
-///   indices → sommes f64 déterministes, quel que soit le nombre de threads ;
-/// - arrêt précoce quand les centres atteignent un point fixe bit-à-bit
-///   (les itérations restantes seraient des no-ops).
+/// Optimizations over the naive loop:
+/// - normalized positions/colors precomputed (LUT) outside of the loop;
+/// - 5D distance unrolled, scalarized (no `zip` iterator);
+/// - nearest-center search via `SeedGrid` with a lower bound on the squared
+///   spatial distance (exact: ties broken by the smallest index, like
+///   `Iterator::min_by`);
+/// - accumulation in fixed row chunks combined in index order, so the f64
+///   sums are deterministic whatever the number of threads;
+/// - early stop once the centers reach a bit-for-bit fixed point (the
+///   remaining iterations would be no-ops).
 ///
-/// `on_iter(iter, centers)` est appelé après chaque itération effective.
+/// `on_iter(iter, centers)` is called after each effective iteration.
 fn run_kmeans<F>(
     src: &RgbImage,
     density: &[f32],
@@ -56,8 +56,8 @@ where
     let norm_x = 1.0 / w_f;
     let norm_y = 1.0 / h_f;
 
-    // LUTs : positions et couleurs normalisées, constantes d'une image à l'autre
-    // et d'une itération à l'autre — calculées une fois hors de la boucle.
+    // LUTs: normalized positions and colors, constant from one image to the
+    // next and from one iteration to the next, computed once outside the loop.
     let xn: Vec<f32> = (0..width).map(|px| px as f32 / w_f).collect();
     let yn: Vec<f32> = (0..height).map(|py| py as f32 / h_f).collect();
     let mut norm_lut = [0f32; 256];
@@ -67,7 +67,7 @@ where
     let raw = src.as_raw();
     let stride = width as usize * 3;
 
-    // Chunks de lignes fixes (un par thread) → réduction déterministe.
+    // Fixed row chunks (one per thread) → deterministic reduction.
     let n_chunks = rayon::current_num_threads().max(1);
     let chunk_rows = (height as usize).div_ceil(n_chunks);
     let n_chunks = (height as usize).div_ceil(chunk_rows.max(1));
@@ -77,7 +77,7 @@ where
             return Err(cancelled());
         }
 
-        // Grille sur les positions des centres (rebuilt chaque itération, O(k)).
+        // Grid over the center positions (rebuilt each iteration, O(k)).
         let positions: Vec<(f32, f32)> = centers.iter().map(|c| (c[0], c[1])).collect();
         let grid = SeedGrid::new(&positions, width, height);
 
@@ -131,7 +131,7 @@ where
             })
             .collect();
 
-        // Combinaison des chunks dans l'ordre des indices (déterministe).
+        // Combination of the chunks in index order (deterministic).
         let mut sums = vec![[0f64; 5]; k];
         let mut counts = vec![0u64; k];
         for (ps, pc) in partials {
@@ -143,7 +143,7 @@ where
             }
         }
 
-        // Mise à jour des centres + détection du point fixe (bit-à-bit).
+        // Center update + detection of the (bit-for-bit) fixed point.
         let mut converged = true;
         for (i, c) in centers.iter_mut().enumerate() {
             let n = counts[i] as f64;
@@ -167,7 +167,7 @@ where
 
         on_iter(iter, &centers);
 
-        // Point fixe atteint : les itérations restantes seraient identiques.
+        // Fixed point reached: the remaining iterations would be identical.
         if converged {
             break;
         }
@@ -175,7 +175,7 @@ where
     Ok(centers)
 }
 
-// (la version canonique est dots_kmeans_progressive, utilisée via apply_with_progress)
+// (the canonical version is dots_kmeans_progressive, used via apply_with_progress)
 
 pub(crate) fn dots_kmeans_progressive<F>(
     src: &RgbImage,
@@ -195,11 +195,11 @@ where
     let mut last: Option<(RgbImage, Vec<Dot>)> = None;
     let centers = run_kmeans(src, density, params, cancel, |iter, centers| {
         if previews == Previews::None {
-            // Même choix qu'en Voronoï : la progression sans image.
+            // Same choice as in Voronoi: progress without an image.
             on_progress(iter + 1, iters, None);
             return;
         }
-        // Preview + dots après chaque itération effective.
+        // Preview + dots after each effective iteration.
         let dots = dots_from_kmeans_centers(centers, density, width, height, img_min, params);
         let preview = render(src, &dots, params);
         on_progress(iter + 1, iters, Some(&preview));
@@ -232,8 +232,8 @@ pub(crate) fn compute_dots_kmeans(
     ))
 }
 
-/// Construit les Dots depuis les centres K-means.
-/// Extrait pour dédupliquer le code entre preview et résultat final.
+/// Builds the Dots from the K-means centers.
+/// Extracted to deduplicate the code between preview and final result.
 pub(crate) fn dots_from_kmeans_centers(
     centers: &[[f32; 5]],
     density: &[f32],

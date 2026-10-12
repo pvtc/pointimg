@@ -1,7 +1,7 @@
 use image::{GrayImage, Luma, RgbImage};
 use rayon::prelude::*;
 
-/// Densité moyenne d'une zone rectangulaire de la density map.
+/// Average density of a rectangular zone of the density map.
 pub(crate) fn zone_density(
     density: &[f32],
     x0: u32,
@@ -24,18 +24,18 @@ pub(crate) fn zone_density(
 
 // ─── Density map ─────────────────────────────────────────────────────────────
 //
-// Variance locale dans un voisinage 9×9, normalisée 0→1.
-// sensitivity=0 → tout à 1 (uniforme), sensitivity=1 → variance pure.
+// Local variance in a 9×9 neighborhood, normalized 0→1.
+// sensitivity=0 → everything to 1 (uniform), sensitivity=1 → pure variance.
 //
 // A luminance SAT is sufficient for detail redistribution and uses two tables
 // instead of six RGB tables. Keep f64 because global prefix sums can be large
 // on the maximum supported image and are later subtracted to get local sums.
 
-/// Carte de détail locale (0 = uniforme, 1 = détaillé), normalisée.
+/// Local detail map (0 = uniform, 1 = detailed), normalized.
 ///
-/// Variante locale 9×9 en somme de carrés, calculée par tables intégrales.
-/// Emploie le shader WGSL si la feature `gpu` est activée, `POINTIMG_GPU=1` est
-/// défini et qu'un adaptateur utilisable existe ; sinon le chemin CPU/SAT.
+/// Local 9×9 variant in sum of squares, computed with integral tables.
+/// Employs the WGSL shader when the `gpu` feature is enabled, `POINTIMG_GPU=1`
+/// is set and a usable adapter exists; otherwise the CPU/SAT path.
 pub fn compute_density_map(src: &RgbImage, sensitivity: f32) -> Vec<f32> {
     #[cfg(feature = "gpu")]
     if let Some(density) = crate::filter::gpu::compute_density_map(src, sensitivity) {
@@ -44,24 +44,24 @@ pub fn compute_density_map(src: &RgbImage, sensitivity: f32) -> Vec<f32> {
     compute_density_map_cpu(src, sensitivity)
 }
 
-/// Normalise une variance locale brute en density map (courbe partagée
-/// entre les chemins CPU et GPU pour garantir leur parité).
+/// Normalizes a raw local variance into a density map (curve shared between
+/// the CPU and GPU paths to guarantee their parity).
 ///
-/// La normalisation se fait **en place** : sur une image au plafond cela évite
-/// une seconde allocation `Vec<f32>` pleine résolution (~33 Mo) coexistant avec
-/// la première.
+/// The normalization happens **in place**: on an image at the ceiling this
+/// avoids a second full-resolution `Vec<f32>` allocation (~33 MB) coexisting
+/// with the first one.
 pub(crate) fn normalize_variance(mut raw: Vec<f32>, sensitivity: f32) -> Vec<f32> {
     // Keep a small floor to preserve contrast on nearly uniform images.
     let max_var = raw.iter().copied().fold(0.0f32, f32::max).max(1e-6);
     for value in &mut raw {
         let norm = (*value / max_var).sqrt();
-        // sensitivity=0 -> 1.0 partout ; sensitivity=1 -> norm pur
+        // sensitivity=0 -> 1.0 everywhere; sensitivity=1 -> pure norm
         *value = 1.0 - sensitivity * (1.0 - norm);
     }
     raw
 }
 
-/// Chemin CPU historique (Summed-Area Tables), toujours disponible.
+/// Historical CPU path (Summed-Area Tables), always available.
 pub fn compute_density_map_cpu(src: &RgbImage, sensitivity: f32) -> Vec<f32> {
     let (width, height) = src.dimensions();
     let radius: usize = 4;
@@ -122,19 +122,19 @@ pub fn compute_density_map_cpu(src: &RgbImage, sensitivity: f32) -> Vec<f32> {
     normalize_variance(raw, sensitivity)
 }
 
-/// Retourne la density map normalisée comme image en niveaux de gris.
-/// Utile pour la prévisualisation dans la GUI.
+/// Returns the normalized density map as a grayscale image.
+/// Useful for previewing in the GUI.
 pub fn compute_density_image(src: &RgbImage, sensitivity: f32) -> GrayImage {
     let (w, h) = src.dimensions();
     let density = compute_density_map(src, sensitivity);
     density_to_image(&density, w, h)
 }
 
-/// Rend la density map comme image en niveaux de gris (prévisualisation GUI).
+/// Renders the density map as a grayscale image (GUI preview).
 pub fn density_to_image(density: &[f32], w: u32, h: u32) -> GrayImage {
     GrayImage::from_fn(w, h, |x, y| {
         let v = density[(y * w + x) as usize];
-        // Arrondi cohérent avec les autres conversions u8 du projet.
+        // Rounding consistent with the other u8 conversions of the project.
         Luma([(v.clamp(0.0, 1.0) * 255.0).round() as u8])
     })
 }

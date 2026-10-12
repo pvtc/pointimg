@@ -10,10 +10,10 @@ use std::sync::Mutex;
 use std::sync::mpsc;
 use wgpu::util::DeviceExt;
 
-// Certains drivers natifs ne supportent pas la création simultanée de plusieurs
-// devices/instances dans des threads différents. Les tests Rayon/ Rust lancent
-// plusieurs calculs en parallèle : sérialiser la durée de vie du device évite un
-// crash driver tout en gardant le parallélisme à l'intérieur du shader.
+// Some native drivers do not support creating several devices/instances at the
+// same time in different threads. The Rayon/Rust tests run several
+// computations in parallel: serializing the lifetime of the device avoids a
+// driver crash while keeping the parallelism inside the shader.
 static GPU_LOCK: Mutex<()> = Mutex::new(());
 
 #[repr(C)]
@@ -25,16 +25,16 @@ struct Params {
     sensitivity: f32,
 }
 
-/// Retourne `true` si un adaptateur GPU est disponible et utilisable pour le
-/// chemin compute de la density map. Les tests de parité CPU/GPU s'appuient
-/// dessus pour se désactiver proprement sans GPU.
+/// Returns `true` when a GPU adapter is available and usable for the compute
+/// path of the density map. The CPU/GPU parity tests rely on it to disable
+/// themselves cleanly without a GPU.
 pub fn gpu_available() -> bool {
     let instance = wgpu::Instance::new(wgpu::InstanceDescriptor::new_without_display_handle());
     request_adapter_on(&instance).is_some()
 }
 
-/// `block_on` wgpu : l'instance doit être « pumpée » en arrière-plan, sinon
-/// `request_adapter`/`request_device` ne complètent jamais leur future.
+/// wgpu `block_on`: the instance must be "pumped" in the background, otherwise
+/// `request_adapter`/`request_device` never complete their future.
 fn block_on_pumped<F: std::future::Future>(instance: &wgpu::Instance, fut: F) -> F::Output {
     use std::sync::Arc;
     use std::sync::atomic::{AtomicBool, Ordering};
@@ -70,9 +70,10 @@ fn request_adapter_on(instance: &wgpu::Instance) -> Option<wgpu::Adapter> {
     .ok()
 }
 
-/// Chemin GPU sans la condition d'opt-in : toujours calcule (retourne `None`
-/// seulement si le device/la lecture échoue). Utilisé par les tests de parité
-/// CPU/GPU ; le pipeline, lui, passe par `compute_density_map` (opt-in).
+/// GPU path without the opt-in condition: it always computes (returns `None`
+/// only when the device or the readback fails). Used by the CPU/GPU parity
+/// tests; the pipeline, for its part, goes through `compute_density_map`
+/// (opt-in).
 pub fn compute_density_map_raw(src: &RgbImage, sensitivity: f32) -> Option<Vec<f32>> {
     let _gpu_guard = GPU_LOCK.lock().ok()?;
     let raw = compute_raw_variance(src)?;
@@ -82,8 +83,8 @@ pub fn compute_density_map_raw(src: &RgbImage, sensitivity: f32) -> Option<Vec<f
 /// Computes the raw local variance values on the GPU and normalizes them using
 /// the same curve as the CPU implementation.
 pub(crate) fn compute_density_map(src: &RgbImage, sensitivity: f32) -> Option<Vec<f32>> {
-    // Opt-in explicite tant que la couverture des drivers GPU n'est pas testée
-    // dans la CI. Sans cette variable, le chemin CPU/SAT historique reste exact.
+    // Explicit opt-in as long as GPU driver coverage is not tested in CI.
+    // Without this variable, the historical CPU/SAT path stays exact.
     std::env::var_os("POINTIMG_GPU")?;
     let _gpu_guard = GPU_LOCK.lock().ok()?;
     let raw = compute_raw_variance(src)?;
@@ -236,8 +237,9 @@ fn compute_raw_variance(src: &RgbImage) -> Option<Vec<f32>> {
         .map_async(wgpu::MapMode::Read, move |result| {
             let _ = sender.send(result);
         });
-    // `poll_all(true)` ne garantit pas que le callback de map_async ait été
-    // émis à ce stade : bouger jusqu'à réception, sinon `recv()` bloque à vie.
+    // `poll_all(true)` does not guarantee that the map_async callback has been
+    // fired at this point: loop until it is received, otherwise `recv()` blocks
+    // forever.
     let map_result = loop {
         instance.poll_all(false);
         match receiver.try_recv() {

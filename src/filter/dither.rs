@@ -1,27 +1,27 @@
-//! Quantification de palette : quatre algorithmes de dithering.
+//! Palette quantization: four dithering algorithms.
 //!
-//! Quand `FilterParams::palette_size` vaut `Some(n)`, le rendu final est
-//! post-quantifié vers `n` couleurs. Un dithering évite les bandes plates : il
-//! convertit l'erreur de quantification en un motif de points dont la moyenne
-//! reproduit la teinte d'origine.
+//! When `FilterParams::palette_size` is `Some(n)`, the final render is
+//! post-quantized to `n` colors. Dithering avoids flat bands: it converts the
+//! quantization error into a dot pattern whose average reproduces the original
+//! tone.
 //!
-//! | Algorithme | Principe | Usage |
+//! | Algorithm | Principle | Use |
 //! |---|---|---|
-//! | [`Dithering::Off`] | aucun | aplats francs |
-//! | [`Dithering::FloydSteinberg`] | diffusion de l'erreur vers 4 voisins | photographie, dégradés |
-//! | [`Dithering::Riemersma`] | diffusion à queue longue sur une ligne | dégradés, moins de « vers » que Floyd-Steinberg |
-//! | [`Dithering::Bayer4`] / [`Dithering::Bayer8`] | motif ordonné 4×4 ou 8×8 | rendu « pixel art », sans diffusion |
+//! | [`Dithering::Off`] | none | clean flat areas |
+//! | [`Dithering::FloydSteinberg`] | error diffused to 4 neighbors | photographs, gradients |
+//! | [`Dithering::Riemersma`] | long-tail diffusion on a line | gradients, fewer "worms" than Floyd-Steinberg |
+//! | [`Dithering::Bayer4`] / [`Dithering::Bayer8`] | ordered 4×4 or 8×8 pattern | "pixel art" look, no diffusion |
 //!
-//! Les deux derniers ne propagent aucune erreur : chaque pixel est indépendant,
-//! donc parallélisable, mais la moyenne n'est exacte que statistiquement — ce
-//! qui convient précisément à l'esthétique visée. La matrice de Bayer est
-//! **générée** par la règle récursive de Bayer (1973) :
+//! The last two propagate no error: every pixel is independent, hence
+//! parallelizable, but the average is only statistically exact, which suits
+//! precisely the aesthetics aimed at. The Bayer matrix is **generated** by the
+//! recursive rule of Bayer (1973):
 //!
 //! ```text
 //! M(1) = [0]     M(2n) = 4·M(n) + [[0, 2], [3, 1]]
 //! ```
 //!
-//! Floyd-Steinberg, lui, propage l'erreur ainsi :
+//! Floyd-Steinberg, for its part, propagates the error like this:
 //!
 //! ```text
 //!        *   7/16
@@ -30,7 +30,7 @@
 
 use image::{Rgb, RgbImage};
 
-/// Algorithme de dithering appliqué à la quantification de palette.
+/// Dithering algorithm applied to palette quantization.
 #[derive(
     Clone,
     Copy,
@@ -44,37 +44,37 @@ use image::{Rgb, RgbImage};
 )]
 #[serde(rename_all = "kebab-case")]
 pub enum Dithering {
-    /// Aucun tramage : la couleur la plus proche, sans motif.
+    /// No dithering: the nearest color, without a pattern.
     #[default]
     Off,
-    /// Diffusion de l'erreur vers les quatre voisins futurs.
+    /// Error diffusion toward the four future neighbors.
     FloydSteinberg,
-    /// Diffusion à queue longue : 16 pixels, poids décroissants de 0,7.
+    /// Long-tail diffusion: 16 pixels, weights decaying from 0.7.
     Riemersma,
-    /// Tramage ordonné de Bayer 4×4.
+    /// Bayer 4×4 ordered dithering.
     Bayer4,
-    /// Tramage ordonné de Bayer 8×8.
+    /// Bayer 8×8 ordered dithering.
     Bayer8,
 }
 
 impl Dithering {
-    /// Vrai si un tramage est appliqué.
+    /// True when a dithering is applied.
     pub fn is_on(self) -> bool {
         self != Dithering::Off
     }
 
-    /// Avertissement sur le poids du fichier exporté, s'il y a lieu.
+    /// Warning about the weight of the exported file, when it applies.
     ///
-    /// Le tramage ordonné est à haute fréquence : ni deflate (PNG, TIFF) ni
-    /// VP8L (WebP) n'ont de prise sur un motif qui change à chaque pixel. Le
-    /// rendu est donc plus lourd *à palette égale* — mesuré sur une photo
-    /// 3546×2364, 3,0 Mo en Bayer 4×4 contre 162 Ko en Floyd-Steinberg avec
-    /// deux couleurs, soit dix-neuf fois plus. Le phénomène ne dépend pas de la
-    /// largeur de la palette : Bayer 4×4 reste autour de 5 Mo de 8 à 32
-    /// couleurs. C'est la contrepartie de l'esthétique « pixel art ».
+    /// Ordered dithering is high frequency: neither deflate (PNG, TIFF) nor
+    /// VP8L (WebP) has any hold on a pattern that changes at every pixel. The
+    /// render is therefore heavier *for an equal palette*, measured on a
+    /// 3546×2364 photo, 3.0 MB in Bayer 4×4 against 162 kB in Floyd-Steinberg
+    /// with two colors, that is nineteen times more. The phenomenon does not
+    /// depend on the palette width: Bayer 4×4 stays around 5 MB from 8 to 32
+    /// colors. It is the counterpart of the "pixel art" aesthetics.
     ///
-    /// Les deux interfaces reprennent ce texte tel quel, pour que l'avertissement
-    /// ne diverge pas d'un front-end à l'autre.
+    /// Both interfaces reuse this text as it is, so that the warning does not
+    /// diverge from one front-end to another.
     pub fn size_caveat(self) -> Option<&'static str> {
         match self {
             Dithering::Bayer4 | Dithering::Bayer8 => Some(
@@ -86,8 +86,8 @@ impl Dithering {
         }
     }
 
-    /// Version courte de [`Dithering::size_caveat`] : tient sur une ligne, le
-    /// détail et les chiffres restant dans l'infobulle.
+    /// Short version of [`Dithering::size_caveat`]: fits on one line, the
+    /// details and the figures staying in the tooltip.
     pub fn size_caveat_short(self) -> Option<&'static str> {
         match self {
             Dithering::Bayer4 | Dithering::Bayer8 => {
@@ -98,20 +98,21 @@ impl Dithering {
     }
 }
 
-/// Longueur de la queue de Riemersma (en pixels).
+/// Length of the Riemersma queue (in pixels).
 const RIEMERSMA_TAPS: usize = 16;
-/// Décroissance des poids le long de la queue.
+/// Decay of the weights along the queue.
 ///
-/// Calibré sur un dégradé de 160 px de large : à 0,7, l'écart moyen entre
-/// pixels voisins passe de 127 (prise unique, donc « vers » marqués) à 66, pour
-/// un motif un peu plus fondu. C'est le compromis habituel de Riemersma : plus
-/// de netteté locale se paie par une file plus courte, donc par des « vers ».
+/// Calibrated on a gradient 160 px wide: at 0.7, the average gap between
+/// neighboring pixels goes from 127 (single tap, hence marked "worms") to 66,
+/// for a slightly more blurred pattern. This is the usual Riemersma
+/// compromise: more local sharpness is paid for by a shorter queue, hence by
+/// "worms".
 const RIEMERSMA_DECAY: f64 = 0.7;
 
-/// Quantifie `dst` vers `palette` avec l'algorithme demandé.
+/// Quantifies `dst` to `palette` with the requested algorithm.
 ///
-/// Opère **en place** sur l'image déjà rendue. `Dithering::Off` — comme une
-/// palette de moins de deux couleurs — ne fait rien.
+/// Operates **in place** on the already rendered image. `Dithering::Off`, like
+/// a palette with fewer than two colors, does nothing.
 pub fn apply(dst: &mut RgbImage, palette: &[[u8; 3]], dithering: Dithering) {
     if palette.len() < 2 {
         return;
@@ -125,7 +126,7 @@ pub fn apply(dst: &mut RgbImage, palette: &[[u8; 3]], dithering: Dithering) {
     }
 }
 
-/// Palette pré-convertie en `f32`, pour éviter un cast par comparaison.
+/// Palette pre-converted to `f32`, to avoid a cast per comparison.
 fn palette_f32(palette: &[[u8; 3]]) -> Vec<[f32; 3]> {
     palette
         .iter()
@@ -133,7 +134,7 @@ fn palette_f32(palette: &[[u8; 3]]) -> Vec<[f32; 3]> {
         .collect()
 }
 
-/// Couleur de palette la plus proche de `c`.
+/// Palette color closest to `c`.
 fn nearest(palette: &[[u8; 3]], palette_f: &[[f32; 3]], c: &[f32; 3]) -> [u8; 3] {
     let mut best = palette[0];
     let mut best_dist = f32::INFINITY;
@@ -153,11 +154,11 @@ fn nearest(palette: &[[u8; 3]], palette_f: &[[f32; 3]], c: &[f32; 3]) -> [u8; 3]
     best
 }
 
-/// Les deux couleurs de palette les plus proches de `c`.
+/// The two palette colors closest to `c`.
 ///
-/// La première est le résultat d'une quantification directe ; la seconde sert
-/// au tramage ordonné, qui arbitre entre les deux d'après la position du pixel
-/// sur le segment qui les relie.
+/// The first is the result of a direct quantization; the second serves the
+/// ordered dithering, which arbitrates between the two according to the
+/// position of the pixel on the segment that joins them.
 fn two_nearest(palette: &[[u8; 3]], palette_f: &[[f32; 3]], c: &[f32; 3]) -> ([u8; 3], [u8; 3]) {
     let mut best = (f32::INFINITY, 0usize);
     let mut second = (f32::INFINITY, 0usize);
@@ -179,11 +180,10 @@ fn two_nearest(palette: &[[u8; 3]], palette_f: &[[f32; 3]], c: &[f32; 3]) -> ([u
     (palette[best.1], palette[second.1])
 }
 
-/// Matrice de Bayer de côté `n` (une puissance de deux), permutation de
-/// `0..n²`.
+/// Bayer matrix of side `n` (a power of two), a permutation of `0..n²`.
 ///
-/// Générée par la règle récursive `M(2n) = 4·M(n) + [[0, 2], [3, 1]]` : aucune
-/// table n'est recopiée ailleurs.
+/// Generated by the recursive rule `M(2n) = 4·M(n) + [[0, 2], [3, 1]]`: no
+/// table is copied anywhere else.
 pub fn bayer_matrix(n: usize) -> Vec<Vec<u32>> {
     if n == 0 {
         return Vec::new();
@@ -213,8 +213,8 @@ pub fn bayer_matrix(n: usize) -> Vec<Vec<u32>> {
     block
 }
 
-/// Tramage ordonné : chaque pixel choisit entre ses deux couleurs de palette
-/// les plus proches, d'après le seuil de la matrice à sa position.
+/// Ordered dithering: each pixel chooses between its two closest palette
+/// colors, according to the matrix threshold at its position.
 fn ordered(dst: &mut RgbImage, palette: &[[u8; 3]], matrix: &[Vec<u32>]) {
     let (w, h) = dst.dimensions();
     let side = matrix.len() as u32;
@@ -225,10 +225,10 @@ fn ordered(dst: &mut RgbImage, palette: &[[u8; 3]], matrix: &[Vec<u32>]) {
             let p = dst.get_pixel(x, y);
             let c = [p[0] as f32, p[1] as f32, p[2] as f32];
             let (best, second) = two_nearest(palette, &palette_f, &c);
-            // Seuil du motif au centre de sa cellule : (M + 0,5) / n².
+            // Pattern threshold at the center of its cell: (M + 0.5) / n².
             let threshold =
                 (matrix[(y % side) as usize][(x % side) as usize] as f32 + 0.5) / levels;
-            // Position du pixel sur le segment [best, second] : 0 = best.
+            // Position of the pixel on the [best, second] segment: 0 = best.
             let delta = [
                 second[0] as f32 - best[0] as f32,
                 second[1] as f32 - best[1] as f32,
@@ -251,15 +251,15 @@ fn ordered(dst: &mut RgbImage, palette: &[[u8; 3]], matrix: &[Vec<u32>]) {
     }
 }
 
-/// Poids de la file de Riemersma : `decay^k` normalisé pour sommer à 1.
+/// Weights of the Riemersma queue: `decay^k` normalized to sum to 1.
 ///
-/// Chaque part d'erreur doit être versée en totalité : c'est ce qui rend la
-/// queue une redistribution et non une amplification.
+/// Every share of error must be poured out entirely: that is what makes the
+/// queue a redistribution and not an amplification.
 ///
-/// L'invariant est vérifié par
-/// `proprietes::les_poids_de_la_queue_soment_a_un`, et il ne peut pas l'être par
-/// la conservation de la luminance : la diffusion est une boucle de rétroaction
-/// fermée, qui conserve la moyenne quel que soit le gain. Voir la note de
+/// The invariant is checked by
+/// `proprietes::les_poids_de_la_queue_soment_a_un`, and it cannot be checked by
+/// the conservation of luminance: diffusion is a closed feedback loop, which
+/// conserves the mean whatever the gain. See the note of
 /// `proprietes::la_moyenne_survit_a_la_quantification`.
 fn riemersma_weights(taps: usize, decay: f64) -> Vec<f64> {
     let mut weights: Vec<f64> = (0..taps).map(|k| decay.powi(k as i32)).collect();
@@ -272,28 +272,28 @@ fn riemersma_weights(taps: usize, decay: f64) -> Vec<f64> {
     weights
 }
 
-/// Diffusion de l'erreur à queue longue (Riemersma, 1995).
+/// Long-tail error diffusion (Riemersma, 1995).
 ///
-/// L'erreur est versée dans une file à eviction de `taps` pixels : le suivant en
-/// reçoit la part `w(0)`, le suivant encore `w(1)`, et ainsi de suite jusqu'à
-/// `w(taps-1)`, les poids formant une suite géométrique décroissante de somme 1.
-/// Chaque part n'est versée qu'une fois — c'est un décalage pur, pas une
-/// réinjection de l'erreur encore en attente — donc l'erreur est intégralement
-/// redistribuée et la moyenne conservée.
+/// The error is poured into a queue with eviction over `taps` pixels: the next
+/// one receives the share `w(0)`, the following one still `w(1)`, and so on up
+/// to `w(taps-1)`, the weights forming a decreasing geometric sequence summing
+/// to 1. Every share is poured only once, this is a pure shift and not a
+/// re-injection of the error still pending, so the error is entirely
+/// redistributed and the mean conserved.
 ///
-/// **La file enjambe la fin des lignes.** Elle n'est jamais remise à zéro d'une
-/// ligne à l'autre : le résidu en attente continue d'être distribué et la moyenne
-/// reste conservée. Elle est de surcroît dimensionnée sur `taps` et non sur la
-/// largeur de l'image, avec une tête qui tourne — indexer les positions par
-/// colonne replierait la fin de ligne sur des positions déjà traitées, et une
-/// image plus étroite que la file perdrait des parts.
+/// **The queue straddles the end of the lines.** It is never reset from one
+/// line to the next: the pending residual keeps being distributed and the mean
+/// stays conserved. It is moreover sized on `taps` and not on the image width,
+/// with a rotating head, indexing the positions by column would fold the end of
+/// a line back onto already treated positions, and an image narrower than the
+/// queue would lose shares.
 ///
-/// Pour que cette continuité soit spatialement correcte, le balayage est
-/// **serpentin** (boustrophédon) : une ligne est parcourue de gauche à droite, la
-/// suivante de droite à gauche. La part d'erreur qui traverse la fin de ligne
-/// arrive donc sur le pixel situé juste en dessous, et non au début de la ligne
-/// suivante. C'est aussi ce qui supprime le moiré directionnel du Floyd-Steinberg,
-/// que la queue longue seule ne suffit pas à effacer.
+/// For this continuity to be spatially correct, the scan is **serpentine**
+/// (boustrophedon): one line is walked from left to right, the next one from
+/// right to left. The share of error that crosses the end of a line therefore
+/// lands on the pixel just below, and not at the start of the next line. This
+/// is also what removes the directional moiré of Floyd-Steinberg, which the
+/// long queue alone is not enough to erase.
 fn riemersma(dst: &mut RgbImage, palette: &[[u8; 3]], taps: usize, decay: f64) {
     let (w, h) = dst.dimensions();
     if taps == 0 {
@@ -303,8 +303,8 @@ fn riemersma(dst: &mut RgbImage, palette: &[[u8; 3]], taps: usize, decay: f64) {
     let palette_f = palette_f32(palette);
     let weights = riemersma_weights(taps, decay);
     let mut queue = vec![[0.0f64; 3]; taps];
-    // Position de la part d'erreur qui s'applique au pixel traité : la file est
-    // circulaire, et c'est elle — pas la colonne — qui définit la longueur.
+    // Position of the error share that applies to the treated pixel: the queue
+    // is circular, and it is it, not the column, that defines the length.
     let mut head = 0usize;
     for y in 0..h {
         let reverse = y % 2 == 1;
@@ -323,9 +323,9 @@ fn riemersma(dst: &mut RgbImage, palette: &[[u8; 3]], taps: usize, decay: f64) {
             );
             dst.put_pixel(x, y, Rgb(q));
             let error = [c[0] - q[0] as f64, c[1] - q[1] as f64, c[2] - q[2] as f64];
-            // Les `taps` cases qui suivent sont toutes réécrites, celle de tête
-            // comprise (elle l'est par le plus petit poids) : rien à remettre à
-            // zéro, et aucun emprunt ne se chevauche.
+            // The `taps` slots that follow are all rewritten, including the head
+            // slot (it is, by the smallest weight): nothing to reset, and no
+            // borrow overlaps.
             for (k, weight) in weights.iter().enumerate() {
                 let slot = (head + 1 + k) % taps;
                 for channel in 0..3 {
@@ -337,17 +337,17 @@ fn riemersma(dst: &mut RgbImage, palette: &[[u8; 3]], taps: usize, decay: f64) {
     }
 }
 
-/// Quantifie chaque pixel de `dst` vers la palette fournie en appliquant
-/// Floyd-Steinberg. Opère **en place** sur l'image déjà rendue.
+/// Quantifies every pixel of `dst` to the provided palette by applying
+/// Floyd-Steinberg. Operates **in place** on the already rendered image.
 ///
-/// `palette` est une liste de couleurs RGB ; si elle contient moins de deux
-/// entrées, on ne fait rien (le rendu est supposé déjà opaque).
+/// `palette` is a list of RGB colors; if it holds fewer than two entries,
+/// nothing is done (the render is assumed opaque already).
 pub fn floyd_steinberg(dst: &mut RgbImage, palette: &[[u8; 3]]) {
     if palette.len() < 2 {
         return;
     }
     let (w, h) = dst.dimensions();
-    // Travail sur un buffer mutable f32 pour propager l'erreur sans perte.
+    // Work on a mutable f32 buffer to propagate the error without loss.
     let mut buf: Vec<[f32; 3]> = Vec::with_capacity((w * h) as usize);
     for y in 0..h {
         for x in 0..w {
@@ -363,15 +363,15 @@ pub fn floyd_steinberg(dst: &mut RgbImage, palette: &[[u8; 3]]) {
             let cur = &mut buf[idx(x, y)];
             let old = *cur;
             let q = nearest(palette, &palette_f, &old);
-            // Écrire le pixel quantifié dans dst immédiatement.
+            // Write the quantized pixel into dst immediately.
             dst.put_pixel(x, y, Rgb(q));
-            // Erreur en float.
+            // Error as a float.
             let err = [
                 old[0] - q[0] as f32,
                 old[1] - q[1] as f32,
                 old[2] - q[2] as f32,
             ];
-            // Propagation Floyd-Steinberg.
+            // Floyd-Steinberg propagation.
             let mut distribute = |nx: i32, ny: i32, weight: f32| {
                 if nx >= 0 && (nx as u32) < w && ny >= 0 && (ny as u32) < h {
                     let n = &mut buf[idx(nx as u32, ny as u32)];
@@ -396,7 +396,7 @@ mod tests {
         RgbImage::from_pixel(w, h, Rgb(c))
     }
 
-    /// Rampe de gris horizontale : le cas où un dithering se juge.
+    /// Horizontal gray ramp: the case where a dithering proves itself.
     fn grey_ramp(w: u32, h: u32) -> RgbImage {
         RgbImage::from_fn(w, h, |x, _| {
             let v = ((x as f32 / (w as f32 - 1.0).max(1.0)) * 255.0).round() as u8;
@@ -435,7 +435,7 @@ mod tests {
 
     #[test]
     fn bayer_matrix_starts_with_the_canonical_4x4() {
-        // La matrice 4×4 de référence, dans l'ordre de ses lignes.
+        // The reference 4×4 matrix, in the order of its rows.
         let expected = [[0, 8, 2, 10], [12, 4, 14, 6], [3, 11, 1, 9], [15, 7, 13, 5]];
         assert_eq!(bayer_matrix(4), expected.map(|r| r.to_vec()));
     }
@@ -466,8 +466,9 @@ mod tests {
 
     #[test]
     fn every_algorithm_preserves_the_mean_on_a_ramp() {
-        // Propriété commune aux quatre : la luminance moyenne du tramage reste
-        // proche de celle de la source (c'est tout l'intérêt du dithering).
+        // Property shared by the four: the mean luminance of the dithering
+        // stays close to that of the source (that is the whole point of
+        // dithering).
         let source = grey_ramp(128, 16);
         let reference = mean_luma(&source);
         for dithering in [
@@ -485,8 +486,8 @@ mod tests {
 
     #[test]
     fn bayer_mixes_both_colours_on_a_mid_grey() {
-        // Un gris uniforme ne doit pas produire un aplat : c'est tout le but du
-        // tramage ordonné.
+        // A uniform gray must not produce a flat area: that is the whole point
+        // of ordered dithering.
         for (dithering, expected_side) in [(Dithering::Bayer4, 4usize), (Dithering::Bayer8, 8)] {
             let mut img = solid(16, 16, [128, 128, 128]);
             apply(&mut img, &BICHROME, dithering);
@@ -496,7 +497,7 @@ mod tests {
                 white < img.pixels().count(),
                 "{dithering:?} : aucun pixel sombre"
             );
-            // Le motif doit être périodique de la taille de la matrice.
+            // The pattern must be periodic with the size of the matrix.
             let matrix = bayer_matrix(expected_side);
             for (y, row) in matrix.iter().enumerate().take(expected_side) {
                 for (x, value) in row.iter().enumerate().take(expected_side) {
@@ -514,8 +515,8 @@ mod tests {
 
     #[test]
     fn riemersma_and_floyd_steinberg_differ_on_a_ramp() {
-        // Les deux diffusions ne produisent pas le même motif : c'est le but de
-        // proposer Riemersma en plus.
+        // The two diffusions do not produce the same pattern: that is the point
+        // of offering Riemersma as well.
         let source = grey_ramp(96, 8);
         let mut fs = source.clone();
         apply(&mut fs, &BICHROME, Dithering::FloydSteinberg);
@@ -529,7 +530,7 @@ mod tests {
         assert!(difference > 20, "les deux algorithmes sont trop proches");
     }
 
-    /// Écart moyen entre deux pixels voisins : mesure directe des « vers ».
+    /// Mean gap between two neighboring pixels: direct measure of the "worms".
     fn mean_local_jump(img: &RgbImage) -> f32 {
         let mut total = 0.0f32;
         let mut count = 0usize;
@@ -543,15 +544,15 @@ mod tests {
         total / count as f32
     }
 
-    /// Ce que la queue longue apporte : sur un dégradé, l'écart entre pixels
-    /// voisins diminue nettement (les « vers » de la diffusion à prise unique
-    /// disparaissent), au prix d'un motif un peu plus fondu. C'est le compromis
-    /// qui définit Riemersma.
+    /// What the long queue brings: on a gradient, the gap between neighboring
+    /// pixels drops sharply (the "worms" of single-tap diffusion disappear),
+    /// at the price of a slightly more blurred pattern. This is the compromise
+    /// that defines Riemersma.
     ///
-    /// C'est, mesuré par mutation, le test qui vérifie le plus de choses : il
-    /// échoue si l'on supprime toute propagation d'erreur, si l'on inverse le
-    /// signe des poids, et si l'on désnormalise la file — là où la conservation
-    /// de la moyenne n'en voit aucun des trois.
+    /// As measured by mutation, this is the test that checks the most things:
+    /// it fails if all error propagation is removed, if the sign of the weights
+    /// is inverted, and if the queue is denormalized, where the conservation of
+    /// the mean sees none of the three.
     #[test]
     fn riemersma_tail_smooths_the_pattern() {
         let source = grey_ramp(160, 4);
@@ -560,7 +561,7 @@ mod tests {
         let mut long = source.clone();
         riemersma(&mut long, &BICHROME, RIEMERSMA_TAPS, RIEMERSMA_DECAY);
         let (short_jump, long_jump) = (mean_local_jump(&short), mean_local_jump(&long));
-        // Mesuré : 65,8 contre 126,7, soit presque une division par deux.
+        // Measured: 65.8 against 126.7, almost a division by two.
         assert!(
             long_jump * 1.5 < short_jump,
             "la queue longue devrait lisser nettement le motif : {long_jump} contre {short_jump}"
@@ -571,7 +572,7 @@ mod tests {
     fn dither_solid_color_maps_to_palette_entry() {
         let mut img = solid(8, 8, [200, 30, 30]);
         floyd_steinberg(&mut img, &[[255, 0, 0], [0, 255, 0], [0, 0, 255]]);
-        // Tous les pixels doivent faire partie de la palette.
+        // All the pixels must be part of the palette.
         for p in img.pixels() {
             let in_palette = p[0] == 255 && p[1] == 0 && p[2] == 0
                 || p[0] == 0 && p[1] == 255 && p[2] == 0
@@ -599,11 +600,11 @@ mod tests {
 
 #[cfg(test)]
 mod caveat {
-    // Le glob importe les variantes ; le type lui-même n'est pas nommé ici.
+    // The glob imports the variants; the type itself is not named here.
     use super::Dithering::*;
 
-    /// L'avertissement ne concerne que les algorithmes ordonnés : une
-    /// diffusion d'erreur ne détruit pas la compressibilité.
+    /// The warning only concerns the ordered algorithms: an error diffusion
+    /// does not destroy compressibility.
     #[test]
     fn only_ordered_screens_warn() {
         for mode in [FloydSteinberg, Riemersma, Off] {
@@ -620,8 +621,8 @@ mod caveat {
         }
     }
 
-    /// Un algorithme hors tramage ne se voit pas non plus : l'avertissement ne
-    /// doit apparaître que si un tramage est réellement appliqué.
+    /// An algorithm without dithering is not flagged either: the warning must
+    /// only appear when a dithering is really applied.
     #[test]
     fn caveat_never_appears_without_dithering() {
         for mode in [Off, FloydSteinberg, Riemersma, Bayer4, Bayer8] {
@@ -631,8 +632,8 @@ mod caveat {
         }
     }
 
-    /// Les deux variantes du texte doivent rester affichables : la version
-    /// courte tient sur une ligne de l'interface, la longue dans une infobulle.
+    /// Both variants of the text must stay displayable: the short version fits
+    /// on one interface line, the long one in a tooltip.
     #[test]
     fn caveat_stays_readable() {
         for mode in [Bayer4, Bayer8] {
@@ -648,13 +649,13 @@ mod caveat {
                 "version courte : {} caractères",
                 short.len()
             );
-            // La version courte doit rester une phrase, pas un fragment.
+            // The short version must stay a sentence, not a fragment.
             assert!(short.ends_with('.'), "phrase incomplète : {short}");
         }
     }
 }
 
-// ─── Propriétés ───────────────────────────────────────────────────────────────
+// ─── Properties ───────────────────────────────────────────────────────────────
 
 #[cfg(test)]
 mod proprietes {
@@ -663,8 +664,8 @@ mod proprietes {
     use super::*;
     use image::Rgb;
 
-    /// Générateur congruentiel déterministe : les tests de propriétés doivent
-    /// être reproductibles, donc aucune dépendance à une graineuntime.
+    /// Deterministic congruential generator: the property tests must be
+    /// reproducible, hence no dependence on an externally seeded generator.
     fn lcg(seed: &mut u64) -> u64 {
         *seed = seed
             .wrapping_mul(6_364_136_223_846_793_005)
@@ -680,7 +681,7 @@ mod proprietes {
         img.pixels().map(|p| luma(*p)).sum::<f64>() / img.pixels().count() as f64
     }
 
-    /// Rampe de gris horizontale.
+    /// Horizontal gray ramp.
     fn ramp(w: u32, h: u32) -> RgbImage {
         RgbImage::from_fn(w, h, |x, _| {
             let v = ((x as f64 / (w as f64 - 1.0).max(1.0)) * 255.0).round() as u8;
@@ -688,7 +689,7 @@ mod proprietes {
         })
     }
 
-    /// Rampe verticale : attrape une dérive qui ne dépendrait que de `x`.
+    /// Vertical ramp: catches a drift that would depend only on `x`.
     fn ramp_v(w: u32, h: u32) -> RgbImage {
         RgbImage::from_fn(w, h, |_, y| {
             let v = ((y as f64 / (h as f64 - 1.0).max(1.0)) * 255.0).round() as u8;
@@ -696,8 +697,8 @@ mod proprietes {
         })
     }
 
-    /// Bruit de couleur déterministe : aucun motif régulier, donc aucune
-    /// résonance avec la matrice de Bayer.
+    /// Deterministic color noise: no regular pattern, hence no resonance with
+    /// the Bayer matrix.
     fn noise(w: u32, h: u32, seed: u64) -> RgbImage {
         let mut s = seed;
         RgbImage::from_fn(w, h, |_, _| {
@@ -710,7 +711,7 @@ mod proprietes {
         })
     }
 
-    /// Dégradé lisse en deux dimensions.
+    /// Smooth two-dimensional gradient.
     fn smooth2d(w: u32, h: u32) -> RgbImage {
         RgbImage::from_fn(w, h, |x, y| {
             let fx = x as f64 / (w as f64 - 1.0).max(1.0);
@@ -723,11 +724,11 @@ mod proprietes {
         })
     }
 
-    /// Mélange progressif de deux couleurs : la source *est* un mélange de
-    /// couleurs de palette, ce qui est la situation où le tramage a un sens.
+    /// Progressive blend of two colors: the source *is* a blend of palette
+    /// colors, which is the situation where dithering makes sense.
     fn blend(a: [u8; 3], b: [u8; 3], w: u32, h: u32) -> RgbImage {
-        // La différence se calcule en `i32` : `b - a` peut être négatif, et une
-        // soustraction `u8` déborderait.
+        // The difference is computed in `i32`: `b - a` can be negative, and a
+        // `u8` subtraction would overflow.
         let lerp = |from: u8, to: u8, t: f64| -> u8 {
             (f64::from(from) + f64::from(i32::from(to) - i32::from(from)) * t).round() as u8
         };
@@ -750,11 +751,11 @@ mod proprietes {
             .collect()
     }
 
-    /// Les quatre algorithmes qui trament.
+    /// The four dithering algorithms.
     const MODES: [Dithering; 4] = [FloydSteinberg, Riemersma, Bayer4, Bayer8];
 
-    /// Images à tonalité variée : c'est la condition pour que la conservation de
-    /// la moyenne ait un sens (voir `une_source_grise_...` plus bas).
+    /// Images with varied tone: this is the condition for the conservation of
+    /// the mean to make sense (see `une_source_grise_...` below).
     fn images_tonales() -> Vec<(&'static str, RgbImage)> {
         vec![
             ("rampe 256x16", ramp(256, 16)),
@@ -766,33 +767,33 @@ mod proprietes {
         ]
     }
 
-    /// **La propriété de définition d'un tramage** : sur une image à tonalité
-    /// variée, la luminance moyenne doit survivre à la quantification.
+    /// **The defining property of a dithering**: on an image with varied tone,
+    /// the mean luminance must survive quantization.
     ///
-    /// Tolérance 6,0 sur 255, soit 2,4 %. Elle est calibrée, pas arbitraire :
-    /// l'écart le plus grand constaté sur les images ci-dessus avec une palette
-    /// de gris est 1,7 (Bayer 8×8 sur un dégradé 2D, palette de deux tons).
+    /// Tolerance 6.0 out of 255, that is 2.4%. It is calibrated, not arbitrary:
+    /// the largest difference observed on the images above with a gray palette
+    /// is 1.7 (Bayer 8×8 on a 2D gradient, two-tone palette).
     ///
-    /// **Ce que ce test ne voit pas** — établi par mutation, pas supposé :
+    /// **What this test does not see** — established by mutation, not assumed:
     ///
-    /// - supprimer la normalisation des poids de Riemersma : dérive de 0,00,
-    ///   le test passe ;
-    /// - supprimer toute propagation d'erreur : dérive de 0,00, le test passe ;
-    /// - inverser le signe des poids (rétroaction positive) : dérive de 37,85, le
-    ///   test échoue.
+    /// - remove the normalization of the Riemersma weights: drift of 0.00, the
+    ///   test passes;
+    /// - remove all error propagation: drift of 0.00, the test passes;
+    /// - invert the sign of the weights (positive feedback): drift of 37.85, the
+    ///   test fails.
     ///
-    /// Donc cette propriété vérifie la **stabilité** de la boucle, pas sa
-    /// calibration ni la présence même d'une diffusion. Deux raisons, toutes deux
-    /// structurelles : la diffusion est une boucle de rétroaction fermée — l'erreur
-    /// injectée change le choix du quantificateur, donc l'erreur suivante, et le
-    /// régime permanent conserve la moyenne quel que soit le gain ; et la
-    /// quantification de chaque pixel indépendamment conserve déjà la moyenne
-    /// d'une rampe monotone (cf. `une_quantification_simple_conserve_deja_...`).
+    /// So this property checks the **stability** of the loop, not its
+    /// calibration nor the very presence of a diffusion. Two reasons, both
+    /// structural: diffusion is a closed feedback loop, the injected error
+    /// changes the choice of the quantizer, hence the next error, and the
+    /// steady state conserves the mean whatever the gain; and quantizing each
+    /// pixel independently already conserves the mean of a monotone ramp (cf.
+    /// `une_quantification_simple_conserve_deja_...`).
     ///
-    /// La calibration est vérifiée par
-    /// `les_poids_de_la_queue_soment_a_un` (invariant structurel) et
-    /// `tests::riemersma_tail_smooths_the_pattern` (lissage, qui elle détecte la
-    /// mutation de gain).
+    /// The calibration is checked by
+    /// `les_poids_de_la_queue_soment_a_un` (structural invariant) and
+    /// `tests::riemersma_tail_smooths_the_pattern` (smoothing, which detects
+    /// the gain mutation).
     #[test]
     fn la_moyenne_survit_a_la_quantification() {
         for (name, source) in images_tonales() {
@@ -814,13 +815,13 @@ mod proprietes {
         }
     }
 
-    /// L'invariant que la conservation de la moyenne ne peut pas voir (voir la
-    /// note du test précédent) : la file de Riemersma doit distribuer chaque
-    /// erreur en totalité, donc ses poids somment à 1. C'est vérifié sur la
-    /// construction des poids, pas à travers l'image.
+    /// The invariant that the conservation of the mean cannot see (see the
+    /// note of the previous test): the Riemersma queue must distribute each
+    /// error entirely, so its weights sum to 1. This is checked on the
+    /// construction of the weights, not through the image.
     ///
-    /// Vérifié : supprimer la normalisation fait échouer ce test, et lui seul
-    /// parmi les propriétés de conservation.
+    /// Verified: removing the normalization makes this test fail, and it alone
+    /// among the conservation properties.
     #[test]
     fn les_poids_de_la_queue_soment_a_un() {
         for taps in [1usize, 2, 4, 8, 16, 32] {
@@ -832,8 +833,8 @@ mod proprietes {
                     (total - 1.0).abs() < 1e-12,
                     "{taps} prises, décroissance {decay} : les poids somment à {total}"
                 );
-                // Et la suite doit être décroissante : la queue longue repose sur
-                // des parts de plus en plus petites.
+                // And the sequence must be decreasing: the long queue rests on
+                // smaller and smaller shares.
                 for pair in weights.windows(2) {
                     assert!(pair[1] <= pair[0], "poids non décroissants : {weights:?}");
                 }
@@ -841,18 +842,18 @@ mod proprietes {
         }
     }
 
-    /// **Caractérisation, pas garantie** : la conservation de la moyenne est un
-    /// défaut de toute quantification sur une rampe de gris, diffusion ou non.
+    /// **Characterization, not guarantee**: the conservation of the mean is a
+    /// defect of any quantization on a gray ramp, with or without diffusion.
     ///
-    /// Sur une rampe monotone, la somme des valeurs quantifiées est proche de la
-    /// somme des sources — les marches de l'escalier se compensent. La propriété
-    /// « la moyenne survit » ne peut donc pas, à elle seule, prouver qu'une
-    /// diffusion existe ou qu'elle est bien calibrée. Ce test le montre en
-    /// disableant complètement la diffusion : la moyenne reste juste.
+    /// On a monotone ramp, the sum of the quantized values is close to the sum
+    /// of the sources, the steps of the staircase compensate. The property
+    /// "the mean survives" therefore cannot, on its own, prove that a diffusion
+    /// exists or that it is well calibrated. This test shows it by completely
+    /// disabling the diffusion: the mean stays correct.
     ///
-    /// Il sert de garde-fou dans l'autre sens : si ce test commençait à échouer,
-    /// c'est que la structure de la rampe ou du quantificateur a changé, et les
-    /// tolérances ci-dessus seraient à réexaminer.
+    /// It serves as a safeguard in the other direction: if this test started to
+    /// fail, the structure of the ramp or of the quantizer has changed, and the
+    /// tolerances above should be re-examined.
     #[test]
     fn une_quantification_simple_conserve_deja_la_moyenne_dune_rampe() {
         for n in [2usize, 3, 4, 8, 16] {
@@ -860,7 +861,7 @@ mod proprietes {
             for (name, source) in images_tonales() {
                 let reference = mean_luma(&source);
                 let mut out = source.clone();
-                // `Dithering::Off` : plus proche voisin, sans aucune diffusion.
+                // `Dithering::Off`: nearest neighbor, without any diffusion.
                 apply(&mut out, &palette, Dithering::Off);
                 let delta = (mean_luma(&out) - reference).abs();
                 assert!(
@@ -893,10 +894,10 @@ mod proprietes {
         }
     }
 
-    /// Le tramage ordonné doit placer la bonne *proportion* de pixels clairs,
-    /// à la granularité de sa matrice. C'est le contrat précis de Bayer, et il
-    /// tient même sur une image uniforme — là où la conservation de la moyenne
-    /// n'a pas de sens (voir le test suivant).
+    /// Ordered dithering must place the right *proportion* of light pixels,
+    /// at the granularity of its matrix. This is the precise contract of
+    /// Bayer, and it holds even on a uniform image, where the conservation of
+    /// the mean has no meaning (see the next test).
     #[test]
     fn la_trame_ordonnee_verse_la_bonne_proportion() {
         for (mode, side) in [(Bayer4, 4usize), (Bayer8, 8)] {
@@ -906,7 +907,7 @@ mod proprietes {
                 apply(&mut img, &[[0, 0, 0], [255, 255, 255]], mode);
                 let white = img.pixels().filter(|p| p[0] > 127).count();
                 let fraction = white as f64 / img.pixels().count() as f64;
-                // Une cellule de la matrice vaut 1/side² de tonte surface.
+                // One cell of the matrix is worth 1/side² of the whole surface.
                 let cell = 1.0 / (side * side) as f64;
                 assert!(
                     (fraction - tone).abs() <= cell,
@@ -917,16 +918,15 @@ mod proprietes {
         }
     }
 
-    /// **Limite connue, épinglée volontairement.** Une source grise n'est pas un
-    /// mélange atteignable si la palette ne contient aucun gris : la sélection du
-    /// plus proche voisin se fait en distance RGB, donc elle ignore la
-    /// luminance. Avec la palette {noir, rouge, vert, bleu} — de lumas 0, 0, 18,
-    /// 54 et 182 — l'écart atteint 57 à 73, très loin de la tolérance de 6,0
-    /// appliquée plus haut.
+    /// **Known limit, deliberately pinned.** A gray source is not an reachable
+    /// mixture when the palette holds no gray: nearest-neighbor selection works
+    /// in RGB distance, so it ignores luminance. With the palette {black, red,
+    /// green, blue} — of lumas 0, 0, 18, 54 and 182 — the difference reaches 57
+    /// to 73, far from the tolerance of 6.0 applied above.
     ///
-    /// Ce test ne vérifie donc pas un comportement satisfaisant, mais que
-    /// l'exclusion est intentionnelle. S'il échoue, la limite est levée et les
-    /// tolérances des tests précédents peuvent être resserrées.
+    /// This test therefore does not check a satisfactory behavior, but that the
+    /// exclusion is intentional. If it fails, the limit has been lifted and the
+    /// tolerances of the previous tests can be tightened.
     #[test]
     fn une_source_grise_ne_se_reproduit_pas_sans_gris_dans_la_palette() {
         let palette: Vec<[u8; 3]> = vec![[0, 0, 0], [255, 0, 0], [0, 255, 0], [0, 0, 255]];
@@ -944,7 +944,7 @@ mod proprietes {
         }
     }
 
-    /// Le rendu doit être reproductible : la suite du dépôt s'appuie dessus.
+    /// The render must be reproducible: the repository test suite relies on it.
     #[test]
     fn le_tramage_est_deterministe() {
         for mode in MODES {
@@ -964,9 +964,10 @@ mod proprietes {
         }
     }
 
-    /// Le tramage ne doit rien changer aux pixels déjà exactement dans la
-    /// palette : un aplat d'une couleur de palette doit rester un aplat. C'est ce
-    /// qui évite qu'un rendu « propre » soit sali par le post-traitement.
+    /// Dithering must change nothing about the pixels already exactly in the
+    /// palette: a flat area of a palette color must stay a flat area. This is
+    /// what prevents a "clean" render from being dirtied by the
+    /// post-processing.
     #[test]
     fn un_aplat_dune_couleur_de_palette_ne_bouge_pas() {
         let palette = grey_levels(8);

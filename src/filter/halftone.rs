@@ -1,103 +1,103 @@
-//! Mode halftone multi-canaux (rosette CMYK classique ou couleurs dominantes).
+//! Multi-channel halftone mode (classic CMYK rosette or dominant colors).
 //!
-//! Les algorithmes de partitionnement produisent un nuage de points aux rayons
-//! modulés par la densité locale, avec des couleurs proches de la moyenne de
-//! zone. Le mode halftone, à l'inverse, sépare l'image en **N canaux
-//! d'encre** (Cyan, Magenta, Jaune, Noir — ou N couleurs dominantes extraites par
-//! k-means), puis place une **trame rotationnée indépendante par canal**. Les dots
-//! d'un canal ont la couleur pleine de leur encre (ex. Cyan = [0, 255, 255]) et
-//! un rayon proportionnel à la couverture d'encre à leur position.
+//! The partitioning algorithms produce a cloud of dots whose radii are
+//! modulated by the local density, with colors close to the zonal average. The
+//! halftone mode, on the contrary, splits the image into **N ink channels**
+//! (Cyan, Magenta, Yellow, Black — or N dominant colors extracted by k-means),
+//! then places an **independent rotated screen per channel**. The dots of a
+//! channel have the full color of their ink (e.g. Cyan = [0, 255, 255]) and a
+//! radius proportional to the ink coverage at their position.
 //!
-//! Le compositeur final superpose les canaux en mode **multiply** (mask de
-//! transmission) — pas "over" additif — afin de reproduire correctement le
-//! mélange soustractif des encres sur papier blanc.
+//! The final compositor stacks the channels in **multiply** mode (a
+//! transmission mask), not an additive "over", so as to reproduce the
+//! subtractive mixing of inks on white paper correctly.
 
 use crate::filter::params::Dot;
 use image::RgbImage;
 use image::{Rgb, Rgb32FImage};
 use serde::{Deserialize, Serialize};
 
-// ─── Types d'API publique (vivent ici, référencés par params.rs) ──────────────
+// ─── Public API types (they live here, referenced by params.rs) ───────────────
 
-/// Mode de séparation en canaux d'encre. `Off` conserve le pipeline historique.
+/// Ink channel separation mode. `Off` keeps the historical pipeline.
 #[derive(Clone, Debug, PartialEq, Default, Serialize, Deserialize)]
 pub enum HalftoneMode {
-    /// Pipeline historique : 1 dot par zone, couleur moyenne. Par défaut.
+    /// Historical pipeline: 1 dot per zone, mean color. Default.
     #[default]
     Off,
-    /// 4 canaux Cyan, Magenta, Jaune, Noir avec angles classiques 15°/75°/0°/45°.
+    /// 4 channels Cyan, Magenta, Yellow, Black with the classic angles 15°/75°/0°/45°.
     Cmyk {
-        /// Angles [cyan, magenta, jaune, noir] en degrés.
+        /// Angles [cyan, magenta, yellow, black] in degrees.
         angles: [f32; 4],
     },
-    /// N canaux extraits via k-means sur les pixels de l'image source.
+    /// N channels extracted via k-means over the pixels of the source image.
     Dominant {
-        /// Nombre de canaux dominants (≥ 2).
+        /// Number of dominant channels (≥ 2).
         n: usize,
-        /// Angle de base en degrés. Les canaux suivants sont placés à
-        /// `base + i × 180° / n` (répartition uniforme évitant le moiré).
+        /// Base angle in degrees. The following channels are placed at
+        /// `base + i × 180° / n` (uniform spacing avoiding moiré).
         base_angle_deg: f32,
     },
 }
 
-/// Mode de screening (placement des dots par canal).
+/// Screening mode (placement of the dots per channel).
 #[derive(Clone, Copy, Debug, PartialEq, Default, Serialize, Deserialize)]
 pub enum Screening {
-    /// AM : grille régulière rotationnée par canal (rosette).
+    /// AM: regular grid rotated per channel (rosette).
     #[default]
     Am,
-    /// FM : blue noise stochastique, density variable.
+    /// FM: stochastic blue noise, variable density.
     Fm,
 }
 
-// ─── Types internes (channels, config) ────────────────────────────────────────
+// ─── Internal types (channels, config) ────────────────────────────────────────
 
-/// Canal d'encre prêt à être tramé.
+/// Ink channel ready to be screened.
 pub(crate) struct InkChannel {
-    /// Couleur pleine de l'encre (sera le `Dot::color`).
+    /// Full color of the ink (will be the `Dot::color`).
     pub color: [u8; 3],
-    /// Angle de trame AM en degrés (ignoré en FM).
+    /// AM screen angle in degrees (ignored in FM).
     pub angle_deg: f32,
-    /// Couverture par pixel quantifiée sur 8 bits (0..=255), dans l'ordre
-    /// `(y * width + x)`. Le stockage `u8` divise par 4 la mémoire des cartes de
-    /// couverture par rapport à `f32` — critique pour le mode dominant (jusqu'à
-    /// `n` cartes pleine résolution).
+    /// Per-pixel coverage quantized on 8 bits (0..=255), in the order
+    /// `(y * width + x)`. `u8` storage divides the memory of the coverage maps
+    /// by 4 compared to `f32`, which is critical for dominant mode (up to
+    /// `n` full-resolution maps).
     pub coverage: Vec<u8>,
 }
 
-/// Quantifie une couverture flottante ∈ [0, 1] sur 8 bits.
+/// Quantifies a floating coverage ∈ [0, 1] onto 8 bits.
 #[inline]
 fn cov_u8(v: f32) -> u8 {
     (v.clamp(0.0, 1.0) * 255.0).round() as u8
 }
 
-// ─── Paramètres halftone centralisés ──────────────────────────────────────────
+// ─── Centralized halftone parameters ──────────────────────────────────────────
 
-/// Vue sur les champs halftone de `FilterParams` pour éviter le traversing CLI.
+/// View over the halftone fields of `FilterParams` to avoid CLI plumbing.
 pub struct HalftoneConfig<'a> {
     pub mode: &'a HalftoneMode,
     pub screening: Screening,
-    /// Fréquence de trame AM en "cells per min(W,H)" (× ratio).
-    /// 60 → environ 60 dots par la plus petite dimension (trame 60 lpp).
+    /// AM screen frequency in "cells per min(W,H)" (× ratio).
+    /// 60 → about 60 dots along the smallest dimension (60 lpp screen).
     pub screen_frequency: f32,
     #[allow(dead_code)]
     pub dot_shape: crate::filter::params::DotShape,
-    /// Rayon minimum du dot halftone (fraction de `min(W,H)`).
+    /// Minimum halftone dot radius (fraction of `min(W,H)`).
     pub min_radius_ratio: f32,
-    /// Rayon maximum du dot halftone (fraction du step de trame). > 1.0 → dots se touchent.
+    /// Maximum halftone dot radius (fraction of the screen step). > 1.0 → the dots touch.
     pub max_dot_ratio: f32,
-    /// Graine RNG pour le screening FM (déterminisme).
+    /// RNG seed for FM screening (determinism).
     pub rng_seed: Option<u64>,
 }
 
-// ─── Entrée publique ──────────────────────────────────────────────────────────
+// ─── Public entry point ───────────────────────────────────────────────────────
 
-/// Produit l'ensemble des dots halftone (tous canaux confondus) à peindre dans
-/// l'ordre dans lequel ils ont été générés. Pour le rendu multiply, l'ordre
-/// n'a pas d'importance ( blending commutatif).
+/// Produces the whole set of halftone dots (all channels together) to paint in
+/// the order in which they were generated. For the multiply render, the order
+/// does not matter (commutative blending).
 ///
-/// Chaque dot porte la couleur de son canal : en rendu, multiply va simuler
-/// l'absorption soustractive.
+/// Every dot carries the color of its channel: when rendering, multiply will
+/// simulate the subtractive absorption.
 pub(crate) fn dots_halftone(src: &RgbImage, cfg: &HalftoneConfig) -> Vec<Dot> {
     let channels = match cfg.mode {
         HalftoneMode::Off => return Vec::new(),
@@ -144,10 +144,10 @@ pub(crate) fn dots_halftone_linear(src: &Rgb32FImage, cfg: &HalftoneConfig) -> V
     out
 }
 
-// ─── Séparation CMYK ─────────────────────────────────────────────────────────
+// ─── CMYK separation ─────────────────────────────────────────────────────────
 
-/// Conversion RGB → CMYK avec Under Color Removal (UCR) simple :
-/// si C+M+Y ≥ seuil, on remplace la composante neutre (min(C,M,Y)) par du Noir.
+/// RGB → CMYK conversion with simple Under Color Removal (UCR):
+/// when C+M+Y ≥ threshold, the neutral component (min(C,M,Y)) is replaced with Black.
 fn separate_cmyk(src: &RgbImage, angles: [f32; 4]) -> Vec<InkChannel> {
     let (w, h) = src.dimensions();
     let n = (w as usize) * (h as usize);
@@ -157,8 +157,8 @@ fn separate_cmyk(src: &RgbImage, angles: [f32; 4]) -> Vec<InkChannel> {
     let mut y_cov = vec![0u8; n];
     let mut k_cov = vec![0u8; n];
 
-    // Seuil UCR : si la somme C+M+Y dépasse ce seuil, on remplace la partie
-    // commune par du Noir. 0.3 = commencement modéré.
+    // UCR threshold: when the C+M+Y sum exceeds this threshold, the common part
+    // is replaced with Black. 0.3 = moderate start.
     const UCR_THRESHOLD: f32 = 0.30;
 
     for idx in 0..n {
@@ -171,29 +171,29 @@ fn separate_cmyk(src: &RgbImage, angles: [f32; 4]) -> Vec<InkChannel> {
             p[2] as f32 / 255.0,
         );
         let k_inv = r.max(g).max(b);
-        let k = 1.0 - k_inv; // couverture de noir "naturelle" (max RGB)
-        // `scale` normalise les composantes CMY par `1 - k = max(r,g,b)`.
-        // - Sur le noir pur (k = 1.0), on n'a pas besoin de CMY → 0.
-        // - Sur une couleur saturée (cyan = (0,1,1)), max=1 → scale=1.0, et c=1.
-        //   La formule précédente testait `k_inv < 1.0` ce qui zappait le cyan pur.
+        let k = 1.0 - k_inv; // "natural" black coverage (max RGB)
+        // `scale` normalizes the CMY components by `1 - k = max(r,g,b)`.
+        // - On pure black (k = 1.0), CMY is not needed → 0.
+        // - On a saturated color (cyan = (0,1,1)), max=1 → scale=1.0, and c=1.
+        //   The previous formula tested `k_inv < 1.0`, which skipped pure cyan.
         let scale = if k < 1.0 { 1.0 / k_inv } else { 0.0 };
         let mut c = (1.0 - r - k) * scale;
         let mut m = (1.0 - g - k) * scale;
         let mut y = (1.0 - b - k) * scale;
-        // Clamper → safety.
+        // Clamp for safety.
         c = c.clamp(0.0, 1.0);
         m = m.clamp(0.0, 1.0);
         y = y.clamp(0.0, 1.0);
-        // UCR : si C+M+Y dépasse le seuil, enlever la partie commune.
+        // UCR: when C+M+Y exceeds the threshold, remove the common part.
         let sum = c + m + y;
         if sum > UCR_THRESHOLD {
-            let grey = c.min(m).min(y); // composante neutre = gris
-            c -= grey * 0.5; // retire 50% de la composante neutre (UCR partiel)
+            let grey = c.min(m).min(y); // neutral component = gray
+            c -= grey * 0.5; // removes 50% of the neutral component (partial UCR)
             m -= grey * 0.5;
             y -= grey * 0.5;
-            // Le noir récupère la composante remplaçant la composante neutre retirée.
-            // L'ink coverage totale reste la même à l'écran : c'est l'objectif UCR.
-            // (Approximation : on ne calcule pas le gain exact.)
+            // Black takes over the component that replaces the removed neutral
+            // component. The total ink coverage stays the same on screen: that
+            // is the UCR goal. (Approximation: the exact gain is not computed.)
         }
         c_cov[idx] = cov_u8(c);
         m_cov[idx] = cov_u8(m);
@@ -283,26 +283,26 @@ fn separate_cmyk_linear(src: &Rgb32FImage, angles: [f32; 4]) -> Vec<InkChannel> 
     ]
 }
 
-// ─── Séparation dominant colors (k-means) ─────────────────────────────────────
+// ─── Dominant color separation (k-means) ──────────────────────────────────────
 
-/// Déduplique les couleurs des pixels. Retourne les couleurs uniques (ordre
-/// d'apparition) et, pour chaque pixel, l'index de sa couleur unique.
+/// Deduplicates the pixel colors. Returns the unique colors (in order of
+/// appearance) and, for every pixel, the index of its unique color.
 ///
-/// Le centre le plus proche ne dépend que de la couleur : dédupliquer évite de
-/// répéter `n` multiplications par pixel (gain important sur les images
-/// graphiques/plates), sans changer le résultat.
+/// The closest center only depends on the color: deduplicating avoids
+/// repeating `n` multiplications per pixel (a large gain on flat graphic
+/// images), without changing the result.
 ///
-/// L'ordre d'apparition et l'index de chaque couleur sont conservés.
+/// The order of appearance and the index of each color are preserved.
 ///
-/// La `HashMap` de la bibliothèque suffit : une table à adressage ouvert
-/// maison n'a mesuré aucun gain (1,23 s des deux côtés sur une photo 900×700),
-/// le coût du mode `Dominant` étant dans le tramage et non dans le hachage.
+/// The library `HashMap` is enough: a hand-rolled open-addressing table
+/// measured no gain (1.23 s on both sides on a 900×700 photo), the cost of
+/// `Dominant` mode lying in the screening and not in the hashing.
 fn unique_pixel_colors(src: &RgbImage) -> (Vec<[u8; 3]>, Vec<u32>) {
     use std::collections::HashMap;
     let n_pixels = (src.width() as usize) * (src.height() as usize);
     let mut unique: Vec<[u8; 3]> = Vec::new();
     let mut mapping: Vec<u32> = Vec::with_capacity(n_pixels);
-    // Plafond de capacité : évite de réserver des millions d'entrées d'un coup.
+    // Capacity ceiling: avoids reserving millions of entries at once.
     let mut index_of = HashMap::with_capacity(n_pixels.min(1 << 16));
     for p in src.pixels() {
         let color = [p[0], p[1], p[2]];
@@ -315,9 +315,9 @@ fn unique_pixel_colors(src: &RgbImage) -> (Vec<[u8; 3]>, Vec<u32>) {
     (unique, mapping)
 }
 
-/// K-means sur une liste de couleurs uniques, avec accumulation par pixel dans
-/// l'ordre d'origine (sommes f64 stables). `mapping[pixel]` donne l'index de la
-/// couleur unique du pixel.
+/// K-means over a list of unique colors, with per-pixel accumulation in the
+/// original order (stable f64 sums). `mapping[pixel]` gives the index of the
+/// unique color of the pixel.
 fn compute_dominant_centers_dedup(
     unique: &[[u8; 3]],
     mapping: &[u32],
@@ -331,7 +331,7 @@ fn compute_dominant_centers_dedup(
         return Vec::new();
     }
 
-    // Initialisation : échantillonnage uniforme des couleurs uniques comme centres.
+    // Initialization: uniform sampling of the unique colors as centers
     let step = (n_unique / n.max(1)).max(1);
     let mut centers: Vec<[f32; 3]> = (0..n)
         .map(|i| {
@@ -340,10 +340,10 @@ fn compute_dominant_centers_dedup(
         })
         .collect();
 
-    // K-means (max 10 itérations, stop anticipé). Réutilisation du pattern de
-    // `render::compute_centers` mais appliqué aux pixels source.
+    // K-means (max 10 iterations, early stop). Reuses the pattern of
+    // `render::compute_centers` but applied to the source pixels.
     for _ in 0..10 {
-        // Meilleur centre par couleur unique : une seule recherche par couleur.
+        // Best center per unique color: a single search per color.
         let best_per_unique: Vec<u32> = unique
             .par_iter()
             .map(|c| nearest_center(&centers, &[c[0] as f32, c[1] as f32, c[2] as f32]) as u32)
@@ -399,7 +399,7 @@ fn compute_dominant_centers_dedup(
             break;
         }
     }
-    let _ = rng_seed; // (réservé pour une init k-means++ si l'on veut la variance)
+    let _ = rng_seed; // (reserved for a k-means++ init if one wants the variance)
     centers
         .iter()
         .map(|c| [c[0] as u8, c[1] as u8, c[2] as u8])
@@ -446,14 +446,14 @@ fn separate_dominant(
         .map(|c| [c[0] as f32, c[1] as f32, c[2] as f32])
         .collect();
 
-    // Meilleur centre par couleur unique (une recherche par couleur).
+    // Best center per unique color (one search per color).
     let best_per_unique: Vec<u32> = unique
         .iter()
         .map(|c| nearest_center(&centers_f, &[c[0] as f32, c[1] as f32, c[2] as f32]) as u32)
         .collect();
 
-    // Coverage par canal : "hard assign" sur le centre le plus proche,
-    // pondéré par similarité (1 - normalized_distance). Cartes u8 (÷4 mémoire).
+    // Per-channel coverage: "hard assign" to the closest center, weighted by
+    // similarity (1 - normalized_distance). u8 maps (÷4 memory).
     let mut coverages: Vec<Vec<u8>> = (0..n).map(|_| vec![0u8; n_pixels]).collect();
     for (idx, &u) in mapping.iter().enumerate() {
         let ui = u as usize;
@@ -463,16 +463,16 @@ fn separate_dominant(
         let prgb = [p[0] as f32, p[1] as f32, p[2] as f32];
         let dist_sq =
             (c[0] - prgb[0]).powi(2) + (c[1] - prgb[1]).powi(2) + (c[2] - prgb[2]).powi(2);
-        // Similarité ∈ [0, 1] : 1 quand identique, ~0 quand aux antipodes.
-        let max_color_dist = 255.0 * 255.0 * 1.5; // distance max attendue
+        // Similarity ∈ [0, 1]: 1 when identical, ~0 at the antipodes.
+        let max_color_dist = 255.0 * 255.0 * 1.5; // maximum expected distance
         let sim = 1.0 - (dist_sq / max_color_dist).clamp(0.0, 1.0);
-        // Renforcer la sim pour qu'une attribution proche du vrai pixel donne une
-        // couverture raisonnable (sinon tout est trop faible).
+        // Boost the similarity so that an assignment close to the real pixel
+        // gives a reasonable coverage (otherwise everything is too weak).
         let cov = (sim * 1.3).clamp(0.0, 1.0);
         coverages[best][idx] = cov_u8(cov);
     }
 
-    // Angles répartis uniformément par section d'or pour éviter le moiré.
+    // Angles spread uniformly per channel to avoid moiré.
     let angles = (0..n)
         .map(|i| base_angle_deg + (i as f32) * 180.0 / n as f32)
         .collect::<Vec<_>>();
@@ -486,11 +486,11 @@ fn separate_dominant(
         .collect()
 }
 
-// ─── Screening AM (rosette) ──────────────────────────────────────────────────
+// ─── AM screening (rosette) ──────────────────────────────────────────────────
 //
-// Pour chaque canal, on génère une grille rotationnée centrée sur l'image au
-// pas `screen_frequency` puis on émet un dot par intersection de la grille.
-// Le rayon est proportionnel à la couverture moyenne dans la cellule.
+// For every channel, a rotated grid centered on the image is generated at the
+// `screen_frequency` step, then one dot is emitted per grid intersection.
+// The radius is proportional to the mean coverage inside the cell.
 
 #[allow(clippy::too_many_lines)]
 fn screen_am(src: &RgbImage, channel: InkChannel, cfg: &HalftoneConfig) -> Vec<Dot> {
@@ -500,9 +500,9 @@ fn screen_am(src: &RgbImage, channel: InkChannel, cfg: &HalftoneConfig) -> Vec<D
 
 fn screen_am_dimensions(w: u32, h: u32, channel: InkChannel, cfg: &HalftoneConfig) -> Vec<Dot> {
     let img_min = w.min(h) as f32;
-    // Pas de trame en pixels : plus fréquence est élevée → plus cellule petite.
+    // Screen step in pixels: the higher the frequency → the smaller the cell.
     let step = (img_min / cfg.screen_frequency).max(2.0);
-    // Bornes de la grille en espace rotationné (assez large pour couvrir toute l'image).
+    // Grid bounds in rotated space (wide enough to cover the whole image).
     let half_diag = ((w as f32).hypot(h as f32)) / 2.0 + step;
     let extent = (half_diag / step).ceil() as i32 + 1;
 
@@ -512,33 +512,33 @@ fn screen_am_dimensions(w: u32, h: u32, channel: InkChannel, cfg: &HalftoneConfi
     let (ux, uy) = (ang.cos(), ang.sin());
     let (vx, vy) = (-uy, ux);
 
-    // Rayon min/max en pixels.
+    // Min/max radius in pixels.
     let r_min = cfg.min_radius_ratio * img_min;
-    let r_max = cfg.max_dot_ratio * step; // ≤ step → dots se touchent
+    let r_max = cfg.max_dot_ratio * step; // ≤ step → the dots touch
 
-    // Cellule d'échantillonnage = 1×1 pixel dans l'espace image (pas step×step),
-    // car on lit directement le coverage map indexé par (x_pix,y_pix). En
-    // pratique on moyenne sur un disque de rayon ≈ step/2 autour du centre.
+    // Sampling cell = 1×1 pixel in image space (not step×step), because the
+    // coverage map indexed by (x_pix, y_pix) is read directly. In practice the
+    // average is taken over a disk of radius ≈ step/2 around the center.
 
     let mut dots = Vec::new();
     for j in -extent..=extent {
         for i in -extent..=extent {
-            // Coordonnées dans le repère rotationné (centré sur l'image).
+            // Coordinates in the rotated frame (centered on the image).
             let sx = i as f32 * step;
             let sy = j as f32 * step;
-            // Position dans l'espace image.
+            // Position in image space.
             let px = cx + sx * ux + sy * vx;
             let py = cy + sx * uy + sy * vy;
             if px < 0.0 || py < 0.0 || px >= w as f32 || py >= h as f32 {
                 continue;
             }
-            // Coverage moyenne dans un disque de rayon step/2 autour de (px, py).
+            // Mean coverage in a disk of radius step/2 around (px, py).
             let cov = sample_coverage_disk(&channel.coverage, w, h, px, py, step * 0.5);
             if cov <= 0.005 {
                 continue;
             }
             let radius = r_min + (r_max - r_min) * cov;
-            // Anti suppression des trop petits.
+            // Anti-suppression of the too small ones.
             if radius < 0.5 {
                 continue;
             }
@@ -553,8 +553,8 @@ fn screen_am_dimensions(w: u32, h: u32, channel: InkChannel, cfg: &HalftoneConfi
     dots
 }
 
-/// Moyenne de `coverage` (quantifiée u8) dans un disque centré sur `(px, py)`
-/// de rayon `r`. Retourne une valeur ∈ [0, 1].
+/// Mean of `coverage` (quantized to u8) inside a disk centered on `(px, py)`
+/// of radius `r`. Returns a value ∈ [0, 1].
 fn sample_coverage_disk(coverage: &[u8], w: u32, h: u32, px: f32, py: f32, r: f32) -> f32 {
     let r_i = r.ceil() as i32;
     if r_i <= 0 {
@@ -587,21 +587,21 @@ fn sample_coverage_disk(coverage: &[u8], w: u32, h: u32, px: f32, py: f32, r: f3
     if n > 0 {
         sum as f32 / (n as f32 * 255.0)
     } else {
-        // Fallback au centre exact.
+        // Fallback at the exact center.
         let ix = (px as u32).min(w - 1);
         let iy = (py as u32).min(h - 1);
         coverage[(iy * w + ix) as usize] as f32 / 255.0
     }
 }
 
-// ─── Screening FM (stochastique) ─────────────────────────────────────────────
+// ─── FM screening (stochastic) ───────────────────────────────────────────────
 //
-// Variante pragmatique du "frequency-modulated" screening : on garde la grille
-// rotationnée (comme AM), mais on regarde la coverage à chaque point et on n'émet
-// le dot qu'avec probabilité ≈ coverage. Radius quasi constant (= r_max), c'est
-// la **densité** des dots qui encode la couverture d'encre (à l'inverse de AM où
-// c'est la **taille** qui encode). Le jitter sub-pixel casse l'aspect régulier de
-// la grille → effet direct → rendu plus organique, moins moiré.
+// Pragmatic variant of "frequency-modulated" screening: the rotated grid is kept
+// (as in AM), but the coverage is examined at every point and the dot is emitted
+// only with probability ≈ coverage. The radius is nearly constant (= r_max), it
+// is the **density** of the dots that encodes the ink coverage (unlike in AM,
+// where it is the **size** that encodes). The sub-pixel jitter breaks the
+// regular look of the grid → direct effect → a more organic, less moiréd render.
 
 fn screen_fm(src: &RgbImage, channel: InkChannel, cfg: &HalftoneConfig) -> Vec<Dot> {
     let (w, h) = src.dimensions();
@@ -623,8 +623,8 @@ fn screen_fm_dimensions(w: u32, h: u32, channel: InkChannel, cfg: &HalftoneConfi
     let r_max = cfg.max_dot_ratio * step * 0.5;
     let r_min = cfg.min_radius_ratio * img_min;
 
-    // RNG déterministe par (canal, seed). Dérive simple à partir du seed
-    // et de la couleur du canal pour avoir des placements indépendants.
+    // Deterministic RNG per (channel, seed). A simple derivation from the seed
+    // and from the channel color to get independent placements.
     let seed = cfg
         .rng_seed
         .unwrap_or_else(|| {
@@ -644,10 +644,10 @@ fn screen_fm_dimensions(w: u32, h: u32, channel: InkChannel, cfg: &HalftoneConfi
     let mut dots = Vec::new();
     for j in -extent..=extent {
         for i in -extent..=extent {
-            // Coordonnées dans le repère rotationné (centré sur l'image).
+            // Coordinates in the rotated frame (centered on the image).
             let sx = i as f32 * step;
             let sy = j as f32 * step;
-            // Position dans l'espace image.
+            // Position in image space.
             let px = cx + sx * ux + sy * vx;
             let py = cy + sx * uy + sy * vy;
             if px < 0.0 || py < 0.0 || px >= w as f32 || py >= h as f32 {
@@ -657,15 +657,15 @@ fn screen_fm_dimensions(w: u32, h: u32, channel: InkChannel, cfg: &HalftoneConfi
             if cov <= 0.005 {
                 continue;
             }
-            // Acceptation stochastique : on émet le dot avec probabilité = cov.
+            // Stochastic acceptance: the dot is emitted with probability = cov.
             let thr = lcg_next(&mut rng);
             if thr > cov {
                 continue;
             }
-            // Jitter sub-pixel légère pour casser la régularité de la grille.
+            // Light sub-pixel jitter to break the regularity of the grid.
             let jx = (lcg_next(&mut rng) - 0.5) * step * 0.4;
             let jy = (lcg_next(&mut rng) - 0.5) * step * 0.4;
-            // Radius quasi constant (légère variation pour naturalité).
+            // Radius nearly constant (slight variation for naturalness).
             let r = r_min + (r_max - r_min) * (0.7 + 0.3 * lcg_next(&mut rng));
             if r < 0.5 {
                 continue;
@@ -681,8 +681,8 @@ fn screen_fm_dimensions(w: u32, h: u32, channel: InkChannel, cfg: &HalftoneConfi
     dots
 }
 
-/// LCG dédié au screening FM (indépendant du crate sampling::lcg_next pour
-/// éviter de briser l'encapsulation). Même algorithme.
+/// LCG dedicated to FM screening (independent of the crate's
+/// sampling::lcg_next to avoid breaking encapsulation). Same algorithm.
 fn lcg_next(state: &mut u64) -> f32 {
     *state = state
         .wrapping_mul(6364136223846793005)

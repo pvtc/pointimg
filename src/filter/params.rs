@@ -7,9 +7,9 @@ use super::dither::Dithering;
 use crate::filter::halftone::{HalftoneConfig, HalftoneMode, Screening};
 
 const PRESET_FORMAT_VERSION: u32 = 1;
-/// Longueur maximale d'un côté d'image acceptée par le pipeline (pixels).
+/// Maximum length of an image side accepted by the pipeline (pixels).
 pub const MAX_IMAGE_DIMENSION: u32 = 65_535;
-/// Nombre maximal de pixels acceptés par le pipeline (8 388 608 = 2048×4096).
+/// Maximum number of pixels accepted by the pipeline (8388608 = 2048×4096).
 pub const MAX_IMAGE_PIXELS: u64 = 8 * 1024 * 1024;
 
 #[derive(Deserialize, Serialize)]
@@ -18,16 +18,16 @@ struct PresetDocument {
     params: FilterParams,
 }
 
-/// Lit `dithering` en acceptant les deux écritures historiques.
+/// Reads `dithering` while accepting the two historical spellings.
 ///
-/// `dithering = true` (presets 0.1) vaut [`Dithering::FloydSteinberg`], et
-/// `false` comme l'absence de la clé valent [`Dithering::Off`] ; les noms
-/// d'algorithme sont acceptés tels qu'ils s'écrivent dans un preset.
+/// `dithering = true` (0.1 presets) means [`Dithering::FloydSteinberg`], and
+/// `false` like the absence of the key means [`Dithering::Off`]; algorithm
+/// names are accepted as they are written in a preset.
 fn deserialize_dithering<'de, D>(deserializer: D) -> Result<Dithering, D::Error>
 where
     D: Deserializer<'de>,
 {
-    /// Visiteur acceptant un booléen ou une chaîne.
+    /// Visitor accepting a boolean or a string.
     struct Visitor;
 
     impl serde::de::Visitor<'_> for Visitor {
@@ -62,113 +62,113 @@ where
     deserializer.deserialize_any(Visitor)
 }
 
-/// Algorithme de placement des points.
+/// Dot placement algorithm.
 #[derive(Clone, Copy, PartialEq, Debug, Serialize, Deserialize, ValueEnum)]
 pub enum Algorithm {
-    /// Grille régulière de `cols` × `rows` cellules.
+    /// Regular grid of `cols` × `rows` cells.
     Grid,
-    /// k-means spatial sur (x, y, r, g, b).
+    /// Spatial k-means over (x, y, r, g, b).
     Kmeans,
-    /// Stippling de Lloyd pondéré par la density map.
+    /// Lloyd stippling weighted by the density map.
     Voronoi,
-    /// Subdivision récursive par contraste (tables intégrales).
+    /// Recursive subdivision by contrast (integral tables).
     Quadtree,
-    /// Halftone multi-canal (rosette CMJN ou couleurs dominantes).
-    /// Les sous-paramètres (`HalftoneMode`, `Screening`, `halftone_frequency`,
-    /// …) vivent sur `FilterParams`. Quand cet algorithme est sélectionné, les
-    /// autres paramètres de placement (`num_points`, `cols`, `iterations`,
-    /// `variance_sensitivity`, `max_boost`, `grid_angle_deg`) sont ignorés.
+    /// Multi-channel halftone (CMYK rosette or dominant colors).
+    /// The sub-parameters (`HalftoneMode`, `Screening`, `halftone_frequency`,
+    /// …) live on `FilterParams`. When this algorithm is selected, the other
+    /// placement parameters (`num_points`, `cols`, `iterations`,
+    /// `variance_sensitivity`, `max_boost`, `grid_angle_deg`) are ignored.
     Halftone,
 }
 
-/// Forme des dots dessinés.
+/// Shape of the drawn dots.
 #[derive(Clone, Copy, PartialEq, Debug, Default, Serialize, Deserialize)]
 pub enum DotShape {
-    /// Disque plein (comportement historique)
+    /// Filled disk (historical behavior)
     #[default]
     Circle,
-    /// Carré plein, côté = 2×rayon
+    /// Filled square, side = 2×radius
     Square,
-    /// Ellipse, `aspect` = ratio width/height ∈ (0, 10], `angle_deg` = rotation en degrés
+    /// Ellipse, `aspect` = width/height ratio ∈ (0, 10], `angle_deg` = rotation in degrees
     Ellipse {
-        /// Ratio largeur/hauteur (0, 10].
+        /// Width/height ratio (0, 10].
         aspect: f32,
-        /// Rotation en degrés.
+        /// Rotation in degrees.
         angle_deg: f32,
     },
-    /// Polygone régulier à `sides` côtés (3 = triangle, 4 = losange, 6 = hexagone, …)
+    /// Regular polygon with `sides` sides (3 = triangle, 4 = diamond, 6 = hexagon, …)
     RegularPolygon {
-        /// Nombre de côtés (3 à 12).
+        /// Number of sides (3 to 12).
         sides: u8,
     },
 }
 
-/// Ensemble des réglages du filtre, sérialisable en preset TOML.
+/// All the filter settings, serializable into a TOML preset.
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 pub struct FilterParams {
-    /// Algorithme de placement.
+    /// Placement algorithm.
     pub algorithm: Algorithm,
-    /// Nombre de points cible (Kmeans / Voronoi / Quadtree)
+    /// Target number of dots (Kmeans / Voronoi / Quadtree)
     pub num_points: usize,
-    /// Nombre de colonnes (Grid uniquement)
+    /// Number of columns (Grid only)
     pub cols: u32,
-    /// Rayon minimum : fraction de min(largeur, hauteur) — ex. 0.002 = 0.2% de l'image
+    /// Minimum radius: fraction of min(width, height) — e.g. 0.002 = 0.2% of the image
     pub min_radius_ratio: f32,
-    /// Rayon maximum : fraction de min(largeur, hauteur) — ex. 0.08 = 8% de l'image
+    /// Maximum radius: fraction of min(width, height) — e.g. 0.08 = 8% of the image
     pub max_radius_ratio: f32,
-    /// Couleur de fond RGB — source de vérité unique
+    /// RGB background color — single source of truth
     pub bg_color: [u8; 3],
-    /// Nombre d'itérations pour Voronoi / Kmeans
+    /// Number of iterations for Voronoi / Kmeans
     pub iterations: usize,
-    /// Sensibilité à la variance locale (0 = ignorée, 1 = forte redistribution)
+    /// Sensitivity to local variance (0 = ignored, 1 = strong redistribution)
     pub variance_sensitivity: f32,
-    /// Multiplicateur maximum de la taille dans les zones uniformes (1.0 = pas de boost)
+    /// Maximum size multiplier in uniform areas (1.0 = no boost)
     pub max_boost: f32,
-    /// Graine du RNG pour reproductibilité (None = aléatoire basé sur l'horloge)
+    /// RNG seed for reproducibility (None = clock-based random)
     pub rng_seed: Option<u64>,
-    /// Nombre de couleurs pour la quantification (None = pas de quantification)
+    /// Number of colors for quantization (None = no quantization)
     pub palette_size: Option<usize>,
-    /// Forme des dots
+    /// Shape of the dots
     pub dot_shape: DotShape,
-    /// Fond transparent en sortie (RGBA, alpha 0 entre les dots).
-    /// Quand vrai, `bg_color` est ignoré pour le rendu final (les zones non couvertes
-    /// restent transparentes). Il reste utilisé pour flattener l'image source vers
-    /// RGB (computations des moyennes de couleur des dots).
+    /// Transparent background on output (RGBA, alpha 0 between the dots).
+    /// When true, `bg_color` is ignored for the final render (uncovered areas
+    /// stay transparent). It is still used to flatten the source image to RGB
+    /// (computing the average dot colors).
     pub transparent: bool,
-    /// Correction gamma des moyennes de couleur des dots. Quand vrai, les
-    /// moyennes sont effectuées en espace linéaire (sRGB→linear→moyenne→sRGB),
-    /// ce qui évite le biais "trop sombre" des zones contrastées (ex: bord de
-    /// dégradé). Coût : 2 passes de l'image (line´arisation source + ré-encodage dst).
+    /// Gamma correction of the average dot colors. When true, the averages are
+    /// taken in linear space (sRGB→linear→average→sRGB), which avoids the
+    /// "too dark" bias on contrasted areas (e.g. the edge of a gradient).
+    /// Cost: 2 passes over the image (source linearization + dst re-encoding).
     pub gamma_correct: bool,
-    /// Algorithme de dithering lors de la quantification de palette. Quand il
-    /// est actif (et `palette_size` est `Some(n)`), l'image rendue finale est
-    /// post-quantifiée avec le tramage choisi — effet « offset print » ou
-    /// « pixel art ». Ignoré si `palette_size` est `None`.
+    /// Dithering algorithm applied when quantizing the palette. When it is
+    /// active (and `palette_size` is `Some(n)`), the final rendered image is
+    /// post-quantized with the chosen screening — an "offset print" or
+    /// "pixel art" effect. Ignored when `palette_size` is `None`.
     ///
-    /// Les anciens presets écrivent `dithering = true` : c'est lu comme
+    /// Old presets write `dithering = true`: it is read as
     /// [`Dithering::FloydSteinberg`] (cf. `deserialize_dithering`).
     #[serde(default, deserialize_with = "deserialize_dithering")]
     pub dithering: Dithering,
-    /// Angle de rotation de la grille (degrés), appliqué à l'algorithme Grid
-    /// uniquement. Les dots sont placés sur une grille pivotée autour du centre
-    /// de l'image — effet "halftone screen" expérimental. La couleur reste la
-    /// moyenne de la cellule non rotationnée. 0 = pas de rotation (défaut).
+    /// Grid rotation angle (degrees), applied to the Grid algorithm only.
+    /// The dots are placed on a grid pivoted around the image center, an
+    /// experimental "halftone screen" effect. The color stays the average of
+    /// the un-rotated cell. 0 = no rotation (default).
     pub grid_angle_deg: f32,
-    /// Mode halftone multi-canaux (rosette CMJK, couleurs dominantes, ou off).
+    /// Multi-channel halftone mode (CMYK rosette, dominant colors, or off).
     pub halftone: HalftoneMode,
-    /// Screening (placement AM grille rotationnée ou FM blue noise).
+    /// Screening (AM placement on a rotated grid, or FM blue noise).
     pub screening: Screening,
-    /// Fréquence de trame AM en "cells per min(W,H)". 60 → 60 dots par la plus
-    /// petite dimension (~trame 60 lpp à 1 dpi).
+    /// AM screen frequency in "cells per min(W,H)". 60 → 60 dots along the
+    /// smallest dimension (~60 lpp screen at 1 dpi).
     pub halftone_frequency: f32,
-    /// Rayon minimum du dot halftone (fraction de `min(W,H)`).
+    /// Minimum halftone dot radius (fraction of `min(W,H)`).
     pub halftone_min_radius_ratio: f32,
-    /// Rayon maximum du dot halftone (fraction du step de trame).
+    /// Maximum halftone dot radius (fraction of the screen step).
     pub halftone_max_dot_ratio: f32,
 }
 
 impl FilterParams {
-    /// Construit une `HalftoneConfig` prête à passer au moteur halftone.
+    /// Builds a `HalftoneConfig` ready to hand to the halftone engine.
     pub fn halftone_config(&self) -> HalftoneConfig<'_> {
         HalftoneConfig {
             mode: &self.halftone,
@@ -181,7 +181,7 @@ impl FilterParams {
         }
     }
 
-    /// Sérialise les paramètres en une chaîne TOML, prête à écrire dans un fichier.
+    /// Serializes the parameters into a TOML string, ready to write into a file.
     ///
     /// ```
     /// use pointimg::filter::{Algorithm, FilterParams};
@@ -202,7 +202,7 @@ impl FilterParams {
         .map_err(|e| anyhow!("erreur de sérialisation presets : {e}"))
     }
 
-    /// Reconstruit les paramètres depuis une chaîne TOML.
+    /// Rebuilds the parameters from a TOML string.
     pub fn from_toml_str(s: &str) -> Result<Self> {
         if let Ok(document) = toml::from_str::<PresetDocument>(s) {
             if document.preset_version != PRESET_FORMAT_VERSION {
@@ -215,7 +215,7 @@ impl FilterParams {
             return Ok(document.params);
         }
 
-        // Les presets plats, sans enveloppe `document`, restent lisibles.
+        // Flat presets, without the `document` wrapper, stay readable.
         toml::from_str(s).map_err(|e| anyhow!("preset TOML invalide : {e}"))
     }
 }
@@ -248,28 +248,28 @@ impl Default for FilterParams {
     }
 }
 
-/// Un point résultant du filtre
+/// A dot produced by the filter
 #[derive(Clone, Debug)]
 pub struct Dot {
-    /// Position du centre en pixels.
+    /// Center position in pixels.
     pub x: f32,
-    /// Position du centre en pixels.
+    /// Center position in pixels.
     pub y: f32,
-    /// Couleur RGB8 moyenne de la zone couverte.
+    /// Average RGB8 color of the covered area.
     pub color: [u8; 3],
-    /// Rayon en pixels.
+    /// Radius in pixels.
     pub radius: f32,
 }
 
-/// Vérifie les dimensions de l'image puis tous les paramètres.
+/// Checks the image dimensions then all the parameters.
 ///
-/// Les paramètres invalides (valeurs négatives, non finies, hors bornes) sont
-/// rejetés ici avant tout calcul, y compris par les GUI et le CLI.
+/// Invalid parameters (negative, non-finite, out-of-bounds values) are
+/// rejected here before any computation, by the GUIs and the CLI alike.
 ///
-/// Sept contrôles nommés plutôt qu'une série de 156 `if` en ligne. L'ordre des
-/// vérifications et les messages sont inchangés, caractère pour caractère : seul
-/// le regroupement change, et chaque contrôle devient testable seul.
-/// Rayons des points : ordonnés, positifs, et dans l'échelle de l'image.
+/// Seven named checks instead of a series of 156 inline `if`s. The order of the
+/// checks and the messages are unchanged, character for character: only the
+/// grouping changes, and each check becomes testable on its own.
+/// Dot radii: ordered, positive, and at the scale of the image.
 fn validate_radii(p: &FilterParams) -> Result<()> {
     if p.min_radius_ratio <= 0.0 {
         return Err(anyhow!("min_radius_ratio doit etre > 0"));
@@ -291,7 +291,7 @@ fn validate_radii(p: &FilterParams) -> Result<()> {
     Ok(())
 }
 
-/// Placement : nombre de points, grille, itérations.
+/// Placement: number of dots, grid, iterations.
 fn validate_density(p: &FilterParams) -> Result<()> {
     if p.num_points == 0 {
         return Err(anyhow!("num_points doit etre > 0"));
@@ -316,7 +316,7 @@ fn validate_density(p: &FilterParams) -> Result<()> {
     Ok(())
 }
 
-/// Palette et sensibilité à la variance.
+/// Palette and sensitivity to variance.
 fn validate_palette(p: &FilterParams) -> Result<()> {
     if let Some(n) = p.palette_size
         && n < 2
@@ -338,7 +338,7 @@ fn validate_palette(p: &FilterParams) -> Result<()> {
     Ok(())
 }
 
-/// Réglages propres au halftone.
+/// Settings specific to halftone.
 fn validate_halftone(p: &FilterParams) -> Result<()> {
     if p.algorithm == Algorithm::Halftone && p.halftone == HalftoneMode::Off {
         return Err(anyhow!(
@@ -363,10 +363,10 @@ fn validate_halftone(p: &FilterParams) -> Result<()> {
             p.halftone_max_dot_ratio
         ));
     }
-    // Bornes supérieures : un rayon halftone n'est pas plafonné par le
-    // nearest-neighbor comme les algorithmes pointillistes. Des valeurs
-    // arbitrairement grandes (ex. `--halftone-max-dot 1e9`) produiraient des
-    // dots couvrant toute l'image → rendu pathologiquement lent.
+    // Upper bounds: a halftone radius is not capped by the nearest-neighbor,
+    // unlike the pointillist algorithms. Arbitrarily large values (e.g.
+    // `--halftone-max-dot 1e9`) would produce dots covering the whole image →
+    // a pathologically slow render.
     if p.halftone_min_radius_ratio > 1.0 {
         return Err(anyhow!(
             "halftone_min_radius_ratio doit etre <= 1.0, got {}",
@@ -382,7 +382,7 @@ fn validate_halftone(p: &FilterParams) -> Result<()> {
     Ok(())
 }
 
-/// Forme des points.
+/// Dot shape.
 fn validate_shapes(p: &FilterParams) -> Result<()> {
     if let DotShape::RegularPolygon { sides } = p.dot_shape
         && !(3..=12).contains(&sides)
@@ -403,8 +403,8 @@ fn validate_shapes(p: &FilterParams) -> Result<()> {
     Ok(())
 }
 
-/// Aucune valeur infinie ou NaN : elles traverseraient tout le pipeline sans
-/// être vues, et sortiraient en pixels noirs ou en plantes aléatoires.
+/// No infinite or NaN value: they would travel through the whole pipeline
+/// unseen, and come out as black pixels or random artifacts.
 fn validate_finite(p: &FilterParams) -> Result<()> {
     for (name, value) in [
         ("min_radius_ratio", p.min_radius_ratio),
@@ -423,13 +423,13 @@ fn validate_finite(p: &FilterParams) -> Result<()> {
     Ok(())
 }
 
-/// Contrôle tout ce qu'un rendu refuse d'accepter.
+/// Checks everything a render refuses to accept.
 ///
-/// Sept contrôles nommés plutôt qu'une série de 156 `if` en ligne. L'ordre des
-/// vérifications et les messages sont inchangés, caractère pour caractère : seul
-/// le regroupement change, et chaque contrôle devient testable seul.
-/// le regroupement change, et chaque contrôle devient testable seul.
-/// le regroupement change, et chaque contrôle devient testable seul.
+/// Seven named checks instead of a series of 156 inline `if`s. The order of the
+/// checks and the messages are unchanged, character for character: only the
+/// grouping changes, and each check becomes testable on its own.
+/// the grouping changes, and each check becomes testable on its own.
+/// the grouping changes, and each check becomes testable on its own.
 pub fn validate_params(w: u32, h: u32, params: &FilterParams) -> Result<()> {
     validate_image_dimensions(w, h)?;
     validate_radii(params)?;
@@ -440,7 +440,7 @@ pub fn validate_params(w: u32, h: u32, params: &FilterParams) -> Result<()> {
     validate_finite(params)
 }
 
-/// Valide les dimensions avant de decoder l'image en memoire.
+/// Validates the dimensions before decoding the image into memory.
 pub fn validate_image_dimensions(w: u32, h: u32) -> Result<()> {
     if w == 0 || h == 0 {
         return Err(anyhow!("Image vide ({}x{})", w, h));
@@ -469,8 +469,8 @@ pub fn validate_image_dimensions(w: u32, h: u32) -> Result<()> {
 mod tests {
     use super::*;
 
-    /// Un preset complet dont la ligne `dithering` est remplacée (ou retirée
-    /// si `line` est vide).
+    /// A complete preset whose `dithering` line is replaced (or removed when
+    /// `line` is empty).
     fn preset_with_dithering(line: &str) -> String {
         let base = FilterParams::default().to_toml_string().unwrap();
         base.lines()
@@ -486,8 +486,8 @@ mod tests {
             .join("\n")
     }
 
-    /// Les presets 0.1 écrivaient `dithering = true` : ils doivent continuer de
-    /// produire du Floyd-Steinberg, pas échouer à la lecture.
+    /// 0.1 presets wrote `dithering = true`: they must keep producing
+    /// Floyd-Steinberg rather than failing to load.
     #[test]
     fn legacy_boolean_dithering_is_still_read() {
         let legacy = preset_with_dithering("dithering = true");
@@ -508,7 +508,7 @@ mod tests {
             let params = FilterParams::from_toml_str(&text)
                 .unwrap_or_else(|e| panic!("dithering = {name} : {e}"));
             assert_eq!(params.dithering, expected, "{name}");
-            // Et l'écriture doit rester lisible.
+            // And the written form must stay readable.
             let written = params.to_toml_string().unwrap();
             assert!(
                 written.contains(&format!("dithering = \"{name}\"")),

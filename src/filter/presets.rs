@@ -1,22 +1,22 @@
-//! Presets intégrés, prêts à l'emploi.
+//! Built-in presets, ready to use.
 //!
-//! Les fichiers `.toml` restent le format d'échange (voir
-//! [`FilterParams::to_toml_string`]), mais partir de zéro d'une liste de
-//! réglages est un premier obstacle : il faut déjà savoir quel algorithme et
-//! quelles valeurs donnent un rendu agréable. Ces presets sont des points de
-//! départ validés, exposés à la CLI comme aux deux interfaces.
+//! `.toml` files remain the exchange format (see
+//! [`FilterParams::to_toml_string`]), but starting from scratch from a list of
+//! settings is a first hurdle: one must already know which algorithm and which
+//! values give a pleasing render. These presets are validated starting points,
+//! exposed to the CLI as well as to the two interfaces.
 
 use super::dither::Dithering;
 use super::halftone::{HalftoneMode, Screening};
 use super::params::{Algorithm, DotShape, FilterParams};
 
-/// Un preset intégré : un nom affichable et les réglages correspondants.
+/// A built-in preset: a displayable name and the corresponding settings.
 pub struct BuiltinPreset {
-    /// Nom affiché (français, comme les libellés de l'interface).
+    /// Displayed name (in French, like the interface labels).
     pub name: &'static str,
-    /// Description courte affichée en sous-titre dans les interfaces.
+    /// Short description displayed as a subtitle in the interfaces.
     pub description: &'static str,
-    /// Réglages appliqués quand le preset est sélectionné.
+    /// Settings applied when the preset is selected.
     pub params: FilterParams,
 }
 
@@ -28,13 +28,13 @@ fn preset(name: &'static str, description: &'static str, params: FilterParams) -
     }
 }
 
-/// Liste des presets intégrés, dans l'ordre d'affichage.
+/// List of the built-in presets, in display order.
 ///
 /// ```
 /// use pointimg::filter::{builtin_presets, validate_params};
 ///
 /// for p in builtin_presets() {
-///     // Tous les presets doivent passer la validation des paramètres.
+///     // Every preset must pass parameter validation.
 ///     validate_params(64, 64, &p.params).unwrap();
 /// }
 /// assert!(!builtin_presets().is_empty());
@@ -197,7 +197,7 @@ mod tests {
         }
     }
 
-    /// Les presets sont aussi lisibles par le chemin TOML (aller-retour).
+    /// The presets are also readable through the TOML path (round trip).
     #[test]
     fn presets_round_trip_through_toml() {
         for p in builtin_presets() {

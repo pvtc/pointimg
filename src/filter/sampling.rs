@@ -43,9 +43,9 @@ pub(crate) fn importance_sample(
     if n_pixels == 0 {
         return result;
     }
-    // Plus de points demandés que de pixels : répartir sur tous les pixels.
-    // Sinon la recherche CDF (monotone) écrase tous les points excédentaires
-    // sur le dernier pixel, ce qui dégénère le Lloyd/k-means.
+    // More points requested than pixels: spread them over all the pixels.
+    // Otherwise the (monotone) CDF search crushes all the excess points onto
+    // the last pixel, which degenerates the Lloyd/k-means.
     if k >= n_pixels {
         return (0..k)
             .map(|i| {
@@ -87,7 +87,7 @@ pub(crate) fn importance_sample(
     result
 }
 
-/// Construit les Dots depuis les graines finales.
+/// Builds the Dots from the final seeds.
 ///
 /// Builds dots in parallel with rayon.
 pub(crate) fn build_dots_from_seeds(
@@ -102,7 +102,7 @@ pub(crate) fn build_dots_from_seeds(
 
     let grid = SeedGrid::new(seeds, width, height);
 
-    // Accumulation parallèle : chaque thread accumule ses propres vecteurs partiels
+    // Parallel accumulation: every thread accumulates its own partial vectors
     let (sum_r, sum_g, sum_b, sum_d, counts) = (0..height)
         .into_par_iter()
         .fold(
@@ -227,8 +227,8 @@ mod tests {
 
     #[test]
     fn importance_sample_more_points_than_pixels_spreads() {
-        // 4×4 pixels mais 40 points demandés : aucun pixel ne doit concentrer
-        // toutes les graines.
+        // 4×4 pixels but 40 points requested: no pixel should concentrate all
+        // the seeds.
         let weights = vec![1.0f32; 16];
         let seeds = importance_sample(&weights, 4, 4, 40, 7);
         assert_eq!(seeds.len(), 40);

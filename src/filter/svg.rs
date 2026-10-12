@@ -6,14 +6,14 @@ use image::{DynamicImage, RgbImage};
 use std::f32::consts::PI;
 use std::fmt::{Arguments, Write};
 
-/// Écrit dans une `String` en ignorant l'erreur (l'écriture y est infaillible).
+/// Writes into a `String` while ignoring the error (writing there is infallible).
 #[inline]
 fn write_str(out: &mut String, args: Arguments<'_>) {
     let _ = out.write_fmt(args);
 }
 
-/// Rend les dots en SVG (chaîne de caractères).
-/// Chaque dot devient un élément SVG selon `params.dot_shape`.
+/// Renders the dots to SVG (a character string).
+/// Every dot becomes an SVG element according to `params.dot_shape`.
 ///
 /// Accepts precomputed dots to avoid running the filter twice.
 pub fn render_svg_from_dots(w: u32, h: u32, dots: &[Dot], params: &FilterParams) -> Result<String> {
@@ -45,8 +45,8 @@ pub fn render_svg_from_dots(w: u32, h: u32, dots: &[Dot], params: &FilterParams)
             "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"{w}\" height=\"{h}\" viewBox=\"0 0 {w} {h}\">\n"
         ),
     );
-    // En mode transparent, on n'émet pas de <rect> de fond : les zones non
-    // couvertes par un dot restent transparentes (utile pour compositing SVG).
+    // In transparent mode, no background <rect> is emitted: the areas not
+    // covered by a dot stay transparent (useful for SVG compositing).
     if !params.transparent {
         let [br, bg_c, bb] = params.bg_color;
         write_str(
@@ -124,8 +124,8 @@ pub fn render_svg_from_dots(w: u32, h: u32, dots: &[Dot], params: &FilterParams)
     Ok(svg)
 }
 
-/// Rend les dots en SVG depuis une `RgbImage` (recalcule les dots).
-/// Pour la sauvegarde CLI — préférer `render_svg_from_dots` en GUI.
+/// Renders the dots to SVG from an `RgbImage` (recomputes the dots).
+/// For CLI saving — prefer `render_svg_from_dots` in the GUI.
 pub fn render_svg(src: &RgbImage, params: &FilterParams) -> Result<String> {
     let (w, h) = src.dimensions();
     if w == 0 || h == 0 {
@@ -135,7 +135,7 @@ pub fn render_svg(src: &RgbImage, params: &FilterParams) -> Result<String> {
     render_svg_from_dots(w, h, &dots, params)
 }
 
-/// Rend les dots en SVG depuis une `DynamicImage` (supporte RGBA).
+/// Renders the dots to SVG from a `DynamicImage` (supports RGBA).
 pub fn render_svg_dynamic(src: &DynamicImage, params: &FilterParams) -> Result<String> {
     let rgb = flatten_to_rgb(src, params.bg_color);
     render_svg(&rgb, params)

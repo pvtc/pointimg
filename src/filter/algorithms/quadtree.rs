@@ -3,16 +3,16 @@ use crate::filter::render::radius_for_dot;
 use crate::filter::util::luminance;
 use image::RgbImage;
 
-// ─── Algorithme 4 : Quadtree adaptatif ───────────────────────────────────────
+// ─── Algorithm 4: adaptive quadtree ──────────────────────────────────────────
 //
-// Tables intégrales (summed-area tables) en entiers u64 : chaque requête de
-// somme ou de somme de carrés sur un rectangle est O(1), au lieu de
-// re-parcourir tous les pixels du nœud à chaque subdivision. L'arithmétique
-// entière est exacte (aucun arrondi flottant par chemin), et la variance
-// s'exprime en forme close : Σ(p−a)² = Σp² − 2a·Σp + n·a².
+// Integral tables (summed-area tables) in u64 integers: every sum or sum of
+// squares query over a rectangle is O(1), instead of walking all the pixels of
+// the node at each subdivision. Integer arithmetic is exact (no floating
+// rounding along the way), and the variance has a closed form:
+// Σ(p−a)² = Σp² − 2a·Σp + n·a².
 
-/// Tables intégrales RGB : sommes et sommes de carrés, layout (w+1)×(h+1)
-/// avec une ligne/colonne de zéros pour des requêtes sans branches.
+/// RGB integral tables: sums and sums of squares, (w+1)×(h+1) layout with a
+/// row/column of zeros for branchless queries.
 struct IntegralImage {
     sums: Vec<[u64; 3]>,
     squares: Vec<[u64; 3]>,
@@ -54,8 +54,8 @@ impl IntegralImage {
         }
     }
 
-    /// Somme sur le rectangle [x0, x1) × [y0, y1). Arithmétique wrap-around :
-    /// le résultat est exact mod 2⁶⁴, et le vrai résultat est ≥ 0.
+    /// Sum over the rectangle [x0, x1) × [y0, y1). Wrap-around arithmetic:
+    /// the result is exact mod 2⁶⁴, and the true result is >= 0.
     #[inline]
     fn rect_query(
         table: &[[u64; 3]],
@@ -82,7 +82,7 @@ impl IntegralImage {
         ]
     }
 
-    /// Sommes RGB et nombre de pixels du rectangle (clampé à l'image).
+    /// RGB sums and pixel count of the rectangle (clamped to the image).
     fn rect_sums(&self, x: u32, y: u32, w: u32, h: u32) -> ([u64; 3], u64) {
         let x0 = x as usize;
         let y0 = y as usize;
@@ -92,8 +92,8 @@ impl IntegralImage {
         (Self::rect_query(&self.sums, self.stride, x0, y0, x1, y1), n)
     }
 
-    /// Σ(p − avg)² sur le rectangle, avg = moyenne tronquée par canal (u8),
-    /// en entiers exacts : Σp² − 2a·Σp + n·a² par canal.
+    /// Σ(p − avg)² over the rectangle, avg = per-channel truncated mean (u8),
+    /// in exact integers: Σp² − 2a·Σp + n·a² per channel.
     fn rect_var_num(&self, x: u32, y: u32, w: u32, h: u32, avg: &[u8; 3]) -> (u64, u64) {
         let x0 = x as usize;
         let y0 = y as usize;

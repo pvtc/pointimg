@@ -1,25 +1,25 @@
-//! Correction gamma sRGB ↔ linéaire via tables de lookup pré-calculées.
+//! sRGB ↔ linear gamma correction via pre-computed lookup tables.
 //!
-//! Quand `FilterParams::gamma_correct` est vrai, le pipeline pré-traite l'image
-//! source en linéarisant ses pixels sRGB, lance les algorithmes sur cette
-//! version linéaire (les moyennes de couleur deviennent donc perceptuellement
-//! correctes), puis ré-encode le résultat final en sRGB. Sans toucher aux
-//! algorithmes internes.
+//! When `FilterParams::gamma_correct` is true, the pipeline pre-processes the
+//! source image by linearizing its sRGB pixels, runs the algorithms on that
+//! linear version (so the color averages become perceptually correct), then
+//! re-encodes the final result into sRGB. Without touching the internal
+//! algorithms.
 //!
-//! Les tables couvrent les 256 valeurs u8 dans les deux sens ; un lookup est une
-//! simple indexation. Le coût total pour une image W×H est : deux passes
-//! (line´arisation + ré-encodage) ≈ 6·W·H indexations.
+//! The tables cover the 256 u8 values in both directions; a lookup is a plain
+//! indexing. The total cost for a W×H image is: two passes (linearization +
+//! re-encoding) ≈ 6·W·H indexings.
 
 use image::{Rgb, RgbImage, Rgba, RgbaImage};
 use std::sync::LazyLock;
 
-/// Conversion sRGB (u8) → valeur linéaire (u8).
-/// Encodage : un byte 0-255 représente une radiance linéaire
-/// normalisée par 255. La précision est 8-bit (suffisante pour la visualisation).
+/// sRGB (u8) → linear value (u8) conversion.
+/// Encoding: a 0-255 byte represents a linear radiance normalized by 255.
+/// The precision is 8-bit (enough for display).
 fn build_srgb_to_linear_lut() -> [u8; 256] {
     let mut lut = [0u8; 256];
     for i in 0..256u32 {
-        let s = i as f32 / 255.0; // entrée sRGB normalisée
+        let s = i as f32 / 255.0; // normalized sRGB input
         let l = if s <= 0.04045 {
             s / 12.92
         } else {
@@ -30,11 +30,11 @@ fn build_srgb_to_linear_lut() -> [u8; 256] {
     lut
 }
 
-/// Conversion linéaire (u8) → sRGB (u8).
+/// Linear (u8) → sRGB (u8) conversion.
 fn build_linear_to_srgb_lut() -> [u8; 256] {
     let mut lut = [0u8; 256];
     for i in 0..256u32 {
-        let l = i as f32 / 255.0; // entrée linéaire normalisée
+        let l = i as f32 / 255.0; // normalized linear input
         let s = if l <= 0.0031308 {
             l * 12.92
         } else {
@@ -99,7 +99,7 @@ pub(crate) fn linear_to_srgb_rgb(p: [u8; 3]) -> [u8; 3] {
     ]
 }
 
-/// Map une `RgbImage` entière via une LUT par canal.
+/// Maps a whole `RgbImage` through a per-channel LUT.
 pub(crate) fn map_image<F: Fn(u8) -> u8>(src: &RgbImage, f: F) -> RgbImage {
     let (w, h) = src.dimensions();
     let mut out = RgbImage::new(w, h);
@@ -120,8 +120,9 @@ pub(crate) fn linear_to_srgb_image(src: &RgbImage) -> RgbImage {
     map_image(src, linear_to_srgb_u8)
 }
 
-/// Ré-encode les 3 canaux RGB d'une `RgbaImage` via une LUT, sans toucher le canal alpha.
-/// Utilisé pour transformer un buffer RGBA "linéaire" en buffer RGBA "sRGB" après le rendu.
+/// Re-encodes the 3 RGB channels of an `RgbaImage` through a LUT, leaving the
+/// alpha channel untouched. Used to turn a "linear" RGBA buffer into an "sRGB"
+/// RGBA buffer after rendering.
 pub(crate) fn map_rgba_image_rgb<F: Fn(u8) -> u8>(src: &RgbaImage, f: F) -> RgbaImage {
     let (w, h) = src.dimensions();
     let mut out = RgbaImage::new(w, h);
@@ -156,10 +157,10 @@ mod tests {
 
     #[test]
     fn round_trip_is_approx_identity_above_mid_range() {
-        // Pour des valeurs sRGB suffisamment éloignées des noirs, le round-trip
-        // LUT 8-bit doit être ≈ identité (≤ 2 unités). Les très petites valeurs
-        // (sRGB < 32) s'effondrent vers 0 en linéaire 8-bit : c'est attendu et
-        // peu visible en pratique, donc hors du test.
+        // For sRGB values far enough from black, the 8-bit LUT round-trip must
+        // be ≈ identity (≤ 2 units). The very small values (sRGB < 32) collapse
+        // to 0 in 8-bit linear: that is expected and barely visible in
+        // practice, hence outside of the test.
         for v in [32u8, 48, 64, 96, 128, 160, 192, 224, 240] {
             let r = linear_to_srgb_u8(srgb_to_linear_u8(v));
             assert!(
@@ -171,9 +172,9 @@ mod tests {
 
     #[test]
     fn mid_gray_srgb_to_linear_is_darker() {
-        // sRGB 128 → linéaire ≈ 55 (sensiblement plus sombre). C'est le cœur
-        // de la correction : la valeur "linéaire" 128 représentée comme sRGB
-        // est ~21% de luminance, pas 50%.
+        // sRGB 128 → linear ≈ 55 (noticeably darker). This is the heart of the
+        // correction: the "linear" value 128 displayed as sRGB is ~21% of
+        // luminance, not 50%.
         let lin = srgb_to_linear_u8(128);
         assert!(
             lin < 80,
@@ -184,7 +185,7 @@ mod tests {
 
     #[test]
     fn mid_gray_linear_to_srgb_is_brighter() {
-        // Inverse : linéaire 128 → sRGB ≈ 188 (plus clair).
+        // Inverse: linear 128 → sRGB ≈ 188 (brighter).
         let srgb = linear_to_srgb_u8(128);
         assert!(srgb > 150, "128 lin→sRGB doit être plus clair, got {srgb}");
         assert!(srgb < 220, "mais pas trop, got {srgb}");
