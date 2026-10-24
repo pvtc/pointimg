@@ -12,78 +12,93 @@ pub(crate) fn build_page() -> impl IsA<gtk::Widget> {
     #[allow(clippy::type_complexity)]
     let sections: &[(&str, &[(&str, &[&str])])] = &[
         (
-            pointimg::frontend::t("Fichier"),
+            pointimg::frontend::gettext("Fichier"),
             &[
-                (pointimg::frontend::t("Ouvrir une image"), &["Ctrl", "O"]),
                 (
-                    pointimg::frontend::t("Ouvrir un dossier"),
+                    pointimg::frontend::gettext("Ouvrir une image"),
+                    &["Ctrl", "O"],
+                ),
+                (
+                    pointimg::frontend::gettext("Ouvrir un dossier"),
                     &["Ctrl", "Shift", "O"],
                 ),
                 (
-                    pointimg::frontend::t("Image précédente / suivante"),
+                    pointimg::frontend::gettext("Image précédente / suivante"),
                     &["←", "→"],
                 ),
-                (pointimg::frontend::t("Exporter l'image…"), &["Ctrl", "S"]),
                 (
-                    pointimg::frontend::t("Exporter en SVG…"),
+                    pointimg::frontend::gettext("Exporter l'image…"),
+                    &["Ctrl", "S"],
+                ),
+                (
+                    pointimg::frontend::gettext("Exporter en SVG…"),
                     &["Ctrl", "Shift", "S"],
                 ),
                 (
-                    pointimg::frontend::t("Exporter sans dialogue"),
+                    pointimg::frontend::gettext("Exporter sans dialogue"),
                     &["Ctrl", "E"],
                 ),
-                (pointimg::frontend::t("Copier l'image"), &["Ctrl", "C"]),
+                (
+                    pointimg::frontend::gettext("Copier l'image"),
+                    &["Ctrl", "C"],
+                ),
             ],
         ),
         (
-            pointimg::frontend::t("Réglages"),
+            pointimg::frontend::gettext("Réglages"),
             &[
                 (
-                    pointimg::frontend::t("Recalculer"),
-                    &[pointimg::frontend::t("Espace")],
+                    pointimg::frontend::gettext("Recalculer"),
+                    &[pointimg::frontend::gettext("Espace")],
                 ),
                 (
-                    pointimg::frontend::t("Preset précédent / suivant"),
+                    pointimg::frontend::gettext("Preset précédent / suivant"),
                     &["Alt", "↑ / ↓"],
                 ),
-                (pointimg::frontend::t("Preset suivant"), &["Ctrl", "P"]),
                 (
-                    pointimg::frontend::t("Annuler / Rétablir"),
+                    pointimg::frontend::gettext("Preset suivant"),
+                    &["Ctrl", "P"],
+                ),
+                (
+                    pointimg::frontend::gettext("Annuler / Rétablir"),
                     &["Ctrl", "Z", "Ctrl", "Y"],
                 ),
                 (
-                    pointimg::frontend::t("Réinitialiser les réglages"),
+                    pointimg::frontend::gettext("Réinitialiser les réglages"),
                     &["Ctrl", "R"],
                 ),
             ],
         ),
         (
-            pointimg::frontend::t("Affichage"),
+            pointimg::frontend::gettext("Affichage"),
             &[
                 (
-                    pointimg::frontend::t("Aperçu suivant / précédent"),
+                    pointimg::frontend::gettext("Aperçu suivant / précédent"),
                     &["Tab"],
                 ),
-                (pointimg::frontend::t("Zoomer / Dézoomer"), &["+", "−"]),
-                (pointimg::frontend::t("Ajuster à la fenêtre"), &["0"]),
+                (
+                    pointimg::frontend::gettext("Zoomer / Dézoomer"),
+                    &["+", "−"],
+                ),
+                (pointimg::frontend::gettext("Ajuster à la fenêtre"), &["0"]),
                 ("100 %", &["1"]),
                 (
-                    pointimg::frontend::t("Zoom à la souris"),
-                    &["Ctrl", pointimg::frontend::t("molette")],
+                    pointimg::frontend::gettext("Zoom à la souris"),
+                    &["Ctrl", pointimg::frontend::gettext("molette")],
                 ),
-                (pointimg::frontend::t("Plein écran"), &["F11"]),
+                (pointimg::frontend::gettext("Plein écran"), &["F11"]),
             ],
         ),
         (
-            pointimg::frontend::t("Calcul"),
+            pointimg::frontend::gettext("Calcul"),
             &[
                 (
-                    pointimg::frontend::t("Annuler le calcul"),
-                    &[pointimg::frontend::t("Échap")],
+                    pointimg::frontend::gettext("Annuler le calcul"),
+                    &[pointimg::frontend::gettext("Échap")],
                 ),
                 (
-                    pointimg::frontend::t("Recalculer en pleine résolution"),
-                    &[pointimg::frontend::t("Espace")],
+                    pointimg::frontend::gettext("Recalculer en pleine résolution"),
+                    &[pointimg::frontend::gettext("Espace")],
                 ),
             ],
         ),

@@ -46,23 +46,25 @@ fn clone_state_widgets(state: &St, widgets: &Wi) -> (St, Wi) {
 pub(crate) fn export_menu_model() -> gtk::gio::Menu {
     let menu = gtk::gio::Menu::new();
     menu.append(
-        Some(pointimg::frontend::t("Exporter l'image…")),
+        Some(pointimg::frontend::gettext("Exporter l'image…")),
         Some("win.export"),
     );
     menu.append(
-        Some(pointimg::frontend::t("Exporter en SVG…")),
+        Some(pointimg::frontend::gettext("Exporter en SVG…")),
         Some("win.export-svg"),
     );
     menu.append(
-        Some(pointimg::frontend::t("Exporter à côté de la source")),
+        Some(pointimg::frontend::gettext("Exporter à côté de la source")),
         Some("win.quick-export"),
     );
     menu.append(
-        Some(pointimg::frontend::t("Exporter le SVG à côté de la source")),
+        Some(pointimg::frontend::gettext(
+            "Exporter le SVG à côté de la source",
+        )),
         Some("win.quick-export-svg"),
     );
     menu.append(
-        Some(pointimg::frontend::t("Copier dans le presse-papiers")),
+        Some(pointimg::frontend::gettext("Copier dans le presse-papiers")),
         Some("win.copy"),
     );
     menu
@@ -77,62 +79,62 @@ pub(crate) fn menu_model() -> gtk::gio::Menu {
     let menu = gtk::gio::Menu::new();
 
     menu.append(
-        Some(pointimg::frontend::t("_Ouvrir une image…")),
+        Some(pointimg::frontend::gettext("_Ouvrir une image…")),
         Some("win.open"),
     );
     menu.append(
-        Some(pointimg::frontend::t("Ouvrir un _dossier d'images…")),
+        Some(pointimg::frontend::gettext("Ouvrir un _dossier d'images…")),
         Some("win.open-folder"),
     );
     let images = gtk::gio::Menu::new();
     images.append(
-        Some(pointimg::frontend::t("_Image précédente")),
+        Some(pointimg::frontend::gettext("_Image précédente")),
         Some("win.prev-image"),
     );
     images.append(
-        Some(pointimg::frontend::t("Image _suivante")),
+        Some(pointimg::frontend::gettext("Image _suivante")),
         Some("win.next-image"),
     );
     menu.append_section(None, &images);
 
     let presets = gtk::gio::Menu::new();
     presets.append(
-        Some(pointimg::frontend::t("_Charger un preset…")),
+        Some(pointimg::frontend::gettext("_Charger un preset…")),
         Some("win.load-preset"),
     );
     presets.append(
-        Some(pointimg::frontend::t("_Sauver le preset…")),
+        Some(pointimg::frontend::gettext("_Sauver le preset…")),
         Some("win.save-preset"),
     );
     menu.append_section(None, &presets);
 
     let view = gtk::gio::Menu::new();
     view.append(
-        Some(pointimg::frontend::t("_Aperçu suivant")),
+        Some(pointimg::frontend::gettext("_Aperçu suivant")),
         Some("win.view-next"),
     );
     view.append(
-        Some(pointimg::frontend::t("Aperçu _précédent")),
+        Some(pointimg::frontend::gettext("Aperçu _précédent")),
         Some("win.view-prev"),
     );
     view.append(Some("Zoom _100 %"), Some("win.zoom-one"));
     view.append(
-        Some(pointimg::frontend::t("_Ajuster à la fenêtre")),
+        Some(pointimg::frontend::gettext("_Ajuster à la fenêtre")),
         Some("win.zoom-fit"),
     );
     view.append(
-        Some(pointimg::frontend::t("Plein _écran")),
+        Some(pointimg::frontend::gettext("Plein _écran")),
         Some("win.fullscreen"),
     );
     view.append(
-        Some(pointimg::frontend::t("Raccourcis _clavier")),
+        Some(pointimg::frontend::gettext("Raccourcis _clavier")),
         Some("win.shortcuts"),
     );
     menu.append_section(None, &view);
 
     let reset = gtk::gio::Menu::new();
     reset.append(
-        Some(pointimg::frontend::t("Réinitialiser les _réglages")),
+        Some(pointimg::frontend::gettext("Réinitialiser les _réglages")),
         Some("win.reset"),
     );
     menu.append_section(None, &reset);
@@ -493,7 +495,7 @@ pub(crate) fn wire(state: &St, widgets: &Wi, window: &adw::ApplicationWindow) {
             };
             pointimg::frontend::set_locale(locale);
             crate::prefs::save_locale(locale);
-            let toast = adw::Toast::new(pointimg::frontend::t(
+            let toast = adw::Toast::new(pointimg::frontend::gettext(
                 "Langue modifiée. Redémarrez l'application pour l'appliquer.",
             ));
             toast.set_timeout(4);

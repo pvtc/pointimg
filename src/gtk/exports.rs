@@ -88,8 +88,8 @@ pub(crate) fn sizes_label(state: &St) -> String {
         )
     };
     match sizes {
-        Some(sizes) => pointimg::frontend::t("Export : {}").replace("{}", &sizes.summary()),
-        None if measuring => pointimg::frontend::t("Export : mesure…").to_string(),
+        Some(sizes) => pointimg::frontend::gettext("Export : {}").replace("{}", &sizes.summary()),
+        None if measuring => pointimg::frontend::gettext("Export : mesure…").to_string(),
         None => String::new(),
     }
 }

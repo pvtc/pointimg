@@ -192,7 +192,7 @@ impl State {
             zoom: 1.0,
             zoom_fit: true,
             effective_zoom: 1.0,
-            status: pointimg::frontend::t(
+            status: pointimg::frontend::gettext(
                 "Ouvrez une image pour commencer (ou glissez-déposez un fichier).",
             )
             .to_string(),
@@ -265,6 +265,7 @@ type WindowHandles = (
 
 fn main() -> glib::ExitCode {
     env_logger::init();
+    pointimg::frontend::init_i18n();
     if let Some(locale) = prefs::load_locale() {
         pointimg::frontend::set_locale(locale);
     } else {

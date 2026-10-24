@@ -70,7 +70,7 @@ impl App {
         self.status = if full_resolution {
             frontend::msg::computing().to_string()
         } else {
-            pointimg::frontend::t("Aperçu rapide en cours…").to_string()
+            pointimg::frontend::gettext("Aperçu rapide en cours…").to_string()
         };
         self.compute_start = Some(Instant::now());
         self.last_param_change = None;
@@ -165,8 +165,9 @@ fn run_compute_worker(
                 if generation_is_current(&compute_generation, generation)
                     && !cancel.load(Ordering::Relaxed)
                 {
-                    *status_err.lock().unwrap_or_else(|e| e.into_inner()) =
-                        Some(pointimg::frontend::t("Erreur : {e}").replace("{e}", &e.to_string()));
+                    *status_err.lock().unwrap_or_else(|e| e.into_inner()) = Some(
+                        pointimg::frontend::gettext("Erreur : {e}").replace("{e}", &e.to_string()),
+                    );
                 }
             }
         }
@@ -247,8 +248,9 @@ fn run_compute_worker(
             if generation_is_current(&compute_generation, generation)
                 && !cancel.load(Ordering::Relaxed)
             {
-                *status_err.lock().unwrap_or_else(|e| e.into_inner()) =
-                    Some(pointimg::frontend::t("Erreur : {e}").replace("{e}", &e.to_string()));
+                *status_err.lock().unwrap_or_else(|e| e.into_inner()) = Some(
+                    pointimg::frontend::gettext("Erreur : {e}").replace("{e}", &e.to_string()),
+                );
             }
         }
     }

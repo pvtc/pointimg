@@ -62,7 +62,7 @@ fn accepte(applique: impl Fn(&mut FilterParams)) {
     validate_params(64, 64, &params).unwrap_or_else(|e| {
         panic!(
             "{}",
-            pointimg::frontend::t("réglages refusés : {e}").replace("{e}", &e.to_string())
+            pointimg::frontend::gettext("réglages refusés : {e}").replace("{e}", &e.to_string())
         )
     });
 }
@@ -73,7 +73,7 @@ fn refuse(applique: impl Fn(&mut FilterParams)) {
     assert!(
         validate_params(64, 64, &params).is_err(),
         "{}",
-        pointimg::frontend::t(
+        pointimg::frontend::gettext(
             "le moteur accepte une valeur que l'interface ne devrait pas proposer"
         )
     );

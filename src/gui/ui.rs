@@ -39,16 +39,16 @@ fn algorithm_label(algorithm: Algorithm) -> &'static str {
 
 fn algorithm_help(algorithm: Algorithm) -> &'static str {
     match algorithm {
-        Algorithm::Grid => pointimg::frontend::t(
+        Algorithm::Grid => pointimg::frontend::gettext(
             "Grille régulière : une cellule = un point. Rapide et prévisible.",
         ),
-        Algorithm::Kmeans => pointimg::frontend::t(
+        Algorithm::Kmeans => pointimg::frontend::gettext(
             "k-means spatial : les points se répartissent selon la couleur et la position.",
         ),
-        Algorithm::Voronoi => pointimg::frontend::t(
+        Algorithm::Voronoi => pointimg::frontend::gettext(
             "Lloyd pondéré : répartition régulière guidée par le détail. Rendu le plus « naturel ».",
         ),
-        Algorithm::Quadtree => pointimg::frontend::t(
+        Algorithm::Quadtree => pointimg::frontend::gettext(
             "Subdivision par contraste : davantage de points là où l'image est détaillée.",
         ),
         Algorithm::Halftone => {
@@ -60,12 +60,18 @@ fn algorithm_help(algorithm: Algorithm) -> &'static str {
 /// Display modes, in cycling order.
 fn views() -> [(&'static str, ViewMode); 5] {
     [
-        (pointimg::frontend::t("Comparaison"), ViewMode::Compare),
-        (pointimg::frontend::t("Côte à côte"), ViewMode::Side),
-        (pointimg::frontend::t("Résultat"), ViewMode::ResultOnly),
-        (pointimg::frontend::t("Source"), ViewMode::SourceOnly),
         (
-            pointimg::frontend::t("Carte de densité"),
+            pointimg::frontend::gettext("Comparaison"),
+            ViewMode::Compare,
+        ),
+        (pointimg::frontend::gettext("Côte à côte"), ViewMode::Side),
+        (
+            pointimg::frontend::gettext("Résultat"),
+            ViewMode::ResultOnly,
+        ),
+        (pointimg::frontend::gettext("Source"), ViewMode::SourceOnly),
+        (
+            pointimg::frontend::gettext("Carte de densité"),
             ViewMode::DensityMap,
         ),
     ]
@@ -212,9 +218,10 @@ impl App {
             self.last_compute_ms = Some(ms);
             let final_result = self.result_is_final.load(Ordering::Acquire);
             self.status = if final_result {
-                pointimg::frontend::t("Calcul terminé en {}.").replace("{}", &format_duration(ms))
+                pointimg::frontend::gettext("Calcul terminé en {}.")
+                    .replace("{}", &format_duration(ms))
             } else {
-                pointimg::frontend::t("Aperçu calculé — finalisation en cours…").to_string()
+                pointimg::frontend::gettext("Aperçu calculé — finalisation en cours…").to_string()
             };
             if self.pending_commit {
                 self.commit_history();
@@ -545,7 +552,7 @@ impl App {
                     .history
                     .last()
                     .map(|entry| format!("Annuler : {} (Ctrl+Z)", entry.label))
-                    .unwrap_or_else(|| pointimg::frontend::t("Rien à annuler").to_string());
+                    .unwrap_or_else(|| pointimg::frontend::gettext("Rien à annuler").to_string());
                 if ui
                     .add_enabled(
                         !self.history.is_empty() || self.pending_commit,
@@ -560,13 +567,14 @@ impl App {
                     .future
                     .last()
                     .map(|entry| {
-                        pointimg::frontend::t("Rétablir : {} (Ctrl+Y)").replace("{}", &entry.label)
+                        pointimg::frontend::gettext("Rétablir : {} (Ctrl+Y)")
+                            .replace("{}", &entry.label)
                     })
-                    .unwrap_or_else(|| pointimg::frontend::t("Rien à rétablir").to_string());
+                    .unwrap_or_else(|| pointimg::frontend::gettext("Rien à rétablir").to_string());
                 if ui
                     .add_enabled(
                         !self.future.is_empty(),
-                        egui::Button::new(pointimg::frontend::t("Rétablir")),
+                        egui::Button::new(pointimg::frontend::gettext("Rétablir")),
                     )
                     .on_hover_text(redo_label)
                     .clicked()
@@ -575,7 +583,7 @@ impl App {
                 }
                 if ui
                     .button("⟲")
-                    .on_hover_text(pointimg::frontend::t(
+                    .on_hover_text(pointimg::frontend::gettext(
                         "Rétablir tous les réglages par défaut (Ctrl+R)",
                     ))
                     .clicked()
@@ -592,7 +600,7 @@ impl App {
                 }
                 if ui
                     .add_enabled(has_dots, egui::Button::new("Exporter SVG…"))
-                    .on_hover_text(pointimg::frontend::t(
+                    .on_hover_text(pointimg::frontend::gettext(
                         "Exporter le rendu en SVG (Ctrl+Shift+S)",
                     ))
                     .clicked()
@@ -601,7 +609,7 @@ impl App {
                 }
                 if ui
                     .add_enabled(has_final, egui::Button::new("Copier"))
-                    .on_hover_text(pointimg::frontend::t(
+                    .on_hover_text(pointimg::frontend::gettext(
                         "Copier l'image dans le presse-papiers (Ctrl+C)",
                     ))
                     .clicked()
@@ -627,7 +635,7 @@ impl App {
                             let info = self
                                 .image_info()
                                 .unwrap_or_else(|| "Aucune image".to_string());
-                            ui.label(info).on_hover_text(pointimg::frontend::t(
+                            ui.label(info).on_hover_text(pointimg::frontend::gettext(
                                 "Dimensions de l'image chargée",
                             ));
                         });
@@ -647,7 +655,7 @@ impl App {
                     });
                     section(
                         ui,
-                        pointimg::frontend::t("Forme des points"),
+                        pointimg::frontend::gettext("Forme des points"),
                         "shape",
                         true,
                         |ui| {
@@ -665,7 +673,7 @@ impl App {
                     }
                     ui.separator();
                     if ui
-                        .button(pointimg::frontend::t("Réinitialiser les réglages"))
+                        .button(pointimg::frontend::gettext("Réinitialiser les réglages"))
                         .clicked()
                     {
                         self.reset_params(ctx);
@@ -708,7 +716,7 @@ impl App {
             }
         });
         ui.horizontal_wrapped(|ui| {
-            ui.label(egui::RichText::new(pointimg::frontend::t("Langue")).size(13.0));
+            ui.label(egui::RichText::new(pointimg::frontend::gettext("Langue")).size(13.0));
             for (code, label) in [("en", "English"), ("fr", "Français")] {
                 let selected = self.ui_locale.code() == code;
                 if ui.selectable_label(selected, label).clicked() {
@@ -725,7 +733,7 @@ impl App {
     fn show_presets(&mut self, ui: &mut egui::Ui, ctx: &egui::Context) {
         let presets = filter::builtin_presets();
         let current = self.preset_index();
-        group_title(ui, pointimg::frontend::t("Réglages rapides"));
+        group_title(ui, pointimg::frontend::gettext("Réglages rapides"));
 
         // Thumbnail grid: a preset is chosen on its render, not on its name.
         // Without an image (`assets/presets/` missing), we fall back on a list
@@ -750,7 +758,7 @@ impl App {
                 self.choose_load_preset(ctx);
             }
             if ui
-                .button(pointimg::frontend::t("Sauver le preset…"))
+                .button(pointimg::frontend::gettext("Sauver le preset…"))
                 .clicked()
             {
                 self.choose_save_preset();
@@ -796,10 +804,10 @@ impl App {
         // The name of the current preset, and what "Custom" means.
         let legende = match current {
             Some(index) => presets[index].name.to_string(),
-            None => {
-                pointimg::frontend::t("Personnalisé — les réglages ne correspondent à aucun preset")
-                    .to_string()
-            }
+            None => pointimg::frontend::gettext(
+                "Personnalisé — les réglages ne correspondent à aucun preset",
+            )
+            .to_string(),
         };
         ui.label(
             egui::RichText::new(legende)
@@ -852,11 +860,15 @@ impl App {
             ui.label("Preset");
             egui::ComboBox::from_id_salt("preset_combo")
                 .selected_text(match current {
-                    None => pointimg::frontend::t("Personnalisé").to_string(),
+                    None => pointimg::frontend::gettext("Personnalisé").to_string(),
                     Some(index) => presets[index].name.to_string(),
                 })
                 .show_ui(ui, |ui| {
-                    ui.selectable_value(&mut selected, None, pointimg::frontend::t("Personnalisé"));
+                    ui.selectable_value(
+                        &mut selected,
+                        None,
+                        pointimg::frontend::gettext("Personnalisé"),
+                    );
                     for (index, preset) in presets.iter().enumerate() {
                         ui.selectable_value(&mut selected, Some(index), preset.name)
                             .on_hover_text(preset.description);
@@ -911,11 +923,11 @@ impl App {
         let variance_before = self.params.variance_sensitivity;
         slider_number_row(
             ui,
-            pointimg::frontend::t("Sensibilité variance"),
+            pointimg::frontend::gettext("Sensibilité variance"),
             &mut self.params.variance_sensitivity,
             0.0..=1.0,
             false,
-            pointimg::frontend::t("0 = répartition uniforme · 1 = détail maximal"),
+            pointimg::frontend::gettext("0 = répartition uniforme · 1 = détail maximal"),
         );
         if variance_before != self.params.variance_sensitivity {
             // The density map depends on this single setting: we recompute it
@@ -948,7 +960,7 @@ impl App {
             &mut self.params.max_radius_ratio,
             Bounds::both(0.0005..=1.0),
             Curve::Log,
-            pointimg::frontend::t("Rayon min et max, en fraction du plus petit côté"),
+            pointimg::frontend::gettext("Rayon min et max, en fraction du plus petit côté"),
         );
         if self.params.min_radius_ratio > self.params.max_radius_ratio {
             std::mem::swap(
@@ -966,7 +978,7 @@ impl App {
             // multiplier, whose perception is logarithmic. Going from 1 to 2
             // must cost the same gesture as from 4 to 8.
             true,
-            pointimg::frontend::t(
+            pointimg::frontend::gettext(
                 "Agrandit les points dans les zones sans détail. 1 = aucun agrandissement.",
             ),
         );
@@ -982,7 +994,7 @@ impl App {
                     &mut cols,
                     2.0..=8192.0,
                     true,
-                    pointimg::frontend::t("Nombre de cellules de la grille"),
+                    pointimg::frontend::gettext("Nombre de cellules de la grille"),
                 );
                 self.params.cols = cols as u32;
                 number_row_with_hint(
@@ -1001,7 +1013,7 @@ impl App {
                     &mut points,
                     10.0..=100_000.0,
                     true,
-                    pointimg::frontend::t("De 10 à 100 000 points, en échelle logarithmique"),
+                    pointimg::frontend::gettext("De 10 à 100 000 points, en échelle logarithmique"),
                 );
                 self.params.num_points = points;
                 if matches!(
@@ -1011,18 +1023,20 @@ impl App {
                     let mut iterations = self.params.iterations;
                     slider_int_row(
                         ui,
-                        pointimg::frontend::t("Itérations"),
+                        pointimg::frontend::gettext("Itérations"),
                         &mut iterations,
                         1.0..=100.0,
                         false,
-                        pointimg::frontend::t(
+                        pointimg::frontend::gettext(
                             "Passes de Lloyd. Au-delà de ~30, le gain devient marginal.",
                         ),
                     );
                     self.params.iterations = iterations;
                 }
             }
-            Algorithm::Halftone => unreachable!("{}", pointimg::frontend::t("traité plus haut")),
+            Algorithm::Halftone => {
+                unreachable!("{}", pointimg::frontend::gettext("traité plus haut"))
+            }
         }
     }
 
@@ -1030,9 +1044,9 @@ impl App {
         show_shape_selector(ui, &mut self.params.dot_shape);
         ui.checkbox(
             &mut self.params.palette_size.is_some(),
-            egui::RichText::new(pointimg::frontend::t("Palette réduite")).size(13.0),
+            egui::RichText::new(pointimg::frontend::gettext("Palette réduite")).size(13.0),
         )
-        .on_hover_text(pointimg::frontend::t(
+        .on_hover_text(pointimg::frontend::gettext(
             "Quantifie l'image vers quelques couleurs (effet sérigraphie)",
         ))
         .changed()
@@ -1090,7 +1104,7 @@ impl App {
                 &mut self.params.transparent,
                 egui::RichText::new("Fond transparent (RGBA)").size(13.0),
             )
-            .on_hover_text(pointimg::frontend::t(
+            .on_hover_text(pointimg::frontend::gettext(
                 "Alpha conservé à l'export PNG/WebP/TIFF",
             ))
             .changed()
@@ -1102,7 +1116,7 @@ impl App {
                 &mut self.params.gamma_correct,
                 egui::RichText::new("Correction gamma").size(13.0),
             )
-            .on_hover_text(pointimg::frontend::t(
+            .on_hover_text(pointimg::frontend::gettext(
                 "Moyennes de couleur en espace linéaire : évite les mi-tons trop sombres",
             ))
             .changed()
@@ -1114,9 +1128,9 @@ impl App {
             if ui
                 .checkbox(
                     &mut self.params.rng_seed.is_some(),
-                    egui::RichText::new(pointimg::frontend::t("Graine fixée")).size(13.0),
+                    egui::RichText::new(pointimg::frontend::gettext("Graine fixée")).size(13.0),
                 )
-                .on_hover_text(pointimg::frontend::t(
+                .on_hover_text(pointimg::frontend::gettext(
                     "Deux exécutions avec les mêmes réglages donnent le même résultat",
                 ))
                 .changed()
@@ -1139,7 +1153,7 @@ impl App {
                 }
                 if ui
                     .small_button("Varier")
-                    .on_hover_text(pointimg::frontend::t("Tirer une nouvelle graine"))
+                    .on_hover_text(pointimg::frontend::gettext("Tirer une nouvelle graine"))
                     .clicked()
                 {
                     self.vary_seed(ctx);
@@ -1150,7 +1164,7 @@ impl App {
 
     fn show_quality_section(&mut self, ui: &mut egui::Ui, ctx: &egui::Context) {
         ui.horizontal(|ui| {
-            ui.label(pointimg::frontend::t("Aperçu"));
+            ui.label(pointimg::frontend::gettext("Aperçu"));
             let mut index = match self.quality {
                 Quality::Half => 0,
                 Quality::Quarter => 1,
@@ -1160,21 +1174,21 @@ impl App {
             if response.clicked() {
                 self.set_quality(Quality::Half, ctx);
             }
-            response.on_hover_text(pointimg::frontend::t(
+            response.on_hover_text(pointimg::frontend::gettext(
                 "Calcul sur une image à 50 % : très réactif",
             ));
             let response = ui.selectable_value(&mut index, 1, "Rapide ¼");
             if response.clicked() {
                 self.set_quality(Quality::Quarter, ctx);
             }
-            response.on_hover_text(pointimg::frontend::t(
+            response.on_hover_text(pointimg::frontend::gettext(
                 "Calcul sur une image à 25 % : le plus réactif",
             ));
             let response = ui.selectable_value(&mut index, 2, "Plein");
             if response.clicked() {
                 self.set_quality(Quality::Full, ctx);
             }
-            response.on_hover_text(pointimg::frontend::t("Toujours en pleine résolution"));
+            response.on_hover_text(pointimg::frontend::gettext("Toujours en pleine résolution"));
         });
         ui.add(
             egui::Label::new(
@@ -1196,7 +1210,7 @@ impl App {
                     matches!(self.params.halftone, HalftoneMode::Cmyk { .. }),
                     "CMJN",
                 )
-                .on_hover_text(pointimg::frontend::t(
+                .on_hover_text(pointimg::frontend::gettext(
                     "Rosette classique Cyan / Magenta / Jaune / Noir, à 15°/75°/0°/45°",
                 ))
                 .clicked()
@@ -1210,7 +1224,7 @@ impl App {
                     matches!(self.params.halftone, HalftoneMode::Dominant { .. }),
                     "Dominant",
                 )
-                .on_hover_text(pointimg::frontend::t(
+                .on_hover_text(pointimg::frontend::gettext(
                     "Les N couleurs dominantes de l'image deviennent chacune une encre",
                 ))
                 .clicked()
@@ -1233,7 +1247,9 @@ impl App {
                     &mut channels,
                     2.0..=32.0,
                     false,
-                    pointimg::frontend::t("Nombre d'encres retenues parmi les couleurs dominantes"),
+                    pointimg::frontend::gettext(
+                        "Nombre d'encres retenues parmi les couleurs dominantes",
+                    ),
                 );
                 *n = channels;
                 number_row_with_hint(ui, "Angle de base", base_angle_deg, 0.0..=180.0, None);
@@ -1245,28 +1261,30 @@ impl App {
                 ));
             }
             HalftoneMode::Off => {
-                ui.small(pointimg::frontend::t("(sélectionnez CMJN ou Dominant)"));
+                ui.small(pointimg::frontend::gettext(
+                    "(sélectionnez CMJN ou Dominant)",
+                ));
             }
         }
         ui.horizontal(|ui| {
             ui.label("Screening");
             ui.selectable_value(&mut self.params.screening, Screening::Am, "AM (grille)")
-                .on_hover_text(pointimg::frontend::t(
+                .on_hover_text(pointimg::frontend::gettext(
                     "Trame régulière : le rayon du dot code la couverture d'encre",
                 ));
             ui.selectable_value(&mut self.params.screening, Screening::Fm, "FM (blue noise)")
-                .on_hover_text(pointimg::frontend::t(
+                .on_hover_text(pointimg::frontend::gettext(
                     "Trame stochastique : la densité des dots code la couverture d'encre",
                 ));
         });
         // 4 → 400: logarithmic, the range is too wide for a linear travel.
         slider_number_row(
             ui,
-            pointimg::frontend::t("Fréquence de trame"),
+            pointimg::frontend::gettext("Fréquence de trame"),
             &mut self.params.halftone_frequency,
             4.0..=400.0,
             true,
-            pointimg::frontend::t("Cellules de la trame par unité de longueur"),
+            pointimg::frontend::gettext("Cellules de la trame par unité de longueur"),
         );
         number_row_with_hint(
             ui,
@@ -1294,7 +1312,7 @@ impl App {
                 high: 0.05..=10.0,
             },
             Curve::Sqrt,
-            pointimg::frontend::t("Rayon min et max des dots d'encre"),
+            pointimg::frontend::gettext("Rayon min et max des dots d'encre"),
         );
     }
 
@@ -1387,14 +1405,14 @@ impl App {
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                     if ui
                         .small_button("1:1")
-                        .on_hover_text(pointimg::frontend::t("Revenir à 100 % (1)"))
+                        .on_hover_text(pointimg::frontend::gettext("Revenir à 100 % (1)"))
                         .clicked()
                     {
                         self.set_zoom(1.0);
                     }
-                    let fit = ui
-                        .selectable_label(self.zoom_fit, "Ajuster")
-                        .on_hover_text(pointimg::frontend::t("Ajuster l'aperçu à la fenêtre (0)"));
+                    let fit = ui.selectable_label(self.zoom_fit, "Ajuster").on_hover_text(
+                        pointimg::frontend::gettext("Ajuster l'aperçu à la fenêtre (0)"),
+                    );
                     if fit.clicked() {
                         self.zoom_fit = true;
                     }
@@ -1455,7 +1473,7 @@ impl App {
                         show_pane(
                             ui,
                             Pane {
-                                caption: pointimg::frontend::t("Résultat"),
+                                caption: pointimg::frontend::gettext("Résultat"),
                                 texture: result.as_ref(),
                                 size: egui::vec2(available.x, half),
                                 zoom,
@@ -1474,7 +1492,7 @@ impl App {
                             spinning: false,
                         };
                         let result_pane = Pane {
-                            caption: pointimg::frontend::t("Résultat"),
+                            caption: pointimg::frontend::gettext("Résultat"),
                             texture: result.as_ref(),
                             size: egui::vec2(panel_w, height),
                             zoom,
@@ -1491,7 +1509,7 @@ impl App {
                 ViewMode::ResultOnly => show_pane(
                     ui,
                     Pane {
-                        caption: pointimg::frontend::t("Résultat"),
+                        caption: pointimg::frontend::gettext("Résultat"),
                         texture: result.as_ref(),
                         size: egui::vec2(ui.available_width(), height),
                         zoom,
@@ -1513,7 +1531,7 @@ impl App {
                 ViewMode::DensityMap => show_pane(
                     ui,
                     Pane {
-                        caption: pointimg::frontend::t("Carte de densité"),
+                        caption: pointimg::frontend::gettext("Carte de densité"),
                         texture: density.as_ref(),
                         size: egui::vec2(ui.available_width(), height),
                         zoom,
@@ -1559,7 +1577,7 @@ impl App {
         ui.horizontal(|ui| {
             ui.label(egui::RichText::new("Comparaison").size(12.0).weak());
             ui.label(
-                egui::RichText::new(pointimg::frontend::t(
+                egui::RichText::new(pointimg::frontend::gettext(
                     "glissez le curseur (double-clic : centré)",
                 ))
                 .size(11.0)
@@ -1673,13 +1691,13 @@ impl App {
         ui.vertical_centered(|ui| {
             ui.add_space((ui.available_height() * 0.18).max(24.0));
             ui.heading("Aucune image");
-            ui.label(pointimg::frontend::t(
+            ui.label(pointimg::frontend::gettext(
                 "Glissez-déposez un fichier dans la fenêtre, ou ouvrez-en un.",
             ));
             ui.add_space(8.0);
             ui.horizontal(|ui| {
                 if ui
-                    .button(pointimg::frontend::t("Ouvrir une image…"))
+                    .button(pointimg::frontend::gettext("Ouvrir une image…"))
                     .clicked()
                 {
                     self.choose_image(ctx);
@@ -1712,12 +1730,12 @@ impl App {
         }
         ui.add_space(18.0);
         ui.label(
-            egui::RichText::new(pointimg::frontend::t("Images récentes"))
+            egui::RichText::new(pointimg::frontend::gettext("Images récentes"))
                 .strong()
                 .size(13.0),
         );
         ui.label(
-            egui::RichText::new(pointimg::frontend::t("Reprendre où vous en étiez"))
+            egui::RichText::new(pointimg::frontend::gettext("Reprendre où vous en étiez"))
                 .size(11.5)
                 .color(ui.visuals().weak_text_color()),
         );
@@ -1813,7 +1831,7 @@ impl App {
                     if quick && stale {
                         ui.small(frontend::msg::finalizing());
                     } else if quick {
-                        ui.small(pointimg::frontend::t("aperçu rapide"))
+                        ui.small(pointimg::frontend::gettext("aperçu rapide"))
                             .on_hover_text(
                                 "Calcul sur une image réduite ; la pleine résolution est \
                                  obtenue automatiquement dès que vous arrêtez.",
@@ -1986,10 +2004,10 @@ fn slider_number_row(
             ),
         );
     });
-    let msg = pointimg::frontend::t("le curseur vient d'être dessiné");
+    let msg = pointimg::frontend::gettext("le curseur vient d'être dessiné");
     let reponse = curseur.expect(msg);
     let reponse = reponse.on_hover_text(
-        pointimg::frontend::t("{hint}\nPlage autorisée : {range_label}")
+        pointimg::frontend::gettext("{hint}\nPlage autorisée : {range_label}")
             .replace("{hint}", hint)
             .replace("{range_label}", &range_label),
     );
@@ -2040,10 +2058,10 @@ fn number_row_with_hint(
 ) -> egui::Response {
     let range_label = format!("{:.4} – {:.4}", *range.start(), range.end());
     let tooltip = match hint {
-        Some(hint) => pointimg::frontend::t("{hint}\nPlage autorisée : {range_label}")
+        Some(hint) => pointimg::frontend::gettext("{hint}\nPlage autorisée : {range_label}")
             .replace("{hint}", hint)
             .replace("{range_label}", &range_label),
-        None => pointimg::frontend::t("Plage autorisée : {range_label}")
+        None => pointimg::frontend::gettext("Plage autorisée : {range_label}")
             .replace("{range_label}", &range_label),
     };
     // egui picks the display precision according to the distance from the
@@ -2084,37 +2102,41 @@ fn show_dithering_selector(ui: &mut egui::Ui, dithering: &mut Dithering) {
     let choices: [(Dithering, &str, &str); 5] = [
         (
             Dithering::Off,
-            pointimg::frontend::t("Aucun"),
-            pointimg::frontend::t("Palette franche, sans motif"),
+            pointimg::frontend::gettext("Aucun"),
+            pointimg::frontend::gettext("Palette franche, sans motif"),
         ),
         (
             Dithering::FloydSteinberg,
             "Floyd-Steinberg",
-            pointimg::frontend::t(
+            pointimg::frontend::gettext(
                 "Diffusion de l'erreur : dégradés préservés, motif légèrement « verreux »",
             ),
         ),
         (
             Dithering::Riemersma,
             "Riemersma",
-            pointimg::frontend::t("Diffusion à queue longue : moins de vers, motif plus lisse"),
+            pointimg::frontend::gettext(
+                "Diffusion à queue longue : moins de vers, motif plus lisse",
+            ),
         ),
         (
             Dithering::Bayer4,
             "Bayer 4×4",
-            pointimg::frontend::t("Tramage ordonné : rendu « pixel art », sans diffusion d'erreur"),
+            pointimg::frontend::gettext(
+                "Tramage ordonné : rendu « pixel art », sans diffusion d'erreur",
+            ),
         ),
         (
             Dithering::Bayer8,
             "Bayer 8×8",
-            pointimg::frontend::t("Tramage ordonné plus fin : motif de trame 8×8"),
+            pointimg::frontend::gettext("Tramage ordonné plus fin : motif de trame 8×8"),
         ),
     ];
     let (label, hint) = choices
         .iter()
         .find(|(mode, _, _)| *mode == *dithering)
         .map(|(_, label, hint)| (*label, *hint))
-        .unwrap_or((pointimg::frontend::t("Inconnu"), ""));
+        .unwrap_or((pointimg::frontend::gettext("Inconnu"), ""));
     ui.horizontal(|ui| {
         ui.label(egui::RichText::new("Dithering").size(13.0));
         let response = egui::ComboBox::from_id_salt("dithering_combo")
@@ -2156,7 +2178,7 @@ fn show_dithering_selector(ui: &mut egui::Ui, dithering: &mut Dithering) {
 fn show_shape_selector(ui: &mut egui::Ui, shape: &mut DotShape) {
     let current = match shape {
         DotShape::Circle => "Cercle",
-        DotShape::Square => pointimg::frontend::t("Carré"),
+        DotShape::Square => pointimg::frontend::gettext("Carré"),
         DotShape::Ellipse { .. } => "Ellipse",
         DotShape::RegularPolygon { .. } => "Polygone",
     };
@@ -2164,7 +2186,7 @@ fn show_shape_selector(ui: &mut egui::Ui, shape: &mut DotShape) {
         ui.label("Forme");
         for (label, variant) in [
             ("Cercle", DotShape::Circle),
-            (pointimg::frontend::t("Carré"), DotShape::Square),
+            (pointimg::frontend::gettext("Carré"), DotShape::Square),
         ] {
             ui.selectable_value(shape, variant, label);
         }
@@ -2194,7 +2216,14 @@ fn show_shape_selector(ui: &mut egui::Ui, shape: &mut DotShape) {
         }
         DotShape::RegularPolygon { sides } => {
             let mut value = *sides as f32;
-            if number_row(ui, pointimg::frontend::t("Côtés"), &mut value, 3.0..=12.0).changed() {
+            if number_row(
+                ui,
+                pointimg::frontend::gettext("Côtés"),
+                &mut value,
+                3.0..=12.0,
+            )
+            .changed()
+            {
                 *sides = value.round().clamp(3.0, 12.0) as u8;
             }
         }

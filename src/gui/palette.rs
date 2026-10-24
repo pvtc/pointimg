@@ -33,112 +33,112 @@ pub(crate) fn all(app: &crate::App) -> Vec<Command> {
     let computing = app.computing.load(std::sync::atomic::Ordering::Relaxed);
     vec![
         Command {
-            label: pointimg::frontend::t("Ouvrir une image…"),
+            label: pointimg::frontend::gettext("Ouvrir une image…"),
             hint: "Ctrl+O",
             enabled: true,
             run: |app, ctx| app.choose_image(ctx),
         },
         Command {
-            label: pointimg::frontend::t("Ouvrir un dossier d'images…"),
-            hint: pointimg::frontend::t("Ctrl+Maj+O"),
+            label: pointimg::frontend::gettext("Ouvrir un dossier d'images…"),
+            hint: pointimg::frontend::gettext("Ctrl+Maj+O"),
             enabled: true,
             run: |app, ctx| app.choose_folder(ctx),
         },
         Command {
-            label: pointimg::frontend::t("Image précédente"),
+            label: pointimg::frontend::gettext("Image précédente"),
             hint: "←",
             enabled: in_folder,
             run: |app, ctx| app.step_folder(-1, ctx),
         },
         Command {
-            label: pointimg::frontend::t("Image suivante"),
+            label: pointimg::frontend::gettext("Image suivante"),
             hint: "→",
             enabled: in_folder,
             run: |app, ctx| app.step_folder(1, ctx),
         },
         Command {
-            label: pointimg::frontend::t("Exporter l'image…"),
+            label: pointimg::frontend::gettext("Exporter l'image…"),
             hint: "Ctrl+S",
             enabled: has_final,
             run: |app, _| app.choose_export(),
         },
         Command {
-            label: pointimg::frontend::t("Exporter en SVG…"),
-            hint: pointimg::frontend::t("Ctrl+Maj+S"),
+            label: pointimg::frontend::gettext("Exporter en SVG…"),
+            hint: pointimg::frontend::gettext("Ctrl+Maj+S"),
             enabled: has_dots,
             run: |app, _| app.choose_svg_export(),
         },
         Command {
-            label: pointimg::frontend::t("Exporter à côté de la source"),
+            label: pointimg::frontend::gettext("Exporter à côté de la source"),
             hint: "Ctrl+E",
             enabled: has_final,
             run: |app, _| app.quick_export(),
         },
         Command {
-            label: pointimg::frontend::t("Copier dans le presse-papiers"),
+            label: pointimg::frontend::gettext("Copier dans le presse-papiers"),
             hint: "Ctrl+C",
             enabled: has_final,
             run: |app, ctx| app.copy_to_clipboard(ctx),
         },
         Command {
-            label: pointimg::frontend::t("Recalculer"),
-            hint: pointimg::frontend::t("Espace"),
+            label: pointimg::frontend::gettext("Recalculer"),
+            hint: pointimg::frontend::gettext("Espace"),
             enabled: app.src_rgb.is_some(),
             run: |app, ctx| app.request_full_compute(ctx),
         },
         Command {
-            label: pointimg::frontend::t("Annuler le calcul"),
-            hint: pointimg::frontend::t("Échap"),
+            label: pointimg::frontend::gettext("Annuler le calcul"),
+            hint: pointimg::frontend::gettext("Échap"),
             enabled: computing,
             run: |app, _| {
                 app.cancel.store(true, std::sync::atomic::Ordering::Relaxed);
-                app.notify(pointimg::frontend::t("Annulation…"));
+                app.notify(pointimg::frontend::gettext("Annulation…"));
             },
         },
         Command {
-            label: pointimg::frontend::t("Annuler la dernière modification"),
+            label: pointimg::frontend::gettext("Annuler la dernière modification"),
             hint: "Ctrl+Z",
             enabled: !app.history.is_empty(),
             run: |app, ctx| app.undo(ctx),
         },
         Command {
-            label: pointimg::frontend::t("Rétablir"),
+            label: pointimg::frontend::gettext("Rétablir"),
             hint: "Ctrl+Y",
             enabled: !app.future.is_empty(),
             run: |app, ctx| app.redo(ctx),
         },
         Command {
-            label: pointimg::frontend::t("Réinitialiser les réglages"),
+            label: pointimg::frontend::gettext("Réinitialiser les réglages"),
             hint: "Ctrl+R",
             enabled: true,
             run: |app, ctx| app.reset_params(ctx),
         },
         Command {
-            label: pointimg::frontend::t("Preset suivant"),
+            label: pointimg::frontend::gettext("Preset suivant"),
             hint: "Ctrl+P",
             enabled: true,
             run: |app, ctx| app.cycle_preset(1, ctx),
         },
         Command {
-            label: pointimg::frontend::t("Aperçu suivant"),
+            label: pointimg::frontend::gettext("Aperçu suivant"),
             hint: "Tab",
             enabled: true,
             run: |app, _| app.cycle_view(1),
         },
         Command {
-            label: pointimg::frontend::t("Aperçu précédent"),
-            hint: pointimg::frontend::t("Maj+Tab"),
+            label: pointimg::frontend::gettext("Aperçu précédent"),
+            hint: pointimg::frontend::gettext("Maj+Tab"),
             enabled: true,
             run: |app, _| app.cycle_view(-1),
         },
         Command {
-            label: pointimg::frontend::t("Carte de densité"),
+            label: pointimg::frontend::gettext("Carte de densité"),
             hint: "",
             enabled: true,
             run: |app, _| app.view_mode = crate::ViewMode::DensityMap,
         },
         Command {
-            label: pointimg::frontend::t("Zoomer"),
+            label: pointimg::frontend::gettext("Zoomer"),
             hint: "+",
             enabled: true,
             run: |app, _| {
@@ -147,7 +147,7 @@ pub(crate) fn all(app: &crate::App) -> Vec<Command> {
             },
         },
         Command {
-            label: pointimg::frontend::t("Dézoomer"),
+            label: pointimg::frontend::gettext("Dézoomer"),
             hint: "−",
             enabled: true,
             run: |app, _| {
@@ -156,7 +156,7 @@ pub(crate) fn all(app: &crate::App) -> Vec<Command> {
             },
         },
         Command {
-            label: pointimg::frontend::t("Ajuster à la fenêtre"),
+            label: pointimg::frontend::gettext("Ajuster à la fenêtre"),
             hint: "0",
             enabled: true,
             run: |app, _| app.zoom_fit = true,
@@ -194,7 +194,7 @@ pub(crate) fn show(app: &mut crate::App, ctx: &egui::Context, mut query: String)
     // requested from the inside goes through a separate flag.
     let mut triggered = false;
 
-    egui::Window::new(pointimg::frontend::t("Commandes"))
+    egui::Window::new(pointimg::frontend::gettext("Commandes"))
         .anchor(egui::Align2::CENTER_CENTER, egui::vec2(0.0, -60.0))
         .collapsible(false)
         .resizable(false)
@@ -203,7 +203,7 @@ pub(crate) fn show(app: &mut crate::App, ctx: &egui::Context, mut query: String)
         .show(ctx, |ui| {
             let response = ui.add(
                 egui::TextEdit::singleline(&mut query)
-                    .hint_text(pointimg::frontend::t("Rechercher une commande…"))
+                    .hint_text(pointimg::frontend::gettext("Rechercher une commande…"))
                     .desired_width(f32::INFINITY),
             );
             // Focus follows the field on every frame: without that, one has to
@@ -211,7 +211,9 @@ pub(crate) fn show(app: &mut crate::App, ctx: &egui::Context, mut query: String)
             response.request_focus();
             ui.separator();
             if matching.is_empty() {
-                ui.small(pointimg::frontend::t("Aucune commande ne correspond."));
+                ui.small(pointimg::frontend::gettext(
+                    "Aucune commande ne correspond.",
+                ));
             } else {
                 egui::ScrollArea::vertical()
                     .max_height(280.0)
@@ -242,7 +244,7 @@ pub(crate) fn show(app: &mut crate::App, ctx: &egui::Context, mut query: String)
                         }
                     });
                 ui.separator();
-                ui.weak(pointimg::frontend::t(
+                ui.weak(pointimg::frontend::gettext(
                     "Entrée : première commande · Échap : fermer",
                 ));
             }

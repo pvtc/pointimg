@@ -175,7 +175,7 @@ fn write_pairs(path: &Path, values: &HashMap<String, String>) {
     if let Err(error) = pointimg::frontend::atomic_text_write(path, &contents) {
         log::warn!(
             "{}",
-            pointimg::frontend::t("Préférences d'interface non enregistrées : {error}")
+            pointimg::frontend::gettext("Préférences d'interface non enregistrées : {error}")
                 .replace("{error}", &error.to_string())
         );
     }

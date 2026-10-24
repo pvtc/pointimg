@@ -78,6 +78,7 @@ fn main() -> eframe::Result {
     // Path given as an argument: `pointimg-gui photo.jpg`. The window does not
     // exist yet here, loading waits for the first frame — that is
     // `App::pending_open` that takes care of it.
+    pointimg::frontend::init_i18n();
     let requested = pending_open_from_args();
     eframe::run_native(
         "pointimg",
@@ -116,7 +117,7 @@ fn window_icon() -> egui::IconData {
             // starting: we report it and open without it.
             log::warn!(
                 "{}",
-                pointimg::frontend::t("icône de fenêtre illisible : {e}")
+                pointimg::frontend::gettext("icône de fenêtre illisible : {e}")
                     .replace("{e}", &e.to_string())
             );
             egui::IconData {
@@ -335,7 +336,7 @@ impl Default for App {
             zoom_fit: true,
             effective_zoom: 1.0,
             compare_split: 0.5,
-            status: pointimg::frontend::t(
+            status: pointimg::frontend::gettext(
                 "Ouvrez une image pour commencer (ou faites glisser un fichier).",
             )
             .to_string(),

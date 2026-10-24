@@ -70,7 +70,7 @@ fn accepte(applique: impl Fn(&mut FilterParams)) {
     validate_params(64, 64, &params).unwrap_or_else(|e| {
         panic!(
             "{}",
-            pointimg::frontend::t("réglages refusés : {e}").replace("{e}", &e.to_string())
+            pointimg::frontend::gettext("réglages refusés : {e}").replace("{e}", &e.to_string())
         )
     });
 }
@@ -85,7 +85,7 @@ fn refuse(applique: impl Fn(&mut FilterParams)) {
     assert!(
         validate_params(64, 64, &params).is_err(),
         "{}",
-        pointimg::frontend::t(
+        pointimg::frontend::gettext(
             "le moteur accepte une valeur que l'interface ne devrait pas proposer"
         )
     );
@@ -222,10 +222,10 @@ fn voronoi_et_kmeans_ont_leur_propre_plafond_de_points() {
     assert!(
         validate_params(64, 64, &params).is_err(),
         "{}",
-        pointimg::frontend::t("Voronoi doit rester plafonné à 50 000 points")
+        pointimg::frontend::gettext("Voronoi doit rester plafonné à 50 000 points")
     );
     params.algorithm = Algorithm::Quadtree;
-    let msg = pointimg::frontend::t("Quadtree accepte 50 001");
+    let msg = pointimg::frontend::gettext("Quadtree accepte 50 001");
     validate_params(64, 64, &params).expect(msg);
 }
 
@@ -237,11 +237,11 @@ fn le_halftone_exige_un_mode_d_encrage() {
     assert!(
         validate_params(64, 64, &params).is_err(),
         "{}",
-        pointimg::frontend::t("Halftone sans mode doit être refusé")
+        pointimg::frontend::gettext("Halftone sans mode doit être refusé")
     );
     params.halftone = HalftoneMode::Cmyk {
         angles: [15.0, 75.0, 0.0, 45.0],
     };
-    let msg = pointimg::frontend::t("CMJN est valide");
+    let msg = pointimg::frontend::gettext("CMJN est valide");
     validate_params(64, 64, &params).expect(msg);
 }

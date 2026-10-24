@@ -52,9 +52,9 @@ where
         return;
     };
     let dialogue = gtk::AlertDialog::builder()
-        .message(pointimg::frontend::t("Remplacer le fichier ?"))
+        .message(pointimg::frontend::gettext("Remplacer le fichier ?"))
         .detail(
-            pointimg::frontend::t("« {} » existe déjà, son contenu sera remplacé.")
+            pointimg::frontend::gettext("« {} » existe déjà, son contenu sera remplacé.")
                 .replace("{}", &path.display().to_string()),
         )
         .buttons(["Annuler", "Remplacer"])

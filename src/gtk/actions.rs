@@ -85,7 +85,7 @@ pub(crate) fn cancel_compute(state: &Rc<RefCell<State>>, widgets: &Rc<Widgets>) 
     }
     let mut st = state.borrow_mut();
     st.user_cancelled = true;
-    st.status = pointimg::frontend::t("Annulation…").to_string();
+    st.status = pointimg::frontend::gettext("Annulation…").to_string();
     drop(st);
     state.borrow().cancel.store(true, Ordering::SeqCst);
     preview::update_status_labels(state, widgets);
@@ -120,9 +120,9 @@ pub(crate) fn start_compute(state: &Rc<RefCell<State>>, widgets: &Rc<Widgets>) {
         }
         st.compute_start = Some(Instant::now());
         st.status = if full {
-            frontend::msg::computing().to_string()
+            frontend::msg::computing()
         } else {
-            pointimg::frontend::t("Aperçu rapide en cours…").to_string()
+            pointimg::frontend::gettext("Aperçu rapide en cours…").to_string()
         };
         st.last_dots = None;
         (
@@ -247,7 +247,7 @@ pub(crate) fn load_image(path: PathBuf, state: &Rc<RefCell<State>>, widgets: &Rc
                 st.source_was_resized = was_resized;
                 st.status = if was_resized {
                     {
-                        let mut s = pointimg::frontend::t(
+                        let mut s = pointimg::frontend::gettext(
                             "Image réduite de {orig_w}x{orig_h} à {}x{} pour respecter la mémoire.",
                         )
                         .to_string();
@@ -258,9 +258,9 @@ pub(crate) fn load_image(path: PathBuf, state: &Rc<RefCell<State>>, widgets: &Rc
                         s
                     }
                 } else if profile_converted {
-                    pointimg::frontend::t("Profil ICC converti vers sRGB.").to_string()
+                    pointimg::frontend::gettext("Profil ICC converti vers sRGB.").to_string()
                 } else {
-                    pointimg::frontend::t("Image chargée : {}")
+                    pointimg::frontend::gettext("Image chargée : {}")
                         .replace("{}", &path.display().to_string())
                 };
             }
@@ -274,7 +274,8 @@ pub(crate) fn load_image(path: PathBuf, state: &Rc<RefCell<State>>, widgets: &Rc
             preview::notify_error(
                 state,
                 widgets,
-                &pointimg::frontend::t("Erreur de chargement : {e}").replace("{e}", &e.to_string()),
+                &pointimg::frontend::gettext("Erreur de chargement : {e}")
+                    .replace("{e}", &e.to_string()),
             );
         }
     }
@@ -364,7 +365,7 @@ pub(crate) fn undo(state: &Rc<RefCell<State>>, widgets: &Rc<Widgets>) {
     }
     let previous = state.borrow_mut().history.pop();
     let Some(previous) = previous else {
-        preview::notify(state, widgets, frontend::msg::nothing_to_undo());
+        preview::notify(state, widgets, &frontend::msg::nothing_to_undo());
         return;
     };
     {
@@ -379,13 +380,13 @@ pub(crate) fn undo(state: &Rc<RefCell<State>>, widgets: &Rc<Widgets>) {
     sections::update_sections(widgets, &state.borrow().params);
     refresh_src_rgb(state, widgets);
     request_compute(state, widgets);
-    preview::notify(state, widgets, frontend::msg::undone());
+    preview::notify(state, widgets, &frontend::msg::undone());
 }
 
 pub(crate) fn redo(state: &Rc<RefCell<State>>, widgets: &Rc<Widgets>) {
     let next = state.borrow_mut().future.pop();
     let Some(next) = next else {
-        preview::notify(state, widgets, frontend::msg::nothing_to_redo());
+        preview::notify(state, widgets, &frontend::msg::nothing_to_redo());
         return;
     };
     {
@@ -400,7 +401,7 @@ pub(crate) fn redo(state: &Rc<RefCell<State>>, widgets: &Rc<Widgets>) {
     sections::update_sections(widgets, &state.borrow().params);
     refresh_src_rgb(state, widgets);
     request_compute(state, widgets);
-    preview::notify(state, widgets, frontend::msg::redone());
+    preview::notify(state, widgets, &frontend::msg::redone());
 }
 
 /// Restores the default values of a section, **without touching the
@@ -446,7 +447,7 @@ fn with_section_defaults(current: &FilterParams, target: ResetTarget) -> FilterP
 /// (Ctrl+Z).
 pub(crate) fn reset_params(state: &Rc<RefCell<State>>, widgets: &Rc<Widgets>) {
     if state.borrow().params == FilterParams::default() {
-        preview::notify(state, widgets, frontend::msg::already_default());
+        preview::notify(state, widgets, &frontend::msg::already_default());
         return;
     }
     {
@@ -462,7 +463,7 @@ pub(crate) fn reset_params(state: &Rc<RefCell<State>>, widgets: &Rc<Widgets>) {
     preview::notify(
         state,
         widgets,
-        pointimg::frontend::t("Réglages réinitialisés."),
+        pointimg::frontend::gettext("Réglages réinitialisés."),
     );
 }
 
@@ -482,7 +483,7 @@ pub(crate) fn reset_section(
         preview::notify(
             state,
             widgets,
-            pointimg::frontend::t("Section déjà par défaut."),
+            pointimg::frontend::gettext("Section déjà par défaut."),
         );
         return;
     }
@@ -501,7 +502,7 @@ pub(crate) fn reset_section(
     preview::notify(
         state,
         widgets,
-        pointimg::frontend::t("Section réinitialisée."),
+        pointimg::frontend::gettext("Section réinitialisée."),
     );
 }
 
@@ -532,7 +533,7 @@ pub(crate) fn apply_preset(index: usize, state: &Rc<RefCell<State>>, widgets: &R
     preview::notify(
         state,
         widgets,
-        &pointimg::frontend::t("Preset « {} » appliqué.").replace("{}", preset.name),
+        &pointimg::frontend::gettext("Preset « {} » appliqué.").replace("{}", preset.name),
     );
 }
 
@@ -572,7 +573,7 @@ pub(crate) fn vary_seed(state: &Rc<RefCell<State>>, widgets: &Rc<Widgets>) {
 /// Copies the current result to the clipboard.
 pub(crate) fn copy_to_clipboard(state: &Rc<RefCell<State>>, widgets: &Rc<Widgets>) {
     let Some(result) = state.borrow().result.clone() else {
-        preview::notify(state, widgets, frontend::msg::nothing_to_copy());
+        preview::notify(state, widgets, &frontend::msg::nothing_to_copy());
         return;
     };
     let texture = crate::preview::rgba_to_texture(&result);
@@ -583,7 +584,7 @@ pub(crate) fn copy_to_clipboard(state: &Rc<RefCell<State>>, widgets: &Rc<Widgets
         .toast_overlay
         .clipboard()
         .set_texture(&texture);
-    preview::notify(state, widgets, frontend::msg::copied());
+    preview::notify(state, widgets, &frontend::msg::copied());
 }
 
 // ─── Worker messages ─────────────────────────────────────────────────────────
@@ -641,9 +642,10 @@ pub(crate) fn handle_message(msg: Msg, state: &Rc<RefCell<State>>, widgets: &Rc<
                 st.last_compute_ms = Some(elapsed_ms);
                 st.result_revision += 1;
                 st.status = if full_resolution {
-                    pointimg::frontend::t("Calcul terminé.").to_string()
+                    pointimg::frontend::gettext("Calcul terminé.").to_string()
                 } else {
-                    pointimg::frontend::t("Aperçu calculé — finalisation en cours…").to_string()
+                    pointimg::frontend::gettext("Aperçu calculé — finalisation en cours…")
+                        .to_string()
                 };
                 if st.pending_commit {
                     commit_history(&mut st);
@@ -679,7 +681,7 @@ pub(crate) fn handle_message(msg: Msg, state: &Rc<RefCell<State>>, widgets: &Rc<
                 st.compute_start = None;
                 st.final_pass = false;
                 if cancelled && st.user_cancelled {
-                    st.status = pointimg::frontend::t("Calcul annulé.").to_string();
+                    st.status = pointimg::frontend::gettext("Calcul annulé.").to_string();
                 } else if !cancelled {
                     st.status = message.clone();
                     error = Some(message);
@@ -769,7 +771,7 @@ fn run_worker(
                 let msg = if cancel.load(Ordering::SeqCst) {
                     Msg::Failed {
                         generation,
-                        message: pointimg::frontend::t("Annulé").to_string(),
+                        message: pointimg::frontend::gettext("Annulé").to_string(),
                         cancelled: true,
                     }
                 } else {
@@ -786,7 +788,8 @@ fn run_worker(
             Err(e) => {
                 let _ = tx.send_blocking(Msg::Failed {
                     generation,
-                    message: pointimg::frontend::t("Erreur : {e}").replace("{e}", &e.to_string()),
+                    message: pointimg::frontend::gettext("Erreur : {e}")
+                        .replace("{e}", &e.to_string()),
                     cancelled: filter::is_cancelled(&e),
                 });
             }
@@ -829,7 +832,7 @@ fn run_worker(
         Err(e) => {
             let _ = tx.send_blocking(Msg::Failed {
                 generation,
-                message: pointimg::frontend::t("Erreur : {e}").replace("{e}", &e.to_string()),
+                message: pointimg::frontend::gettext("Erreur : {e}").replace("{e}", &e.to_string()),
                 cancelled: filter::is_cancelled(&e),
             });
         }
@@ -843,7 +846,7 @@ pub(crate) fn save_svg_quick(state: &Rc<RefCell<State>>, widgets: &Rc<Widgets>) 
             source.with_file_name(frontend::derived_export_name(Some(source), "svg"))
         })
     else {
-        preview::notify(state, widgets, frontend::msg::open_first());
+        preview::notify(state, widgets, &frontend::msg::open_first());
         return;
     };
     // No file chooser: the confirmation happens here. Same reason for cloning

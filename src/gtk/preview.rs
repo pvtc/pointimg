@@ -278,9 +278,9 @@ pub(crate) fn apply_zoom(state: &Rc<RefCell<State>>, widgets: &Rc<Widgets>) {
     widgets.preview.zoom_out.set_sensitive(!fit);
     widgets.preview.zoom_in.set_sensitive(!fit);
     widgets.preview.zoom_fit.set_tooltip_text(Some(if fit {
-        frontend::t("Zoom ajusté à la fenêtre (0)")
+        frontend::gettext("Zoom ajusté à la fenêtre (0)")
     } else {
-        frontend::t("Ajuster l'aperçu à la fenêtre (0)")
+        frontend::gettext("Ajuster l'aperçu à la fenêtre (0)")
     }));
 }
 
@@ -401,7 +401,7 @@ pub(crate) fn update_overlays(state: &Rc<RefCell<State>>, widgets: &Rc<Widgets>)
     widgets.preview.busy.set_visible(computing);
     widgets.preview.busy.set_spinning(computing);
     widgets.preview.busy_label.set_text(if computing {
-        frontend::t("Calcul…")
+        frontend::gettext("Calcul…")
     } else {
         ""
     });
@@ -410,16 +410,17 @@ pub(crate) fn update_overlays(state: &Rc<RefCell<State>>, widgets: &Rc<Widgets>)
         widgets.preview.quality_badge.set_text("");
         widgets.preview.quality_badge.set_visible(false);
     } else {
-        widgets.preview.quality_badge.set_text(if stale {
+        let text = if stale {
             frontend::msg::finalizing()
         } else {
-            frontend::t("aperçu rapide")
-        });
+            frontend::gettext("aperçu rapide").to_string()
+        };
+        widgets.preview.quality_badge.set_text(&text);
         widgets.preview.quality_badge.set_visible(has_image);
         widgets
             .preview
             .quality_badge
-            .set_tooltip_text(Some(frontend::t(
+            .set_tooltip_text(Some(frontend::gettext(
                 "Calcul sur une image réduite. La pleine résolution est calculée \
              automatiquement dès que vous arrêtez de manipuler les réglages.",
             )));
@@ -433,7 +434,7 @@ pub(crate) fn update_overlays(state: &Rc<RefCell<State>>, widgets: &Rc<Widgets>)
             .as_ref()
             .and_then(|p| p.file_name())
             .and_then(|n| n.to_str())
-            .unwrap_or(frontend::t("Aucune image"))
+            .unwrap_or(frontend::gettext("Aucune image"))
             .to_string();
         let suffix = st
             .folder_position()
@@ -457,7 +458,7 @@ pub(crate) fn update_overlays(state: &Rc<RefCell<State>>, widgets: &Rc<Widgets>)
 fn window_subtitle(state: &State) -> String {
     match state.src_rgb.as_ref() {
         Some(src) => pointimg::frontend::describe_image_size(src.width(), src.height()),
-        None => frontend::t("Aucune image").to_string(),
+        None => frontend::gettext("Aucune image").to_string(),
     }
 }
 
@@ -493,9 +494,9 @@ pub(crate) fn refresh_actions(state: &Rc<RefCell<State>>, widgets: &Rc<Widgets>)
         .window
         .export
         .set_tooltip_text(Some(if final_result {
-            frontend::t("Exporter l'image (Ctrl+S)")
+            frontend::gettext("Exporter l'image (Ctrl+S)")
         } else {
-            frontend::t("Export en attente du rendu en pleine résolution…")
+            frontend::gettext("Export en attente du rendu en pleine résolution…")
         }));
     update_overlays(state, widgets);
 }
@@ -509,12 +510,12 @@ pub(crate) fn update_status_labels(state: &Rc<RefCell<State>>, widgets: &Rc<Widg
             // The figure alone alarmed without explaining anything: we say
             // what it announces, that is what the full-resolution pass will
             // require — this is not the memory already used.
-            let text = frontend::t("Pleine résolution : ~{}")
+            let text = frontend::gettext("Pleine résolution : ~{}")
                 .replace("{}", &crate::format_memory(estimate));
             if warning { format!("⚠ {text}") } else { text }
         });
         let timing = st.last_compute_ms.map(|ms| {
-            frontend::t("Dernier calcul : {}").replace("{}", &crate::format_duration(ms))
+            frontend::gettext("Dernier calcul : {}").replace("{}", &crate::format_duration(ms))
         });
         (memory, timing, st.status.clone())
     };
@@ -523,9 +524,12 @@ pub(crate) fn update_status_labels(state: &Rc<RefCell<State>>, widgets: &Rc<Widg
         .status_bar
         .memory
         .set_text(memory.as_deref().unwrap_or(""));
-    widgets.status_bar.memory.set_tooltip_text(Some(frontend::t(
-        "Pic mémoire estimé pour le calcul en cours.",
-    )));
+    widgets
+        .status_bar
+        .memory
+        .set_tooltip_text(Some(frontend::gettext(
+            "Pic mémoire estimé pour le calcul en cours.",
+        )));
     // Export size: measured by real encoding of the final render.
     let sizes = crate::exports::sizes_label(state);
     widgets.preview.export_sizes.set_text(&sizes);
@@ -540,7 +544,8 @@ pub(crate) fn update_status_labels(state: &Rc<RefCell<State>>, widgets: &Rc<Widg
     // The export menu tooltip announces the size before even opening it.
     if let Some(comparison) = crate::exports::comparison(state) {
         widgets.window.export.set_tooltip_text(Some(
-            &frontend::t("Exporter le rendu.\n{comparison}").replace("{comparison}", &comparison),
+            &frontend::gettext("Exporter le rendu.\n{comparison}")
+                .replace("{comparison}", &comparison),
         ));
     } else {
         widgets.window.export.set_tooltip_text(None);

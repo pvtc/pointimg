@@ -117,7 +117,7 @@ impl App {
     pub(crate) fn save_result(&mut self, path: PathBuf) {
         // We never export a downscaled preview by inadvertence.
         if !self.has_final_result() {
-            self.status = pointimg::frontend::t(
+            self.status = pointimg::frontend::gettext(
                 "Rendu en pleine résolution en cours — réessayez dans un instant.",
             )
             .to_string();
@@ -144,12 +144,13 @@ impl App {
             Ok(_) => {
                 self.remember_dir(&path);
                 self.notify(
-                    pointimg::frontend::t("Sauvegardé : {}")
+                    pointimg::frontend::gettext("Sauvegardé : {}")
                         .replace("{}", &path.display().to_string()),
                 );
             }
             Err(e) => self.notify_error(
-                pointimg::frontend::t("Erreur sauvegarde : {e}").replace("{e}", &e.to_string()),
+                pointimg::frontend::gettext("Erreur sauvegarde : {e}")
+                    .replace("{e}", &e.to_string()),
             ),
         }
     }
@@ -188,17 +189,18 @@ impl App {
                 Ok(_) => {
                     self.remember_dir(&path);
                     self.notify(
-                        pointimg::frontend::t("SVG sauvegardé : {}")
+                        pointimg::frontend::gettext("SVG sauvegardé : {}")
                             .replace("{}", &path.display().to_string()),
                     );
                 }
                 Err(e) => self.notify_error(
-                    pointimg::frontend::t("Erreur écriture SVG : {e}")
+                    pointimg::frontend::gettext("Erreur écriture SVG : {e}")
                         .replace("{e}", &e.to_string()),
                 ),
             },
             Err(e) => self.notify_error(
-                pointimg::frontend::t("Erreur rendu SVG : {e}").replace("{e}", &e.to_string()),
+                pointimg::frontend::gettext("Erreur rendu SVG : {e}")
+                    .replace("{e}", &e.to_string()),
             ),
         }
     }

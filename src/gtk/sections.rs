@@ -36,11 +36,16 @@ pub(crate) fn algorithm_from_index(i: u32) -> Algorithm {
 /// `sync_widgets` is not replayed after a change proposed by the user, since
 /// it serves to resynchronize the widgets *after* a programmatic change.
 pub(crate) fn sync_dithering_note(dithering: Dithering, widgets: &Widgets) {
-    widgets.dots.dithering.set_subtitle(
-        dithering
-            .size_caveat_short()
-            .unwrap_or(pointimg::frontend::t("Tramage de la palette quantifiée")),
-    );
+    widgets
+        .dots
+        .dithering
+        .set_subtitle(
+            dithering
+                .size_caveat_short()
+                .unwrap_or(pointimg::frontend::gettext(
+                    "Tramage de la palette quantifiée",
+                )),
+        );
     widgets
         .dots
         .dithering
@@ -82,14 +87,18 @@ pub(crate) fn quality_from_index(index: u32) -> Quality {
 /// Short help displayed as the subtitle of the algorithm selector.
 fn algorithm_help(algorithm: Algorithm) -> &'static str {
     match algorithm {
-        Algorithm::Grid => pointimg::frontend::t("Une cellule = un point. Rapide et prévisible."),
-        Algorithm::Kmeans => pointimg::frontend::t("Répartition par couleur et position."),
-        Algorithm::Voronoi => {
-            pointimg::frontend::t("Lloyd pondéré : le rendu le plus « naturel ».")
+        Algorithm::Grid => {
+            pointimg::frontend::gettext("Une cellule = un point. Rapide et prévisible.")
         }
-        Algorithm::Quadtree => pointimg::frontend::t("Plus de points là où l'image est détaillée."),
+        Algorithm::Kmeans => pointimg::frontend::gettext("Répartition par couleur et position."),
+        Algorithm::Voronoi => {
+            pointimg::frontend::gettext("Lloyd pondéré : le rendu le plus « naturel ».")
+        }
+        Algorithm::Quadtree => {
+            pointimg::frontend::gettext("Plus de points là où l'image est détaillée.")
+        }
         Algorithm::Halftone => {
-            pointimg::frontend::t("Rosette CMJN ou couleurs dominantes (offset print).")
+            pointimg::frontend::gettext("Rosette CMJN ou couleurs dominantes (offset print).")
         }
     }
 }
