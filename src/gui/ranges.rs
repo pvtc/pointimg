@@ -67,7 +67,12 @@ fn base() -> FilterParams {
 fn accepte(applique: impl Fn(&mut FilterParams)) {
     let mut params = base();
     applique(&mut params);
-    validate_params(64, 64, &params).unwrap_or_else(|e| panic!("réglages refusés : {e}"));
+    validate_params(64, 64, &params).unwrap_or_else(|e| {
+        panic!(
+            "{}",
+            pointimg::frontend::t("réglages refusés : {e}").replace("{e}", &e.to_string())
+        )
+    });
 }
 
 /// Checks that a value *outside* the range is refused by the engine.
@@ -79,7 +84,10 @@ fn refuse(applique: impl Fn(&mut FilterParams)) {
     applique(&mut params);
     assert!(
         validate_params(64, 64, &params).is_err(),
-        "le moteur accepte une valeur que l'interface ne devrait pas proposer"
+        "{}",
+        pointimg::frontend::t(
+            "le moteur accepte une valeur que l'interface ne devrait pas proposer"
+        )
     );
 }
 
@@ -213,10 +221,12 @@ fn voronoi_et_kmeans_ont_leur_propre_plafond_de_points() {
     params.num_points = 50_001;
     assert!(
         validate_params(64, 64, &params).is_err(),
-        "Voronoi doit rester plafonné à 50 000 points"
+        "{}",
+        pointimg::frontend::t("Voronoi doit rester plafonné à 50 000 points")
     );
     params.algorithm = Algorithm::Quadtree;
-    validate_params(64, 64, &params).expect("Quadtree accepte 50 001");
+    let msg = pointimg::frontend::t("Quadtree accepte 50 001");
+    validate_params(64, 64, &params).expect(msg);
 }
 
 #[test]
@@ -226,10 +236,12 @@ fn le_halftone_exige_un_mode_d_encrage() {
     params.halftone = HalftoneMode::Off;
     assert!(
         validate_params(64, 64, &params).is_err(),
-        "Halftone sans mode doit être refusé"
+        "{}",
+        pointimg::frontend::t("Halftone sans mode doit être refusé")
     );
     params.halftone = HalftoneMode::Cmyk {
         angles: [15.0, 75.0, 0.0, 45.0],
     };
-    validate_params(64, 64, &params).expect("CMJN est valide");
+    let msg = pointimg::frontend::t("CMJN est valide");
+    validate_params(64, 64, &params).expect(msg);
 }

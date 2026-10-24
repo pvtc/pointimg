@@ -238,7 +238,7 @@ impl App {
     pub(crate) fn save_preset(&mut self, path: PathBuf) {
         let path = frontend::ensure_toml_extension(path);
         if !io::confirm_overwrite(&path) {
-            self.notify(frontend::msg::SAVE_CANCELLED);
+            self.notify(frontend::msg::save_cancelled());
             return;
         }
         match frontend::save_preset(&path, &self.params) {
@@ -278,7 +278,7 @@ impl App {
             self.pending_commit = false;
         }
         let Some(prev) = self.history.pop() else {
-            self.notify(frontend::msg::NOTHING_TO_UNDO);
+            self.notify(frontend::msg::nothing_to_undo());
             return;
         };
         if let Some(prev_committed) = self.last_committed.take() {
@@ -293,14 +293,14 @@ impl App {
             self.cancel.store(true, Ordering::Relaxed);
         }
         self.last_param_change = Some(Instant::now());
-        self.notify(frontend::msg::UNDONE);
+        self.notify(frontend::msg::undone());
         ctx.request_repaint();
     }
 
     /// `Ctrl+Y` (or `Ctrl+Shift+Z`): restores the next state.
     pub(crate) fn redo(&mut self, ctx: &egui::Context) {
         let Some(next) = self.future.pop() else {
-            self.notify(frontend::msg::NOTHING_TO_REDO);
+            self.notify(frontend::msg::nothing_to_redo());
             return;
         };
         if let Some(prev_committed) = self.last_committed.take() {
@@ -315,7 +315,7 @@ impl App {
             self.cancel.store(true, Ordering::Relaxed);
         }
         self.last_param_change = Some(Instant::now());
-        self.notify(frontend::msg::REDONE);
+        self.notify(frontend::msg::redone());
         ctx.request_repaint();
     }
 
@@ -323,7 +323,7 @@ impl App {
     /// undoable (`Ctrl+Z`).
     pub(crate) fn reset_params(&mut self, ctx: &egui::Context) {
         if self.params == FilterParams::default() {
-            self.notify(frontend::msg::ALREADY_DEFAULT);
+            self.notify(frontend::msg::already_default());
             return;
         }
         self.params = FilterParams::default();

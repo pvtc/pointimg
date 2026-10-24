@@ -68,9 +68,9 @@ impl App {
         channels.cancel.store(false, Ordering::Relaxed);
         *self.progress.lock().unwrap_or_else(|e| e.into_inner()) = (0, params.iterations);
         self.status = if full_resolution {
-            frontend::msg::COMPUTING.to_string()
+            frontend::msg::computing().to_string()
         } else {
-            "Aperçu rapide en cours…".to_string()
+            pointimg::frontend::t("Aperçu rapide en cours…").to_string()
         };
         self.compute_start = Some(Instant::now());
         self.last_param_change = None;
@@ -166,7 +166,7 @@ fn run_compute_worker(
                     && !cancel.load(Ordering::Relaxed)
                 {
                     *status_err.lock().unwrap_or_else(|e| e.into_inner()) =
-                        Some(format!("Erreur : {e}"));
+                        Some(pointimg::frontend::t("Erreur : {e}").replace("{e}", &e.to_string()));
                 }
             }
         }
@@ -248,7 +248,7 @@ fn run_compute_worker(
                 && !cancel.load(Ordering::Relaxed)
             {
                 *status_err.lock().unwrap_or_else(|e| e.into_inner()) =
-                    Some(format!("Erreur : {e}"));
+                    Some(pointimg::frontend::t("Erreur : {e}").replace("{e}", &e.to_string()));
             }
         }
     }

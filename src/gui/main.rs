@@ -114,7 +114,11 @@ fn window_icon() -> egui::IconData {
         Err(e) => {
             // A missing icon must not prevent the application from
             // starting: we report it and open without it.
-            log::warn!("icône de fenêtre illisible : {e}");
+            log::warn!(
+                "{}",
+                pointimg::frontend::t("icône de fenêtre illisible : {e}")
+                    .replace("{e}", &e.to_string())
+            );
             egui::IconData {
                 rgba: Vec::new(),
                 width: 0,
@@ -265,6 +269,8 @@ pub(crate) struct App {
     pub ui_scale: f32,
     /// Theme forced by the user; `None` follows the system preference.
     pub ui_theme: Option<egui::Theme>,
+    /// Interface language.
+    pub ui_locale: pointimg::frontend::Locale,
     /// Persisted interface preferences (scale, theme).
     pub prefs: Option<prefs::InterfacePrefs>,
     /// Preset thumbnails, decoded and uploaded to the GPU only once.
@@ -329,13 +335,17 @@ impl Default for App {
             zoom_fit: true,
             effective_zoom: 1.0,
             compare_split: 0.5,
-            status: "Ouvrez une image pour commencer (ou faites glisser un fichier).".to_string(),
+            status: pointimg::frontend::t(
+                "Ouvrez une image pour commencer (ou faites glisser un fichier).",
+            )
+            .to_string(),
             window_title: String::new(),
             toasts: notify::Toasts::new(),
             palette: None,
             pending_open: None,
             ui_scale: 1.0,
             ui_theme: None,
+            ui_locale: pointimg::frontend::Locale::default(),
             prefs: None,
             preset_thumbnails: None,
             applied_style: None,
@@ -354,7 +364,14 @@ impl App {
             }
             // A missing key means "follow the system".
             app.ui_theme = prefs.theme();
+            app.ui_locale = prefs
+                .locale()
+                .unwrap_or_else(pointimg::frontend::detect_system_locale);
+            pointimg::frontend::set_locale(app.ui_locale);
             app.prefs = Some(prefs);
+        } else {
+            app.ui_locale = pointimg::frontend::detect_system_locale();
+            pointimg::frontend::set_locale(app.ui_locale);
         }
         app
     }
@@ -363,7 +380,7 @@ impl App {
     /// change loses nothing).
     pub fn persist_display_preferences(&mut self) {
         if let Some(prefs) = &mut self.prefs {
-            prefs.save(self.ui_scale, self.ui_theme);
+            prefs.save(self.ui_scale, self.ui_theme, self.ui_locale);
         }
     }
 

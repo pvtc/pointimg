@@ -14,6 +14,7 @@ use std::path::{Path, PathBuf};
 const FILE_NAME: &str = "ui-prefs.ron";
 const KEY_SCALE: &str = "ui_scale";
 const KEY_THEME: &str = "ui_theme";
+const KEY_LOCALE: &str = "ui_locale";
 
 /// Prefix of the recent image entries.
 ///
@@ -66,8 +67,20 @@ impl InterfacePrefs {
         }
     }
 
+    /// Memorized interface language (`None` = follow the system).
+    pub(crate) fn locale(&self) -> Option<pointimg::frontend::Locale> {
+        self.values
+            .get(KEY_LOCALE)
+            .map(|v| pointimg::frontend::Locale::from_code(v))
+    }
+
     /// Saves immediately: quitting right after a change loses nothing.
-    pub(crate) fn save(&mut self, scale: f32, theme: Option<egui::Theme>) {
+    pub(crate) fn save(
+        &mut self,
+        scale: f32,
+        theme: Option<egui::Theme>,
+        locale: pointimg::frontend::Locale,
+    ) {
         self.values
             .insert(KEY_SCALE.to_string(), format!("{scale:.3}"));
         let theme = match theme {
@@ -76,6 +89,8 @@ impl InterfacePrefs {
             None => "auto",
         };
         self.values.insert(KEY_THEME.to_string(), theme.to_string());
+        self.values
+            .insert(KEY_LOCALE.to_string(), locale.code().to_string());
         self.flush();
     }
 
@@ -158,7 +173,11 @@ fn write_pairs(path: &Path, values: &HashMap<String, String>) {
     contents.sort();
     let contents = contents.join("\n") + "\n";
     if let Err(error) = pointimg::frontend::atomic_text_write(path, &contents) {
-        log::warn!("Préférences d'interface non enregistrées : {error}");
+        log::warn!(
+            "{}",
+            pointimg::frontend::t("Préférences d'interface non enregistrées : {error}")
+                .replace("{error}", &error.to_string())
+        );
     }
 }
 

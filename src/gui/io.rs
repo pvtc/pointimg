@@ -10,8 +10,11 @@ pub(crate) fn confirm_overwrite(path: &std::path::Path) -> bool {
     matches!(
         rfd::MessageDialog::new()
             .set_level(rfd::MessageLevel::Warning)
-            .set_title("Remplacer le fichier ?")
-            .set_description(format!("Le fichier '{}' existe déjà.", path.display()))
+            .set_title(pointimg::frontend::t("Remplacer le fichier ?"))
+            .set_description(
+                pointimg::frontend::t("Le fichier '{}' existe déjà.")
+                    .replace("{}", &path.display().to_string())
+            )
             .set_buttons(rfd::MessageButtons::YesNo)
             .show(),
         rfd::MessageDialogResult::Yes

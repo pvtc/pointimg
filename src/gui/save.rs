@@ -22,7 +22,7 @@ impl App {
 
     pub(crate) fn choose_export(&mut self) {
         let Some(name) = self.default_name("png") else {
-            self.notify(frontend::msg::OPEN_FIRST);
+            self.notify(frontend::msg::open_first());
             return;
         };
         let mut dialog = rfd::FileDialog::new()
@@ -42,7 +42,7 @@ impl App {
 
     pub(crate) fn choose_svg_export(&mut self) {
         let Some(name) = self.default_name("svg") else {
-            self.notify(frontend::msg::OPEN_FIRST);
+            self.notify(frontend::msg::open_first());
             return;
         };
         let mut dialog = rfd::FileDialog::new()
@@ -94,7 +94,7 @@ impl App {
         let Some(path) = self.src_path.as_ref().map(|source| {
             source.with_file_name(frontend::derived_export_name(Some(source), "png"))
         }) else {
-            self.notify(frontend::msg::OPEN_FIRST);
+            self.notify(frontend::msg::open_first());
             return;
         };
         self.save_result(path);
@@ -107,24 +107,26 @@ impl App {
             guard.as_ref().map(|img| rgba_to_color_image_checker(img))
         };
         let Some(image) = image else {
-            self.notify(frontend::msg::NOTHING_TO_COPY);
+            self.notify(frontend::msg::nothing_to_copy());
             return;
         };
         ctx.copy_image(image);
-        self.notify(frontend::msg::COPIED);
+        self.notify(frontend::msg::copied());
     }
 
     pub(crate) fn save_result(&mut self, path: PathBuf) {
         // We never export a downscaled preview by inadvertence.
         if !self.has_final_result() {
-            self.status =
-                "Rendu en pleine résolution en cours — réessayez dans un instant.".to_string();
+            self.status = pointimg::frontend::t(
+                "Rendu en pleine résolution en cours — réessayez dans un instant.",
+            )
+            .to_string();
             return;
         }
         // Validate and normalize the selected extension.
         let path = frontend::ensure_image_extension(path, "png");
         if !io::confirm_overwrite(&path) {
-            self.notify(frontend::msg::SAVE_CANCELLED);
+            self.notify(frontend::msg::save_cancelled());
             return;
         }
         // The guard is released before mutating `self` (see `remember_dir`).
@@ -141,16 +143,21 @@ impl App {
         match result {
             Ok(_) => {
                 self.remember_dir(&path);
-                self.notify(format!("Sauvegardé : {}", path.display()));
+                self.notify(
+                    pointimg::frontend::t("Sauvegardé : {}")
+                        .replace("{}", &path.display().to_string()),
+                );
             }
-            Err(e) => self.notify_error(format!("Erreur sauvegarde : {e}")),
+            Err(e) => self.notify_error(
+                pointimg::frontend::t("Erreur sauvegarde : {e}").replace("{e}", &e.to_string()),
+            ),
         }
     }
 
     pub(crate) fn save_svg(&mut self, path: PathBuf) {
         let path = frontend::ensure_svg_extension(path);
         if !io::confirm_overwrite(&path) {
-            self.notify(frontend::msg::SAVE_CANCELLED);
+            self.notify(frontend::msg::save_cancelled());
             return;
         }
         // Reusing the dots of the last render avoids restarting the pipeline.
@@ -180,11 +187,19 @@ impl App {
             Ok(svg) => match frontend::atomic_text_write(&path, &svg) {
                 Ok(_) => {
                     self.remember_dir(&path);
-                    self.notify(format!("SVG sauvegardé : {}", path.display()));
+                    self.notify(
+                        pointimg::frontend::t("SVG sauvegardé : {}")
+                            .replace("{}", &path.display().to_string()),
+                    );
                 }
-                Err(e) => self.notify_error(format!("Erreur écriture SVG : {e}")),
+                Err(e) => self.notify_error(
+                    pointimg::frontend::t("Erreur écriture SVG : {e}")
+                        .replace("{e}", &e.to_string()),
+                ),
             },
-            Err(e) => self.notify_error(format!("Erreur rendu SVG : {e}")),
+            Err(e) => self.notify_error(
+                pointimg::frontend::t("Erreur rendu SVG : {e}").replace("{e}", &e.to_string()),
+            ),
         }
     }
 }
