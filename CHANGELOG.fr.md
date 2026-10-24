@@ -7,6 +7,8 @@ et ce projet adhère au [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-10-24
+
 ### Ajouté
 
 - **Vignettes de presets** : les neuf presets intégrés sont maintenant choisis
