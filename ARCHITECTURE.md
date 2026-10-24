@@ -165,7 +165,7 @@ function returns to the CPU path automatically.
 
 > **Feature-gating:** GUI dependencies are behind the `gui` feature
 > (enabled by default). To compile CLI-only: `cargo build --no-default-features`.
-> **MSRV:** Rust 1.95 (declared via `rust-version` in `Cargo.toml`,
+> **MSRV:** Rust 1.97 (declared via `rust-version` in `Cargo.toml`,
 > enforced by the `msrv` CI job).
 
 ---
@@ -1167,7 +1167,7 @@ push/PR to `main`:
 - **test** — matrix `ubuntu/macos/windows`, `cargo test --features gui,gpu,avif --locked`
   plus `cargo test --no-default-features --locked`
 - **gpu** — lavapipe software adapter, CPU/GPU density parity
-- **msrv** — `cargo +1.95 check --features gui,gpu,avif --locked` (and `stable`)
+- **msrv** — `cargo +1.97 check --features gui,gpu,avif --locked` (and `stable`)
 - **build** — `cargo build --release --features gui,gpu,avif`
 - **gtk** — Linux-only, installs `libgtk-4-dev`/`libadwaita-1-dev`, clippy +
   release build of `pointimg-gtk`

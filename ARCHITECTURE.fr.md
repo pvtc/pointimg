@@ -854,7 +854,7 @@ push/PR sur `main` :
 - **test** — matrice `ubuntu/macos/windows`,
   `cargo test --features gui,gpu,avif --locked` + `--no-default-features --locked`
 - **gpu** — adaptateur logiciel lavapipe, parité CPU/GPU de la densité
-- **msrv** — `cargo +1.95 check --features gui,gpu,avif --locked` (et `stable`)
+- **msrv** — `cargo +1.97 check --features gui,gpu,avif --locked` (et `stable`)
 - **build** — `cargo build --release --features gui,gpu,avif`
 - **gtk** — Linux uniquement, installe `libgtk-4-dev`/`libadwaita-1-dev`,
   clippy + build release de `pointimg-gtk`

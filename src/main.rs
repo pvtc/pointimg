@@ -920,6 +920,7 @@ fn save_dynamic_with_profile(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::assert_matches;
 
     #[test]
     fn transparent_bmp_export_composites_alpha() {
@@ -966,14 +967,11 @@ mod tests {
     fn parse_halftone_variants() {
         assert_eq!(parse_halftone("off").unwrap(), HalftoneMode::Off);
         assert_eq!(parse_halftone("").unwrap(), HalftoneMode::Off);
-        assert!(matches!(
-            parse_halftone("cmyk").unwrap(),
-            HalftoneMode::Cmyk { .. }
-        ));
-        assert!(matches!(
+        assert_matches!(parse_halftone("cmyk").unwrap(), HalftoneMode::Cmyk { .. });
+        assert_matches!(
             parse_halftone("dominant-6").unwrap(),
             HalftoneMode::Dominant { n: 6, .. }
-        ));
+        );
         assert!(parse_halftone("dominant-1").is_err());
         assert!(parse_halftone("dominant-x").is_err());
         assert!(parse_halftone("bogus").is_err());
@@ -1004,7 +1002,7 @@ mod tests {
         let args = Args::parse_from(["pointimg", "--algorithm", "halftone", "-i", "in.png"]);
         let params = args.to_filter_params().unwrap();
         assert_eq!(params.algorithm, Algorithm::Halftone);
-        assert!(matches!(params.halftone, HalftoneMode::Cmyk { .. }));
+        assert_matches!(params.halftone, HalftoneMode::Cmyk { .. });
     }
 
     #[test]
@@ -1012,10 +1010,7 @@ mod tests {
         let args = Args::parse_from(["pointimg", "--halftone", "dominant-4", "-i", "in.png"]);
         let params = args.to_filter_params().unwrap();
         assert_eq!(params.algorithm, Algorithm::Halftone);
-        assert!(matches!(
-            params.halftone,
-            HalftoneMode::Dominant { n: 4, .. }
-        ));
+        assert_matches!(params.halftone, HalftoneMode::Dominant { n: 4, .. });
     }
 
     // ── Generation of the output paths ───────────────────────────────────────

@@ -668,7 +668,7 @@ appliquées après une inspection des deux interfaces en conditions réelles
   (`.github/workflows/ci.yml`)
 - **`rust-toolchain.toml`** : canal `stable` avec `rustfmt` et `clippy`
   déclarés, pour un environnement local reproductible (les jobs MSRV
-  épinglent toujours `+1.95`).
+  épinglent toujours `+1.97`).
 - **Release GTK4** : le binaire `pointimg-gtk` est construit et publié
   (`libgtk-4-dev`/`libadwaita-1-dev`) aux côtés des autres artefacts. Le job de
   la GUI egui (`pointimg-gui`) n'installe plus `libgtk-3-dev`/`libspeechd-dev`,
@@ -689,6 +689,20 @@ appliquées après une inspection des deux interfaces en conditions réelles
   fichier de 4 octets (jamais décodé) ; une petite image PNG valide
   (`fuzz/corpus/image/seed-image-12x12`) fait passer la couverture du target de
   331 à 10 501 branches. (`fuzz/corpus/image/`)
+- **Runners Linux de la release passés à Ubuntu 24.04** : les trois jobs Linux de
+  `release.yml` (CLI, GUI egui, GTK4) tournent désormais sur `ubuntu-24.04` au
+  lieu de `ubuntu-22.04`, pour pouvoir installer GTK4/libadwaita assez récents
+  pour les feature flags `v4_14`/`v1_5`. (`.github/workflows/release.yml`)
+- **Builds aarch64 natifs** : la matrice CLI Linux utilise désormais le runner
+  `ubuntu-24.04-arm` au lieu de cross-compiler depuis x86_64 avec
+  `gcc-aarch64-linux-gnu`. (`.github/workflows/release.yml`)
+- **MSRV remonté de 1.95 à 1.97** : `rust-version` dans `Cargo.toml`, la
+  matrice `msrv` de la CI, les badges README/ARCHITECTURE et le commentaire du
+  rust-toolchain sont mis à jour. (`.github/workflows/ci.yml`, `Cargo.toml`)
+- **Feature flags GTK remontés** à `v4_14` (gtk4) et `v1_5` (libadwaita) pour
+  correspondre aux bibliothèques système d'Ubuntu 24.04. (`Cargo.toml`)
+- **Tests utilisent `assert_matches!`** (stabilisé dans Rust 1.96) au lieu de
+  `assert!(matches!(...))`. (`src/main.rs`, `src/gtk/actions.rs`)
 
 ### Modifié
 

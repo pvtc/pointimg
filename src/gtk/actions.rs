@@ -860,6 +860,7 @@ pub(crate) fn save_svg_quick(state: &Rc<RefCell<State>>, widgets: &Rc<Widgets>) 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::assert_matches;
 
     /// Partial resets must touch only their own section.
     #[test]
@@ -908,10 +909,10 @@ mod tests {
     fn halftone_presets_carry_a_mode() {
         for preset in filter::builtin_presets() {
             if preset.params.algorithm == pointimg::filter::Algorithm::Halftone {
-                assert!(matches!(
+                assert_matches!(
                     preset.params.halftone,
                     filter::HalftoneMode::Cmyk { .. } | filter::HalftoneMode::Dominant { .. }
-                ));
+                );
             }
         }
     }

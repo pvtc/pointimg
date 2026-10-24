@@ -631,7 +631,7 @@ image loaded, resizing, wheel, 1:1).
   with `--features gtk`. The build without GUI dependencies is thus protected.
   (`.github/workflows/ci.yml`)
 - **`rust-toolchain.toml`**: `stable` channel with `rustfmt` and `clippy`
-  declared, for a reproducible local environment (MSRV jobs still pin `+1.95`).
+  declared, for a reproducible local environment (MSRV jobs still pin `+1.97`).
 - **GTK4 release**: the `pointimg-gtk` binary is built and published
   (`libgtk-4-dev`/`libadwaita-1-dev`) alongside the other artefacts. The egui
   GUI job (`pointimg-gui`) no longer installs `libgtk-3-dev`/`libspeechd-dev`,
@@ -651,6 +651,20 @@ image loaded, resizing, wheel, 1:1).
   (never decoded); a small valid PNG (`fuzz/corpus/image/seed-image-12x12`)
   raises the target's coverage from 331 to 10 501 branches.
   (`fuzz/corpus/image/`)
+- **Linux release runners moved to Ubuntu 24.04**: the three `release.yml` Linux
+  jobs (CLI, egui GUI, GTK4) now run on `ubuntu-24.04` instead of
+  `ubuntu-22.04`, so GTK4/libadwaita recent enough for the `v4_14`/`v1_5`
+  feature flags can be installed. (`.github/workflows/release.yml`)
+- **Native aarch64 builds**: the CLI Linux matrix now uses the
+  `ubuntu-24.04-arm` runner instead of cross-compiling from x86_64 with
+  `gcc-aarch64-linux-gnu`. (`.github/workflows/release.yml`)
+- **MSRV bumped from 1.95 to 1.97**: `rust-version` in `Cargo.toml`, the
+  `msrv` CI matrix, the README/ARCHITECTURE badges and the rust-toolchain
+  comment are updated. (`.github/workflows/ci.yml`, `Cargo.toml`)
+- **GTK feature flags bumped** to `v4_14` (gtk4) and `v1_5` (libadwaita) to
+  match the Ubuntu 24.04 system libraries. (`Cargo.toml`)
+- **Tests use `assert_matches!`** (stabilised in Rust 1.96) instead of
+  `assert!(matches!(...))`. (`src/main.rs`, `src/gtk/actions.rs`)
 
 ### Changed
 

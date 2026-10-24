@@ -12,12 +12,14 @@ permissions:
 jobs:
   build-cli-linux:
     name: Build CLI - Linux
-    runs-on: ubuntu-22.04
     strategy:
       matrix:
-        target:
-          - x86_64-unknown-linux-gnu
-          - aarch64-unknown-linux-gnu
+        include:
+          - target: x86_64-unknown-linux-gnu
+            os: ubuntu-24.04
+          - target: aarch64-unknown-linux-gnu
+            os: ubuntu-24.04-arm
+    runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
       
@@ -26,16 +28,8 @@ jobs:
         with:
           targets: ${{ matrix.target }}
       
-      - name: Install cross-compilation tools
-        if: matrix.target == 'aarch64-unknown-linux-gnu'
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y gcc-aarch64-linux-gnu
-      
       - name: Build CLI
         run: cargo build --release --locked --no-default-features --bin pointimg --target ${{ matrix.target }}
-        env:
-          CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER: aarch64-linux-gnu-gcc
       
       - name: Package
         run: |
@@ -106,7 +100,7 @@ jobs:
 
   build-gui-linux:
     name: Build GUI - Linux x86_64
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
       
@@ -199,7 +193,7 @@ jobs:
 
   build-gtk-linux:
     name: Build GTK4 GUI - Linux x86_64
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
 
