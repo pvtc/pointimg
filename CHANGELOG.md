@@ -1,918 +1,890 @@
 # Changelog
 
-Tous les changements notables de ce projet seront documentés dans ce fichier.
+All notable changes to this project will be documented in this file.
 
-Le format est basé sur [Keep a Changelog](https://keepachangelog.com/fr/1.1.0/),
-et ce projet adhère au [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
+and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
-### Ajouté
+### Added
 
-- **Vignettes de presets** : les neuf presets intégrés sont maintenant choisis
-  sur leur rendu et non sur leur nom. Chaque vignette est produite avec les
-  réglages du preset lui-même, par `cargo run --example preset_thumbnails`, sur
-  une image d'exemple — un portrait, seul exemple du dépôt où l'on voit ce
-  qu'un preset fait d'un sujet reconnaissable. egui les affiche en grille de trois
-  colonnes, GTK dans un `GtkFlowBox` ; la vignette courante est encadrée. Sans
-  le dossier `assets/presets/`, les deux interfaces retombent sur une liste de
-  noms. (`examples/preset_thumbnails.rs`, `src/frontend.rs`,
-  `tests/preset_thumbs.rs`)
-- **Images récentes dans egui** : l'état d'accueil propose les dernières images
-  ouvertes, conservées dans le fichier de préférences. GTK lit la même
-  information dans `GtkRecentManager`. (`src/gui/prefs.rs`, `src/gui/ui.rs`)
-- **Sections repliables dans egui** : le panneau de réglages était une colonne
-  de trente curseurs à parcourir en entier pour trouver une option. Quatre
-  sections (`Algorithme`, `Forme des points`, `Fond et rendu`, `Calcul`) se
-  replient, et l'état de repli est mémorisé d'un lancement à l'autre.
+- **Preset thumbnails**: the nine built-in presets are now chosen by their
+  rendering rather than their name. Each thumbnail is produced with the preset's
+  own settings, by `cargo run --example preset_thumbnails`, on a sample image —
+  a portrait, the only example in the repository where one can see what a preset
+  does to a recognizable subject. egui displays them in a three-column grid, GTK
+  in a `GtkFlowBox`; the current thumbnail is framed. Without the
+  `assets/presets/` folder, both interfaces fall back to a list of names.
+  (`examples/preset_thumbnails.rs`, `src/frontend.rs`, `tests/preset_thumbs.rs`)
+- **Recent images in egui**: the home screen offers the most recently opened
+  images, kept in the preferences file. GTK reads the same information from
+  `GtkRecentManager`. (`src/gui/prefs.rs`, `src/gui/ui.rs`)
+- **Collapsible sections in egui**: the settings panel was a column of thirty
+  sliders to scroll through entirely to find an option. Four sections
+  (`Algorithm`, `Dot shape`, `Background and rendering`, `Computation`) collapse,
+  and the collapsed state is remembered across launches.
   (`src/gui/ui.rs`)
-- **Palette de commandes** (`Ctrl+K`) dans egui : vingt actions avec leur
-  raccourci affiché, commandes indisponibles grisées mais visibles. L'interface
-  n'avait ni menu ni fenêtre de raccourcis — ses dix-sept raccourcis n'étaient
-  découvrables qu'au survol, et la carte de densité comme le plein écran
-  étaient inatteignables. (`src/gui/palette.rs`)
-- **Notifications dans egui** : erreurs et confirmations passent au-dessus de
-  l'aperçu (3 s, 8 s pour une erreur). Une erreur de calcul était invisible
-  pendant le calcul même, la ligne d'état étant remplacée par la progression.
+- **Command palette** (`Ctrl+K`) in egui: twenty actions with their shortcut
+  displayed, unavailable commands greyed out but visible. The interface had
+  neither a menu nor a shortcut window — its seventeen shortcuts were only
+  discoverable on hover, and the density map as well as fullscreen were
+  unreachable. (`src/gui/palette.rs`)
+- **Notifications in egui**: errors and confirmations appear above the preview
+  (3 s, 8 s for an error). A computation error was invisible during computation
+  itself, the status line being replaced by progress.
   (`src/gui/notify.rs`)
-- **Images récentes dans GTK** via `GtkRecentManager`, la liste du bureau, sous
-  les boutons de l'état d'accueil. (`src/gtk/recent.rs`)
-- **Ouverture par la ligne de commande** : `pointimg-gtk photo.jpg` et
-  `pointimg-gui photo.jpg`, ainsi qu'un dossier qui active la navigation. GTK
-  passe par `HANDLES_OPEN`, donc aussi par l'activation du gestionnaire de
-  fichiers. (`src/gtk/main.rs`, `src/gui/main.rs`)
-- **Entrées de bureau** (`%F`, donc l'ouverture depuis le gestionnaire de
-  fichiers) dans `packaging/`, avec le jeu d'icônes `hicolor`. (`packaging/`)
-- **Logo** : trois points primaires cyan, magenta et jaune de tailles
-  décroissantes. Le SVG est la source, `packaging/icons/regenerate.sh` en
-  dérive toutes les tailles ; le PNG 256 px est embarqué dans le binaire egui,
-  qui n'a pas de thème d'icônes. (`assets/logo/`)
-- **Tests de plages** : chaque interface déclare ses bornes et vérifie les deux
-  extrémités de chaque curseur contre `validate_params`, plus la valeur
-  juste au-delà. (`src/gui/ranges.rs`, `src/gtk/ranges.rs`)
+- **Recent images in GTK** via `GtkRecentManager`, the desktop list, under the
+  home screen buttons. (`src/gtk/recent.rs`)
+- **Command-line opening**: `pointimg-gtk photo.jpg` and `pointimg-gui photo.jpg`,
+  as well as a folder which activates navigation. GTK goes through `HANDLES_OPEN`,
+  so also through file manager activation. (`src/gtk/main.rs`, `src/gui/main.rs`)
+- **Desktop entries** (`%F`, so opening from the file manager) in `packaging/`,
+  with the `hicolor` icon set. (`packaging/`)
+- **Logo**: three primary dots cyan, magenta and yellow of decreasing sizes.
+  The SVG is the source, `packaging/icons/regenerate.sh` derives all sizes from
+  it; the 256 px PNG is embedded in the egui binary, which has no icon theme.
+  (`assets/logo/`)
+- **Range tests**: each interface declares its bounds and checks both ends of
+  each slider against `validate_params`, plus the value just beyond.
+  (`src/gui/ranges.rs`, `src/gtk/ranges.rs`)
 
-- **Chemin sans aperçus pour la CLI** (`filter::apply_with_iteration_counts`) :
-  la CLI rendait une image complète à chaque itération de Lloyd, image que son
-  callback jetait. Elle n'annonce plus que la progression. **1,21× mesuré** sur
-  un aperçu 1000×800 / 10 itérations / 4000 points, sortie identique au bit.
+- **Preview-free path for the CLI** (`filter::apply_with_iteration_counts`):
+  the CLI rendered a full image at every Lloyd iteration, an image its callback
+  discarded. It now only announces progress. **1.21× measured** on a
+  1000×800 preview / 10 iterations / 4000 points, byte-identical output.
   (`src/filter/mod.rs`, `tests/no_preview_path.rs`)
-- **Logique partagée extraite** dans `frontend`, sans toucher aux widgets :
-  `random_seed` (la graine tirée par « Varier la graine »), `derived_export_name`
-  (cinq copies), `matching_preset_index` (quatre copies), `collect_folder_images`
-  et `FolderError`, `downsample`, les bornes et le pas de zoom, et un module
-  `msg` de treize messages. Ces éléments étaient écrits une fois par interface,
-  chacune pouvant diverger en silence. (`src/frontend.rs`)
-- **Damier de transparence défini une seule fois** : la formule du composite
-  était écrite trois fois — egui, l'aperçu GTK, la comparaison GTK — avec les
-  mêmes constantes et un ordre d'octets différent (Color32 / RGBA / BGRX).
-  `frontend::checker_shade` et `composite_on_checker` fixent la couleur ; chaque
-  interface garde son emballage. (`src/frontend.rs`)
+- **Shared logic extracted** into `frontend`, without touching widgets:
+  `random_seed` (the seed drawn by "Vary the seed"), `derived_export_name`
+  (five copies), `matching_preset_index` (four copies), `collect_folder_images`
+  and `FolderError`, `downsample`, the zoom bounds and step, and a `msg` module
+  of thirteen messages. These were written once per interface, each able to
+  diverge silently. (`src/frontend.rs`)
+- **Transparency checkerboard defined once**: the composite formula was written
+  three times — egui, GTK preview, GTK comparison — with the same constants and
+  a different byte order (Color32 / RGBA / BGRX). `frontend::checker_shade` and
+  `composite_on_checker` fix the color; each interface keeps its wrapping.
+  (`src/frontend.rs`)
 
-### Modifié
+- **Internationalization of the interfaces**: all user-facing strings (CLI, egui,
+  GTK) go through GNU gettext. English catalogue embedded in the binary
+  (extracted into a temporary directory at launch), language selector in both
+  interfaces, default = system language, persistence. 429 entries in
+  `locales/en/LC_MESSAGES/pointimg.po`, compiled with `msgfmt`.
+  (`src/frontend.rs`, `locales/`, `src/gui/prefs.rs`, `src/gtk/prefs.rs`)
+- **Comments and commit messages in English**: all Rust code comments are
+  translated to English, and the 26 narrative commit messages are rewritten in
+  the impersonal (no first person, no discovery narrative). The strings displayed
+  on screen remain in French.
+- **Neutralization of comments**: comments described version history ("an earlier
+  version…", "the old `fold/reduce`…") rather than the current state of the
+  code; rewritten to state what the code does and the constraint it respects.
 
-- **Champ et curseur fusionnés dans egui** : six réglages (sensibilité variance,
-  boost, colonnes, nombre de points, itérations, fréquence de trame)
-  occupaient chacun deux lignes — un champ de saisie, puis un curseur sans
-  libellé. `egui::Slider` affiche sa valeur *dans* le rail et la garde
-  saisissable : une ligne par réglage, et le curseur orphelin disparaît. La
-  disposition `[libellé] [rail] [valeur]` est celle des champs de saisie, donc
-  le panneau n'affiche plus deux conventions côte à côte.
-- **Barre d'état GTK** : la liste des formats d'export est désormais élipsée au
-  lieu d'être coupée net dans une fenêtre étroite.
-- **« Mémoire estimée : 695 Mo » (GTK)** devient « Pleine résolution : ~695 Mo ».
-  Le chiffre seul alarmait sans dire ce qu'il annonce — ce n'est pas la mémoire
-  déjà employée, c'est celle que demandera la passe finale.
-- **Panneau de réglages redimensionnable (GTK)** : `adw::OverlaySplitView` au
-  lieu de `gtk::Paned`, avec `set_propagate_natural_width(false)` sur le
-  `ScrolledWindow`. Le `Paned` imposait la largeur naturelle de sa rangée la
-  plus large — 540 px — et ne pouvait pas se rétrécir : en fenêtre 820 px,
-  l'aperçu ne gardait que 280 px. Un `AdwBreakpoint` à 900 px replie désormais
-  le panneau au-dessus de l'aperçu, avec un bouton pour le rouvrir.
-  (`src/gtk/controls.rs`, `src/gtk/ui.rs`)
-- **Menu principal sous un bouton hamburger (GTK)** : il était accroché au bouton
-  « Exporter », alors qu'il ne contenait presque rien d'exportiel — ouvrir un
-  dossier, changer d'image, consulter les raccourcis n'avaient aucun autre
-  accès. Le bouton Exporter ne garde plus que les exports. (`src/gtk/wire.rs`)
-- **« Dossier… » quitte le groupe des presets (GTK)** : il s'agissait d'ouvrir
-  un dossier d'images, mais placé entre « Charger un preset » et « Sauver le
-  preset », il se lisait comme un dossier de presets. Il est passé dans
-  l'en-tête. (`src/gtk/controls.rs`)
-- **Réglages conditionnels masqués (GTK)** : « Couleurs de la palette »,
-  « Dithering » et « Graine » étaient visibles et insensibles hors de leur
-  interrupteur ; egui les masquait déjà. (`src/gtk/sections.rs`)
-- **Sous-titres des rangées de curseur retirés (GTK)** : ils affichaient
-  « curseur » sous un curseur, et « repère = autre borne » — des notes de
-  développement. L'échelle est passée dans l'infobulle.
-  (`src/gtk/controls.rs`)
-- **Courbes de curseur alignées** : `Itérations` est linéaire partout (le
-  logarithmique gaspillait 80 % de la course entre 1 et 10) ; le boost des
-  zones uniformes est logarithmique partout (c'est un multiplicateur).
-- **Poignée de comparaison contrastée (egui)** : disque blanc et contour gris
-  foncé étaient invisibles sur un rendu Voronoï à fond blanc. Halo sombre sous
-  un trait clair, comme dans l'interface GTK.
-- **Badge « obsolète » sur fond opaque (egui)** : le texte blanc nu était
-  illisible sur un ciel clair, et les deux interfaces divergeaient sur ce point.
-- **Barre de progression lisible (egui)** : le spinner traversait la barre, dont
-  la couleur par défaut disparaissait sur le fond sombre.
-- **`Maj+Tab` pour l'aperçu précédent (egui)** : seul `Tab` cyclait, alors que
-  la fenêtre de raccourcis GTK annonçait les deux sens. L'action
-  « Aperçu précédent » a aussi été ajoutée au menu GTK, et les deux fronts
-  sont couverts par un test vérifiant que le cycle boucle dans les deux sens.
-- **Liste de formats en français** : « Density map » devient « Carte de
-  densité » dans les deux interfaces.
-- **Documentation** : `ARCHITECTURE.md` décrit le point de rupture, la palette,
-  les notifications, les images récentes et l'ouverture par la ligne de
-  commande ; une sous-section explique ce que les deux interfaces ne
-  partagent pas, et pourquoi aucune description partagée des réglages n'existe.
+### Changed
 
-- **La poignée basse du rayon de trame pouvait aller jusqu'à 10** : les deux
-  interfaces partageaient une seule plage pour les deux poignées du curseur à
-  deux bornes, alors que `validate_params` plafonne `halftone_min_radius_ratio`
-  à 1,0 quand `halftone_max_dot_ratio` monte à 10. Traîner la poignette au-delà
-  de 1 donnait une erreur sèche du worker, sans cause visible. Chaque poignée a
-  désormais sa plage (`Bounds` côté egui, borne basse à 1,0 côté GTK) — et le
-  test qui manquait est ajouté : l'ancien n'exerçait que la borne basse de la
-  borne basse et la borne haute de la borne haute, jamais le sommet de la
-  première. (`src/gui/sliders.rs`, `src/gtk/controls.rs`, `src/*/ranges.rs`)
-- **Le glisser-déposer GTK ne chargeait que le premier fichier** : le
-  `return true` était à l'intérieur de la boucle sur `list.files()`. Déposer un
-  dossier et une image ne chargeait que le dossier. (`src/gtk/wire.rs`)
-- **`Ctrl+K` et `Espace` mal gardés** : le commentaire annonçait une garde
-  `wants_text` que le code ne faisait pas, là où ses huit voisins l'avaient.
-  Taper `Ctrl+K` dans un champ de saisie ouvrait la palette en pleine frappe.
-  Même trou sur `Espace` côté GTK. (`src/gui/ui.rs`, `src/gtk/wire.rs`)
-- **Le GIF divergeait entre la CLI et les interfaces** : `main.rs` tenait sa
-  propre liste d'extensions, en avance d'une entrée (`gif`) sur
-  `IMAGE_EXTENSIONS`. Un dossier listait donc des fichiers que les interfaces
-  refusaient. Les deux viennent de la même constante. (`src/frontend.rs`,
-  `src/main.rs`)
-- **L'export rapide GTK écrasait sans prévenir** : `quick_export` écrivait
-  `{stem}-pointimg.png` à côté de la source sans confirmation, là où egui
-  demandait. `src/gtk/confirm.rs` ajoute la demande sur les seuls chemins sans
-  dialogue (les autres sont déjà couverts par le portail).
-- **Une régression introduite puis retirée au passage** : en coupant les aperçus
-  de la CLI, plus aucune itération n'était annoncée — « Iteration n/10 »
-  disparaissait. Le contrat interne est maintenant `Option<&RgbImage>`, `None`
-  signifiant « pas d'aperçu », et un test verrouille les 7 annonces.
+- **Field and slider merged in egui**: six settings (variance sensitivity, boost,
+  columns, number of points, iterations, frame rate) each occupied two lines —
+  an input field, then a slider without a label. `egui::Slider` displays its
+  value *in* the rail and keeps it editable: one line per setting, and the
+  orphan slider disappears. The layout `[label] [rail] [value]` is that of the
+  input fields, so the panel no longer shows two conventions side by side.
+- **GTK status bar**: the export format list is now ellipsized instead of being
+  cut off cleanly in a narrow window.
+- **"Estimated memory: 695 MB" (GTK)** becomes "Full resolution: ~695 MB".
+  The bare number alarmed without saying what it announces — it is not the
+  memory already used, it is what the final pass will require.
+- **Resizable settings panel (GTK)**: `adw::OverlaySplitView` instead of
+  `gtk::Paned`, with `set_propagate_natural_width(false)` on the
+  `ScrolledWindow`. The `Paned` imposed the natural width of its widest row —
+  540 px — and could not shrink: in an 820 px window, the preview kept only
+  280 px. An `AdwBreakpoint` at 900 px now folds the panel above the preview,
+  with a button to reopen it. (`src/gtk/controls.rs`, `src/gtk/ui.rs`)
+- **Main menu under a hamburger button (GTK)**: it was attached to the "Export"
+  button, although it contained almost nothing export-related — opening a folder,
+  changing image, consulting shortcuts had no other access. The Export button now
+  keeps only exports. (`src/gtk/wire.rs`)
+- **"Folder…" leaves the presets group (GTK)**: it opened an image folder, but
+  placed between "Load a preset" and "Save preset" it read as a presets folder.
+  It has been moved to the header. (`src/gtk/controls.rs`)
+- **Conditional settings hidden (GTK)**: "Palette colors", "Dithering" and
+  "Seed" were visible and insensitive outside their toggle; egui already hid
+  them. (`src/gtk/sections.rs`)
+- **Slider row subtitles removed (GTK)**: they displayed "slider" under a slider,
+  and "marker = other bound" — development notes. The scale moved into the
+  tooltip. (`src/gtk/controls.rs`)
+- **Slider curves aligned**: `Iterations` is linear everywhere (logarithmic
+  wasted 80% of the travel between 1 and 10); uniform-zones boost is logarithmic
+  everywhere (it is a multiplier).
+- **Contrasted comparison handle (egui)**: white disc and dark grey outline were
+  invisible on a Voronoi rendering on a white background. Dark halo under a
+  light stroke, like in the GTK interface.
+- **"obsolete" badge on opaque background (egui)**: bare white text was
+  illegible on a light sky, and the two interfaces diverged on this point.
+- **Readable progress bar (egui)**: the spinner crossed the bar, whose default
+  color disappeared on the dark background.
+- **`Shift+Tab` for previous preview (egui)**: only `Tab` cycled, whereas the
+  GTK shortcut window announced both directions. The "Previous preview" action
+  was also added to the GTK menu, and both directions are covered by a test
+  verifying the cycle loops both ways.
+- **Localized format list**: "Density map" becomes "Density map" in both
+  interfaces.
+- **Documentation**: `ARCHITECTURE.md` describes the breakpoint, the palette,
+  notifications, recent images and command-line opening; a subsection explains
+  what the two interfaces do not share, and why no shared description of the
+  settings exists.
+
+- **The low handle of the frame radius could go up to 10**: both interfaces shared
+  a single range for the two handles of the two-bound slider, whereas
+  `validate_params` caps `halftone_min_radius_ratio` at 1.0 when
+  `halftone_max_dot_ratio` rises to 10. Dragging the handle beyond 1 gave a dry
+  error from the worker, with no visible cause. Each handle now has its own range
+  (`Bounds` on the egui side, lower bound at 1.0 on the GTK side) — and the
+  missing test is added: the old one exercised only the lower bound of the lower
+  bound and the upper bound of the upper bound, never the top of the first.
+  (`src/gui/sliders.rs`, `src/gtk/controls.rs`, `src/*/ranges.rs`)
+- **GTK drag-and-drop only loaded the first file**: the `return true` was inside
+  the loop over `list.files()`. Dropping a folder and an image loaded only the
+  folder. (`src/gtk/wire.rs`)
+- **`Ctrl+K` and `Space` poorly guarded**: the comment announced a `wants_text`
+  guard that the code did not perform, where its eight neighbors had it. Typing
+  `Ctrl+K` in an input field opened the palette mid-typing. Same hole on `Space`
+  on the GTK side. (`src/gui/ui.rs`, `src/gtk/wire.rs`)
+- **The GIF diverged between the CLI and the interfaces**: `main.rs` kept its own
+  extension list, one entry ahead (`gif`) of `IMAGE_EXTENSIONS`. A folder thus
+  listed files the interfaces refused. Both now come from the same constant.
+  (`src/frontend.rs`, `src/main.rs`)
+- **GTK quick export overwrote without warning**: `quick_export` wrote
+  `{stem}-pointimg.png` next to the source without confirmation, where egui
+  asked. `src/gtk/confirm.rs` adds the prompt on the only paths without a dialog
+  (the others are already covered by the portal).
+- **A regression introduced then removed along the way**: when cutting CLI
+  previews, no iteration was announced anymore — "Iteration n/10" disappeared.
+  The internal contract is now `Option<&RgbImage>`, `None` meaning "no preview",
+  and a test locks the 7 announcements. (`src/filter/mod.rs`)
+- **The reproducibility test proved nothing**: it compares points on a
+  checkerboard, where density is zero everywhere — the seeds therefore never
+  move, and equality is guaranteed by construction. (Observation, not fixed: see
+  "what remains".)
+
+- **`validate_params` split into seven named checks**, and the missing tests:
+  each check must name the field it rejects, and the just-accepted bound is
+  verified too. The order of checks and the messages are unchanged.
+  (`src/filter/params.rs`, `tests/pipeline.rs`)
+- **Remaining deduplications**: three atomic writes into one (the copies already
+  diverged on error type and failure handling), three "report or fail" blocks
+  into one, two copies of the GTK radius pair into one with its borrow dance,
+  and the export-size tooltip written only once. (`src/frontend.rs`,
+  `src/gtk/files.rs`, `src/gtk/wire.rs`, `src/export.rs`)
+
+### Fixed
+
+- **Folder navigation that crashed (GTK)**: `load_image` borrowed `state` for
+  reading then writing in the same `if let` — the scrutinee temporary lives until
+  the end of the block, and the second borrow raised a `RefCell already
+  borrowed`. `←`/`→` in a folder opened the image, then aborted the application.
+  (`src/gtk/actions.rs`)
+- **Recomputation without value change**: neither interface relaunches a
+  computation unless the parameters have *really* changed. GTK re-emits
+  `value-changed` on focus loss of a `SpinRow`, with the re-parsed field value;
+  egui now compares the whole set of parameters before and after the settings
+  panel instead of three isolated fields. A slider is no longer ignored… and,
+  conversely, **number of points, iterations, columns, grid angle, boost, dot
+  shape and palette triggered no computation** although their value changed.
+  (`src/gui/ui.rs`, `src/gtk/wire.rs`)
+- **Input rewritten on focus loss**: egui chooses a `DragValue`'s display
+  precision according to the pointer distance to the screen edge; near an edge,
+  "Min radius" displayed "0.000" then the input reverted to 0 (and relaunched a
+  computation). The displayed decimals are now those of the value and the range,
+  hence stable. Integers are also displayed without a stray decimal ("800" not
+  "800.0"). (`src/gui/sliders.rs`)
+- **Density map recomputed on every glide pixel**: density-map computation now
+  leaves with the filter debounce instead of being launched on every
+  variance-sensitivity change. (`src/gui/ui.rs`)
+- **Desynchronized GTK slider**: a setting changed via the slider left the twin
+  `SpinRow` showing the old value (the GTK slider is not the source of truth for
+  `sync_widgets`). (`src/gtk/wire.rs`)
+- **Empty slider rows**: hiding a setting hid its slider but left its (empty) row
+  visible; the row is now remembered by the slider. (`src/gtk/sections.rs`)
+- **Recomputation without value change**: neither interface relaunches a
+  computation unless the parameters have *really* changed. GTK re-emits
+  `value-changed` on focus loss of a `SpinRow`, with the re-parsed field value;
+  egui now compares the whole set of parameters before and after the settings
+  panel, instead of three isolated fields. Conversely, **number of points,
+  iterations, columns, grid angle, boost, dot shape and palette triggered no
+  computation** although their value changed. (`src/gui/ui.rs`, `src/gtk/wire.rs`)
+  `ScrollArea` of the image area shared the same default salt and received the
+  same persisted ID — egui displayed a red error. Each panel now uses its label
+  as `id_salt`. (`src/gui/ui.rs`)
+- **`--jobs 0` honored in batch**: the flag announced "0 = all CPUs" but the pool
+  was built with `num_threads(max(1))`, i.e. a single thread (disguised
+  sequential). `num_threads(0)` now lets rayon choose all available CPUs.
+  (`src/main.rs`)
+- **Clippy `--all-targets`**: `tests/gpu_density.rs` used `(v / 2).min(255)`,
+  useless, which failed `-D warnings` as soon as tests were linted.
+  (`tests/gpu_density.rs`)
+- **`--algorithm halftone` without `--halftone`**: the CLI returned an error
+  whereas its comment and documentation announced a default `cmyk`. The `cmyk`
+  mode is now activated automatically. (`src/main.rs`)
+- **Alpha compositing rounded**: `flatten_to_rgb` truncated (`as u8`) instead of
+  rounding, unlike the CLI/GUI path — slight bias toward dark and inconsistency
+  between frontends. (`src/filter/util.rs`)
+- **GUI SVG export**: the extension is now forced to `.svg` (a file chosen as
+  `.png` previously received SVG content). (`src/frontend.rs`)
+- **Atomic GTK saves**: the GTK4 frontend now writes via a temporary file +
+  atomic replacement, like egui, and rounds alpha compositing. (`src/gtk/files.rs`)
+- **Halftone AM**: removal of `height_or_h` (a useless identity) and of the
+  inverse-rotation computation immediately discarded; a comment contained Chinese
+  characters. (`src/filter/halftone.rs`)
+- **Halftone memory estimate**: `estimate_memory_bytes` ignored the coverage maps
+  (up to ~1 GB in dominant mode), which strongly underestimated the memory
+  announced by the GUI. (`src/filter/util.rs`)
+- **ICC buffer over-allocation**: `transform_rgb`/`transform_rgba` reserved
+  `source.len() * 3` / `* 4` `f32` elements whereas `source.len()` is already the
+  number of components — 3 to 4 times the necessary memory (~500 MB useless for
+  a maxed-out RGBA image). (`src/color.rs`)
+- **False positive "converted profile"**: with `--input-profile auto` (default)
+  and no embedded profile, the CLI/GUI announced a nonexistent colorimetric
+  conversion. (`src/color.rs`)
+- **Degenerate `importance_sample`**: when `num_points ≥ number of pixels`, all
+  excess points collapsed onto the last pixel, degenerating Lloyd/k-means. They
+  are now spread over all pixels. (`src/filter/sampling.rs`)
+- **Gamma + halftone panics**: three public routes reached `unreachable!()` —
+  `apply_dynamic` (gamma + halftone), `apply` (gamma + halftone **dominant**,
+  only CMYK was routed) and `apply_with_progress_cached` (halftone without
+  gamma). Each now delegates to the dedicated halftone pipeline.
   (`src/filter/mod.rs`)
-- **Le test de reproductibilité ne prouvait rien** : il compare des points sur
-  un damier, où la densité est nulle partout — les graines ne bougent donc
-  jamais, et l'égalité est garantie par construction. (Constat, non corrigé :
-  voir « ce qui reste ».)
+- **Missing halftone bounds**: `halftone_min_radius_ratio` and
+  `halftone_max_dot_ratio` had no ceiling; an arbitrarily large preset or flag
+  (`--halftone-max-dot 1e9`) produced dots covering the whole image →
+  pathologically slow rendering. Bounded to 1.0 and 10.0. (`src/filter/params.rs`)
+- **Useless clone of the density map (GUI)**: the density map was cloned in full
+  before being published in the `Arc` — up to ~33 MB per computation. The image
+  is now built before the move. (`src/gui/compute.rs`)
+- **`density_to_image` rounds** instead of truncating, like the other u8
+  conversions in the project. (`src/filter/density.rs`)
+- **GTK crash "RefCell already mutably borrowed"**: the `1:1` zoom button kept a
+  `state.borrow_mut()` open during `set_value`/`set_active`, whose synchronous
+  signals called back `state.borrow()` → panic (abort). The borrow is now
+  released before touching the widgets; the texture refreshers were hardened the
+  same way. (`src/gtk/wire.rs`, `src/gtk/preview.rs`)
+- **Density map computed for nothing in Quadtree**: `apply_with_progress_inner`
+  and `compute_dots_inner` built the density map (two full-resolution `f64`
+  tables, ~128 MB on an 8 Mpx image) whereas the quadtree segments on its own
+  integral tables and never uses it. The computation is now skipped for this
+  algorithm. Byte-identical output (SHA-256 verified before/after), ~4% time and
+  ~128 MB peak memory saved. (`src/filter/mod.rs`)
 
-- **`validate_params` éclaté en sept contrôles nommés**, et les tests qui
-  manquaient : chaque contrôle doit nommer le champ qu'il refuse, et la borne
-  juste acceptée est vérifiée aussi. L'ordre des vérifications et les messages
-  sont inchangés. (`src/filter/params.rs`, `tests/pipeline.rs`)
-- **Déduplications restantes** : trois écritures atomiques en une (les copies
-  divergeaient déjà sur le type d'erreur et le traitement de l'échec), trois
-  blocs « rapport ou échec » en un, deux copies de la paire de rayons GTK en une
-  avec sa danse d'emprunts, et l'infobulle des tailles d'export écrite une seule
-  fois. (`src/frontend.rs`, `src/gtk/files.rs`, `src/gtk/wire.rs`, `src/export.rs`)
+### Dithering: four algorithms instead of one
 
-### Corrigé
-
-- **Navigation dans un dossier qui plantait (GTK)** : `load_image` empruntait
-  `state` en lecture puis en écriture dans un même `if let` — le temporaire du
-  scrutinee vit jusqu'à la fin du bloc, et le second emprunt levait un
-  `RefCell already borrowed`. `←`/`→` dans un dossier ouvrait l'image, puis
-  interrompait l'application. (`src/gtk/actions.rs`)
-- **Recalcul sans changement de valeur** : les deux interfaces ne relancent plus
-  un calcul que si les paramètres ont *réellement* changé. GTK réémet
-  `value-changed` au retrait du focus d'une `SpinRow`, avec la valeur
-  ré-analysée du champ ; egui compare désormais l'ensemble des paramètres avant
-  et après le panneau de réglages au lieu de trois champs isolés. Un curseur
-  n'est plus ignored… et, à l'inverse, **nombre de points, itérations, colonnes,
-  angle de grille, boost, forme des points et palette ne déclenchaient
-  aucun calcul** alors que leur valeur changeait. (`src/gui/ui.rs`,
-  `src/gtk/wire.rs`)
-- **Saisie réécrite à la perte de focus** : egui choisit la précision
-  d'affichage d'un `DragValue` selon la distance du pointeur au bord de
-  l'écran ; près d'un bord, « Rayon min » s'affichait « 0,000 » puis la saisie
-  revenait à 0 (et relançait un calcul). Les décimales affichées sont désormais
-  celles de la valeur et de la plage, donc stables. Les entiers s'affichent
-  aussi sans décimale parasite (« 800 » et non « 800.0 »).
-  (`src/gui/sliders.rs`)
-- **Density map recalculée à chaque pixel de glissement** : le calcul de la
-  density map part désormais avec le debounce du filtre au lieu d'être lancé à
-  chaque variation de la sensibilité. (`src/gui/ui.rs`)
-- **Curseur GTK désynchronisé** : un réglage modifié au curseur laissait la
-  `SpinRow` jumelle afficher l'ancienne valeur (le curseur GTK n'est pas la
-  source de vérité pour `sync_widgets`). (`src/gtk/wire.rs`)
-- **Rangées de curseur vides** : masquer un réglage masquait son curseur mais
-  laissait sa rangée (vide) visible ; la rangée est désormais mémorisée par le
-  curseur. (`src/gtk/sections.rs`)
-- **Recalcul sans changement de valeur** : les deux interfaces ne relancent plus
-  un calcul que si les paramètres ont *réellement* changé. GTK réémet
-  `value-changed` au retrait du focus d'une `SpinRow`, avec la valeur
-  ré-analysée du champ ; egui compare désormais l'ensemble des paramètres avant
-  et après le panneau de réglages, au lieu de trois champs isolés. À l'inverse,
-  **nombre de points, itérations, colonnes, angle de grille, boost, forme des
-  points et palette ne déclenchaient aucun calcul** alors que leur valeur
-  changeait. (`src/gui/ui.rs`, `src/gtk/wire.rs`)
-  `ScrollArea` de la zone image partageaient le même salt par défaut et
-  recevaient le même ID persisté — egui affichait une erreur rouge. Chaque
-  panneau utilise désormais son label comme `id_salt`. (`src/gui/ui.rs`)
-- **`--jobs 0` honoré en batch** : le flag annonçait « 0 = tous les CPUs » mais
-  le pool était construit avec `num_threads(max(1))`, soit un seul thread
-  (séquentiel déguisé). `num_threads(0)` laisse désormais rayon choisir tous
-  les CPUs disponibles. (`src/main.rs`)
-- **Clippy `--all-targets`** : `tests/gpu_density.rs` utilisait
-  `(v / 2).min(255)`, inutile, ce qui faisait échouer `-D warnings` dès que les
-  tests étaient lintés. (`tests/gpu_density.rs`)
-- **`--algorithm halftone` sans `--halftone`** : le CLI renvoyait une erreur
-  alors que son commentaire et sa documentation annonçaient un défaut `cmyk`.
-  Le mode `cmyk` est désormais activé automatiquement. (`src/main.rs`)
-- **Compositing alpha arrondi** : `flatten_to_rgb` tronquait (`as u8`) au lieu
-  d'arrondir, contrairement au chemin CLI/GUI — léger biais vers le sombre et
-  incohérence entre frontends. (`src/filter/util.rs`)
-- **Export SVG GUI** : l'extension est maintenant forcée à `.svg` (un fichier
-  choisi en `.png` recevait auparavant du contenu SVG). (`src/frontend.rs`)
-- **Sauvegardes GTK atomiques** : le frontend GTK4 écrit désormais via un
-  fichier temporaire + remplacement atomique, comme egui, et arrondit le
-  compositing alpha. (`src/gtk/files.rs`)
-- **Halftone AM** : suppression de `height_or_h` (une identité inutile) et du
-  calcul de rotation inverse aussitôt jeté ; un commentaire contenait des
-  caractères chinois. (`src/filter/halftone.rs`)
-- **Estimation mémoire halftone** : `estimate_memory_bytes` ignorait les cartes
-  de couverture (jusqu'à ~1 Go en mode dominant), ce qui sous-évaluait fortement
-  la mémoire annoncée par la GUI. (`src/filter/util.rs`)
-- **Sur-allocation des buffers ICC** : `transform_rgb`/`transform_rgba`
-  réservaient `source.len() * 3` / `* 4` éléments `f32` alors que `source.len()`
-  est déjà le nombre de composantes — soit 3 à 4 fois la mémoire nécessaire
-  (~500 Mo inutiles pour une image RGBA au plafond). (`src/color.rs`)
-- **Faux positif « profil converti »** : avec `--input-profile auto` (défaut)
-  et aucune profile embarqué, le CLI/GUI annonçaient une conversion
-  colorimétrique inexistante. (`src/color.rs`)
-- **`importance_sample` dégénéré** : quand `num_points ≥ nombre de pixels`, tous
-  les points excédentaires s'écrasaient sur le dernier pixel, dégénérant
-  Lloyd/k-means. Ils sont désormais répartis sur tous les pixels.
-  (`src/filter/sampling.rs`)
-- **Panics gamma + halftone** : trois routes publiques atteignaient
-  `unreachable!()` — `apply_dynamic` (gamma + halftone), `apply` (gamma +
-  halftone **dominant**, seul le CMJN était routé) et
-  `apply_with_progress_cached` (halftone sans gamma). Chacune délègue désormais
-  au pipeline halftone dédié. (`src/filter/mod.rs`)
-- **Bornes halftone manquantes** : `halftone_min_radius_ratio` et
-  `halftone_max_dot_ratio` n'avaient pas de plafond ; un preset ou un flag
-  arbitrairement grand (`--halftone-max-dot 1e9`) produisait des dots couvrant
-  toute l'image → rendu pathologiquement lent. Bornés à 1.0 et 10.0.
+- `FilterParams::dithering` goes from `bool` to an enum `Dithering`: `Off`,
+  `FloydSteinberg`, `Riemersma`, `Bayer4`, `Bayer8`. The toggle of both
+  interfaces becomes a dropdown, the "Transparent layers" preset explicitly uses
+  Floyd-Steinberg.
+- **Riemersma** (new): long-tail error diffusion along a line, 16 taps, 0.7
+  decay. The queue is a pure shift — each error part is poured only once, so the
+  average is preserved. Calibrated on a 160 px gradient: the mean gap between
+  neighboring pixels goes from 127 (single tap, hence marked "steps") to 66,
+  for a slightly smoother pattern.
+- **Bayer 4×4 and 8×8** (new): ordered dithering, no error diffusion. Each pixel
+  chooses between its two nearest palette colors according to the matrix
+  threshold, giving the "pixel art" / screen look. The matrix is **generated** by
+  Bayer's recursive rule (1973) (`M(2n) = 4·M(n) + [[0, 2], [3, 1]]`): no
+  table is copied. With a two-color palette, the result is strict bilevel.
+- **CLI**: `--dithering [<MODE>]` — without a value, the option defaults to
+  Floyd-Steinberg (existing invocations still work); `--dithering bayer4`,
+  `riemersma`, `bayer8` or `off` choose explicitly. (`src/filter/dither.rs`,
+  `src/main.rs`)
+- **Preset compatibility**: 0.1 files write `dithering = true`, which is still
+  read as Floyd-Steinberg; writing becomes `dithering = "floyd-steinberg"`.
   (`src/filter/params.rs`)
-- **Clone inutile de la density map (GUI)** : la density map était clonée
-  intégralement avant d'être publiée dans l'`Arc` — jusqu'à ~33 Mo par recalcul.
-  L'image est désormais construite avant le déplacement. (`src/gui/compute.rs`)
-- **`density_to_image` arrondit** au lieu de tronquer, comme les autres
-  conversions u8 du projet. (`src/filter/density.rs`)
-- **Crash GTK « RefCell already mutably borrowed »** : le bouton zoom `1:1`
-  gardait un `state.borrow_mut()` ouvert pendant `set_value`/`set_active`, dont
-  les signaux synchrones rappelaient `state.borrow()` → panic (abort). Le
-  borrow est désormais relâché avant de toucher les widgets ; les rafraîchisseurs
-  de textures ont été durcis de la même façon. (`src/gtk/wire.rs`,
-  `src/gtk/preview.rs`)
-- **Density map calculée pour rien en Quadtree** : `apply_with_progress_inner`
-  et `compute_dots_inner` construisaient la density map (deux tables `f64`
-  pleine résolution, ~128 Mo sur une image de 8 Mpx) alors que le quadtree
-  segmente sur ses propres tables intégrales et ne l'utilise jamais. Le calcul
-  est désormais sauté pour cet algorithme. Sortie **bit-identique** (SHA-256
-  vérifié avant/après), ~4 % de temps et ~128 Mo de pic mémoire en moins.
-  (`src/filter/mod.rs`)
 
-### Dithering : quatre algorithmes au lieu d'un
+### Parity: GTK rendering is no longer dimmed during computation
 
-- `FilterParams::dithering` passe de `bool` à un enum `Dithering` : `Off`,
-  `FloydSteinberg`, `Riemersma`, `Bayer4`, `Bayer8`. L'interrupteur des deux
-  interfaces devient une liste déroulante, le preset « Calques transparents »
-  utilise explicitement Floyd-Steinberg.
-- **Riemersma** (nouveau) : diffusion de l'erreur à queue longue le long d'une
-  ligne, 16 prises, décroissance 0,7. La file est un décalage pur — chaque part
-  d'erreur n'est versée qu'une fois, donc la moyenne est conservée. Calibré sur
-  un dégradé de 160 px : l'écart moyen entre pixels voisins passe de 127 (prise
-  unique, donc « vers » marqués) à 66, pour un motif un peu plus fondu.
-- **Bayer 4×4 et 8×8** (nouveaux) : tramage ordonné, sans diffusion d'erreur.
-  Chaque pixel arbitre entre ses deux couleurs de palette les plus proches d'après
-  le seuil de la matrice, ce qui donne le rendu « pixel art » / trame. La
-  matrice est **générée** par la règle récursive de Bayer (1973)
-  (`M(2n) = 4·M(n) + [[0, 2], [3, 1]]`) : aucune table n'est recopiée. Avec une
-  palette de deux couleurs, le résultat est un bilevel strict.
-- **CLI** : `--dithering [<MODE>]` — sans valeur, l'option vaut Floyd-Steinberg
-  (les invocations existantes fonctionnent) ; `--dithering bayer4`, `riemersma`,
-  `bayer8` ou `off` choisissent explicitement. (`src/filter/dither.rs`,
-  `src/main.rs`)
-- **Compatibilité des presets** : les fichiers 0.1 écrivent `dithering = true`,
-  qui est toujours lu comme Floyd-Steinberg ; l'écriture passe à
-  `dithering = "floyd-steinberg"`. (`src/filter/params.rs`)
-
-### Parité : le rendu GTK n'est plus voilé pendant le calcul
-
-- Le panneau résultat était composé à **55 % d'opacité** et le panneau de
-  comparaison à 70 %, dès que le rendu affiché n'était plus final — donc pendant
-  tout calcul. Sur fond clair, l'image paraissait visiblement terne pendant
-  plusieurs secondes. L'interface egui ne module pas l'opacité, alors que les
-  deux calculent `result_is_stale()` à l'identique : l'écart de rendu venait de
-  là, et rien ne le documentait. Le voile est retiré ; le caractère provisoire du
-  rendu reste signalé par le texte de la barre d'état dans les deux interfaces.
+- The result panel was composed at **55% opacity** and the comparison panel at
+  70%, as soon as the displayed rendering was no longer final — i.e. during the
+  whole computation. On a light background, the image looked visibly dull for
+  several seconds. The egui interface does not modulate opacity, although both
+  compute `result_is_stale()` identically: the rendering gap came from there, and
+  nothing documented it. The veil is removed; the provisional character of the
+  rendering is still signalled by the status-bar text in both interfaces.
   (`src/gtk/preview.rs`)
 
-### Tests de propriétés sur le dithering, et un piège qu'ils révèlent
+### Property tests on dithering, and a trap they reveal
 
-- Sept tests de propriétés encadrent les quatre algorithmes : conservation de la
-  luminance moyenne sur des images à tonalité variée (six images, cinq largeurs de
-  palette, quatre algorithmes) et sur des mélanges de couleurs sans gris dans la
-  palette ; proportion de pixels clairs d'une trame ordonnée à la granularité de
-  sa matrice ; reproductibilité ; aplat d'une couleur de palette inchangé.
-- **Une limite est épinglée volontairement** : une source grise ne peut pas être
-  reproduite par une palette devoidée de gris. La sélection du plus proche voisin
-  se fait en distance RGB, donc elle ignore la luminance — avec {noir, rouge,
-  vert, bleu} l'écart atteint 57 à 73. Le test qui l'atteste échouera le jour où la
-  limitation sera corrigée, ce qui est le but.
-- **Un piège mesuré en mutation**, consigné dans l'architecture : un test « la
-  luminance moyenne est conservée » échoue si l'on inverse le signe des poids,
-  mais **passe** si l'on supprime leur normalisation, et **passe** aussi si l'on
-  supprime toute propagation d'erreur. La conservation de la moyenne ne prouve
-  donc ni la calibration, ni même l'existence d'une diffusion : la diffusion est
-  une boucle de rétroaction fermée, et la quantification de chaque pixel
-  indépendamment conserve déjà la moyenne d'une rampe monotone. Les contrôles sont
-  donc répartis : stabilité par le test de moyenne, lissage (présence et gain)
-  par `riemersma_tail_smooths_the_pattern`, calibration par
-  `les_poids_de_la_queue_soment_a_un`. Règle retenue : aucune propriété de bout en
-  bout n'est considérée comme probante sans avoir été confrontée à une mutation.
+- Seven property tests frame the four algorithms: conservation of the mean
+  luminance on images of varied tone (six images, five palette widths, four
+  algorithms) and on color mixes with no grey in the palette; proportion of
+  light pixels of an ordered screen at the granularity of its matrix;
+  reproducibility; a flat palette color left unchanged.
+- **A limit is deliberately pinned**: a grey source cannot be reproduced by a
+  palette devoid of grey. Nearest-neighbor selection is done in RGB distance,
+  so it ignores luminance — with {black, red, green, blue} the gap reaches 57
+  to 73. The test attesting it will fail the day the limitation is fixed, which
+  is the point.
+- **A trap measured by mutation**, recorded in the architecture: a test "mean
+  luminance is preserved" fails if the sign of the weights is flipped, but
+  **passes** if their normalization is removed, and **passes** also if all error
+  propagation is removed. Preserving the mean therefore proves neither
+  calibration nor even the existence of a diffusion: diffusion is a closed
+  feedback loop, and quantizing each pixel independently already preserves the
+  mean of a monotone ramp. The checks are therefore split: stability by the
+  mean test, smoothing (presence and gain) by
+  `riemersma_tail_smooths_the_pattern`, calibration by
+  `les_poids_de_la_queue_soment_a_un`. Rule retained: no end-to-end property is
+  considered probative without having been confronted with a mutation.
 
-- **Riemersma : la file enjambe la fin des lignes.** Elle était remise à zéro après
-  chaque ligne, ce qui jetait le résidu en attente et laissait une dérive
-  mesurée de 1,0 unité de luminance sur une rampe horizontale (0,83 sur un
-  dégradé 2D) ; la dérive est maintenant de 0,00. La file est aussi dimensionnée
-  sur `taps` et non sur la largeur de l'image : elle était indexée par colonne,
-  donc en fin de ligne la queue se repliait sur des positions déjà traitées, et
-  une image plus étroite que la file perdait des parts. Le balayage devient
-  **serpentin**, pour que la part d'erreur qui traverse la fin de ligne arrive sur
-  le pixel juste en dessous et non au début de la ligne suivante.
+- **Riemersma: the queue straddles line ends.** It was reset after each line,
+  which discarded the pending residue and left a measured drift of 1.0 luminance
+  unit on a horizontal ramp (0.83 on a 2D gradient); the drift is now 0.00. The
+  queue is also sized on `taps` rather than image width: it was indexed by
+  column, so at end of line the tail folded back onto already-processed
+  positions, and an image narrower than the queue lost parts. Scanning becomes
+  **serpentine**, so the error part crossing the line end lands on the pixel just
+  below instead of the start of the next line.
 
-### Taille de l'export, mesurée pour de vrai
+### Export size, measured for real
 
-- La barre d'état affiche désormais `Export : PNG 1.4 Mo · WebP — · JPEG 792 Ko ·
-  TIFF 32.0 Mo · BMP 24.0 Mo`, et l'infobulle du bouton d'export rappelle le gain
-  par rapport à la source (`source 3.8 Mo · PNG −63 %`). Le bénéfice central de
-  `pointimg` — la même image, beaucoup plus légère — était invisible jusqu'au
-  premier enregistrement.
-- **Les chiffres sont exacts, pas estimés** : l'image est encodée pour de vrai,
-  dans le même chemin de code que l'export (`frontend::encode_rgba_image`,
-  désormais utilisé aussi bien par la sauvegarde que par la mesure), en parallèle
-  avec rayon. Une mesure est faite sur le résultat *définitif* uniquement,
-  invalidée dès que l'utilisateur recommence à régler, et publiée hors du thread
-  de rendu. (`src/export.rs`, `src/frontend.rs`, `src/gui/exports.rs`,
+- The status bar now displays `Export: PNG 1.4 MB · WebP — · JPEG 792 kB ·
+  TIFF 32.0 MB · BMP 24.0 MB`, and the export button's tooltip recalls the gain
+  relative to the source (`source 3.8 MB · PNG −63 %`). The central benefit of
+  `pointimg` — the same image, much lighter — was invisible until the first
+  save.
+- **The figures are exact, not estimated**: the image is encoded for real, in the
+  same code path as export (`frontend::encode_rgba_image`, now used both by
+  saving and by measurement), in parallel with rayon. A measurement is made on
+  the *definitive* result only, invalidated as soon as the user starts adjusting
+  again, and published outside the rendering thread.
+  (`src/export.rs`, `src/frontend.rs`, `src/gui/exports.rs`,
   `src/gtk/exports.rs`)
-- **WebP non mesuré au-delà de 4 Mpx** : l'export WebP est *sans perte*
-  (c'est ce que produit `image`), dont l'encodage prend alors plusieurs
-  secondes. L'interface affiche « — » plutôt qu'un chiffre inventé.
-- `frontend::save_rgba_image` n'écrit plus l'image deux fois (encodage puis
-  écriture) : l'encodage se fait une fois en mémoire, puis le remplacement
-  atomique du fichier.
+- **WebP not measured beyond 4 Mpx**: WebP export is *lossless* (that is what
+  `image` produces), whose encoding then takes several seconds. The interface
+  displays "—" rather than an invented figure.
+- `frontend::save_rgba_image` no longer writes the image twice (encoding then
+  writing): encoding happens once in memory, then atomic file replacement.
 
-### Ajouté
+### Added
 
-- **`filter::estimate_memory_bytes_for(w, h, params)`** : estimation tenant
-  compte des cartes de couverture halftone (4 o/px en CMYK, `n` en dominant).
-  Utilisée par le CLI et les deux frontends. (`src/filter/util.rs`)
-- **Fuzzing image élargi** : la cible `image` exerce désormais le pipeline
-  complet (Grid/Kmeans/Voronoi/Quadtree + export SVG) et le halftone dominant FM
-  sur une image réduite à 64 px. (`fuzz/fuzz_targets/image.rs`)
-- **Tests color management** : la transformation ICC par chunks est comparée
-  bit-à-bit à un passage unique (RGB et RGBA) ; test de répartition
-  d'`importance_sample` ; test d'arrondi du compositing alpha.
-  (`src/color.rs`, `src/filter/sampling.rs`, `src/filter/util.rs`)
-- **Tests anti-panic halftone** : `apply_dynamic` gamma+CMJN, `apply` gamma+dominant
-  et `apply_with_progress_cached` halftone ; bornes des rayons halftone.
-  (`tests/halftone.rs`, `src/filter/mod.rs`)
-- **Tests des mappings GTK** : aller-retour `algorithm_index`/`view_index` et
-  `shape_index` (fonctions pures jusqu'ici non testées). (`src/gtk/sections.rs`)
+- **`filter::estimate_memory_bytes_for(w, h, params)`**: estimate accounting for
+  halftone coverage maps (4 B/px in CMYK, `n` in dominant). Used by the CLI and
+  both frontends. (`src/filter/util.rs`)
+- **Expanded image fuzzing**: the `image` target now exercises the full pipeline
+  (Grid/Kmeans/Voronoi/Quadtree + SVG export) and dominant FM halftone on an
+  image reduced to 64 px. (`fuzz/fuzz_targets/image.rs`)
+- **Color management tests**: chunked ICC transformation is compared bit-for-bit
+  to a single pass (RGB and RGBA); `importance_sample` distribution test; alpha
+  compositing rounding test. (`src/color.rs`, `src/filter/sampling.rs`,
+  `src/filter/util.rs`)
+- **Halftone anti-panic tests**: `apply_dynamic` gamma+CMYK, `apply`
+  gamma+dominant and `apply_with_progress_cached` halftone; halftone radius
+  bounds. (`tests/halftone.rs`, `src/filter/mod.rs`)
+- **GTK mapping tests**: round-trip `algorithm_index`/`view_index` and
+  `shape_index` (pure functions until now untested). (`src/gtk/sections.rs`)
 
-- **Module `pointimg::frontend`** : helpers partagés entre les frontends egui et
-  GTK4 (formatage, normalisation d'extension, écritures atomiques, export RGBA,
-  presets). Supprime les duplications `format_duration`/`format_memory`,
+- **`pointimg::frontend` module**: helpers shared between the egui and GTK4
+  frontends (formatting, extension normalization, atomic writes, RGBA export,
+  presets). Removes duplications `format_duration`/`format_memory`,
   `with_extension`, `flatten_rgba`, `rgb_to_rgba_opaque`. (`src/frontend.rs`)
-- **Tests CLI** : `parse_bg_color`, `parse_halftone`, `parse_screening`,
-  `parse_preview_size`, `resolve_output_path` (substitutions et `--svg`) et
-  défaut halftone. (`src/main.rs`)
-- **Tests de non-régression palette** : la quantification dédupliquée est
-  comparée bit-à-bit à l'ancienne implémentation de référence. (`src/filter/render.rs`)
-- **Tests du module frontend** : formatage, extensions forcées, compositing,
-  round-trip de preset. (`src/frontend.rs`)
+- **CLI tests**: `parse_bg_color`, `parse_halftone`, `parse_screening`,
+  `parse_preview_size`, `resolve_output_path` (substitutions and `--svg`) and
+  halftone default. (`src/main.rs`)
+- **Palette non-regression tests**: deduplicated quantization is compared
+  bit-for-bit to the old reference implementation. (`src/filter/render.rs`)
+- **Frontend module tests**: formatting, forced extensions, compositing, preset
+  round-trip. (`src/frontend.rs`)
 
-- **Interface GTK4 / libadwaita** : nouveau binaire `pointimg-gtk`, derrière la
-  feature optionnelle `gtk` (GTK 4.10+, libadwaita 1.4+). Parité fonctionnelle
-  avec la GUI egui (5 algorithmes, formes, palette/dithering, fond et
-  transparence, gamma, halftone CMYK/dominant AM/FM, density map, zoom/Fit/1:1,
-  presets, undo/redo, export PNG/JPEG/WebP/BMP/TIFF/SVG, glisser-déposer,
-  raccourcis `Ctrl+O/S/Z/Y` et `Espace`, aperçu côte à côte). Les calculs
-  tournent dans un thread dédié avec preview progressive, debounce et
-  annulation ; les textures GDK sont rafraîchies sur le thread principal via un
-  canal asynchrone. (`src/gtk/*`)
-- **CI GTK4** : job dédié installant `libgtk-4-dev` et `libadwaita-1-dev`, avec
-  `clippy -- -D warnings` et build release du binaire `pointimg-gtk`.
-- **Profils colorimétriques ICC** : détection automatique des profils embarqués,
-  conversion d'entrée vers sRGB avec `moxcms`, support de `--input-profile`
-  (`auto`, `srgb`, `display-p3` ou fichier `.icc`) et de `--output-profile`
-  avec embedding ICC dans les sorties PNG/JPEG/WebP/TIFF.
-- **Downscale préventif** : les images dépassant 8 millions de pixels ou 65 535
-  pixels par côté sont réduites automatiquement en conservant leur ratio, avant
-  les transformations colorimétriques coûteuses. La GUI affiche l'avertissement
-  et une estimation de la mémoire de travail ; le CLI journalise ces informations.
-- **Halftone CMYK haute précision** : le chemin `--gamma` utilise des couvertures
-  `f32` après linéarisation pour le halftone CMJN, sans imposer un pipeline `f32`
-  plus coûteux aux algorithmes pointillistes classiques.
-- **Historique GUI explicite** : Undo/Redo affiche désormais les actions
-  enregistrées (algorithme, nombre de points, palette, fond, gamma, etc.).
-- **Contrôle couplé des rayons** : les curseurs Min/Max de la GUI sont regroupés
-  et se bornent mutuellement afin d'empêcher `min_radius > max_radius`.
-- **Smoke fuzzing CI** : les cibles image et preset sont compilées et exécutées
-  avec 100 runs à chaque vérification CI ; elles ont également été exécutées
-  localement avec nightly.
-- **Audit planifié** : un workflow hebdomadaire `cargo audit` a été ajouté.
-- **Presets versionnés** : les presets générés utilisent `preset_version = 1`
-  et une table `[params]`. Les anciens presets TOML plats restent lisibles et
-  les versions futures inconnues sont refusées explicitement.
-- **Protection des workers GUI** : les calculs et density maps sont associés à
-  une génération. Un worker annulé ou obsolète ne peut plus publier un résultat,
-  une erreur ou une density map à la place d'un calcul plus récent.
-- **Benchmarks de performance** : mesures Criterion ajoutées pour le halftone
-  CMYK/AM et le chemin RGBA avec palette+dithering, avec débit exprimé en pixels.
-- **Fuzzing image renforcé** : la cible fuzz utilise l'API `image::Limits`
-  compatible avec les versions actuelles de la crate.
-- **Anti-aliasing 4×4 supersampling** des dots (`coverage_aa` + `blend_coverage`).
-  Les bords de points ne sont plus crénelés. (`src/filter/render.rs`)
-- **Validation complète** des paramètres : `cols > 0`, `palette_size >= 2`,
-  `variance_sensitivity ∈ [0,1]`, `max_boost >= 1.0`, bornes
-  dimensions/pixels. (`src/filter/params.rs::validate_params`)
-- **MSRV déclarée** : Rust 1.95 (`rust-version` dans `Cargo.toml`).
-- **Découpage modulaire** de `src/filter.rs` (2072 lignes) en 10 fichiers :
-  `params`, `density`, `render`, `svg`, `seedgrid`, `sampling`, `util`,
+- **GTK4 / libadwaita interface**: new `pointimg-gtk` binary, behind the
+  optional `gtk` feature (GTK 4.10+, libadwaita 1.4+). Functional parity with
+  the egui GUI (5 algorithms, shapes, palette/dithering, background and
+  transparency, gamma, CMYK/dominant AM/FM halftone, density map, zoom/Fit/1:1,
+  presets, undo/redo, PNG/JPEG/WebP/BMP/TIFF/SVG export, drag-and-drop,
+  `Ctrl+O/S/Z/Y` and `Space` shortcuts, side-by-side preview). Computations run
+  in a dedicated thread with progressive preview, debounce and cancellation;
+  GDK textures are refreshed on the main thread via an async channel.
+  (`src/gtk/*`)
+- **GTK4 CI**: dedicated job installing `libgtk-4-dev` and `libadwaita-1-dev`,
+  with `clippy -- -D warnings` and release build of the `pointimg-gtk` binary.
+- **ICC color profiles**: automatic detection of embedded profiles, input
+  conversion to sRGB with `moxcms`, support for `--input-profile`
+  (`auto`, `srgb`, `display-p3` or `.icc` file) and for `--output-profile`
+  with ICC embedding in PNG/JPEG/WebP/TIFF outputs.
+- **Preventive downscale**: images exceeding 8 million pixels or 65 535 pixels
+  per side are automatically reduced preserving their ratio, before the costly
+  colorimetric transformations. The GUI shows the warning and a working-memory
+  estimate; the CLI logs this information.
+- **High-precision CMYK halftone**: the `--gamma` path uses `f32` coverages
+  after linearization for CMYK halftone, without imposing a costlier `f32`
+  pipeline on the classic stippling algorithms.
+- **Explicit GUI history**: Undo/Redo now displays the recorded actions
+  (algorithm, number of points, palette, background, gamma, etc.).
+- **Coupled radius control**: the GUI's Min/Max sliders are grouped and bound
+  each other to prevent `min_radius > max_radius`.
+- **CI smoke fuzzing**: the image and preset targets are compiled and run with
+  100 runs at each CI check; they were also run locally with nightly.
+- **Scheduled audit**: a weekly `cargo audit` workflow was added.
+- **Versioned presets**: generated presets use `preset_version = 1` and a
+  `[params]` table. Old flat TOML presets remain readable and future unknown
+  versions are explicitly rejected.
+- **GUI worker protection**: computations and density maps are tied to a
+  generation. A cancelled or stale worker can no longer publish a result, an
+  error or a density map in place of a more recent computation.
+- **Performance benchmarks**: Criterion measurements added for CMYK/AM halftone
+  and the RGBA path with palette+dithering, throughput expressed in pixels.
+- **Strengthened image fuzzing**: the fuzz target uses the `image::Limits` API
+  compatible with current versions of the crate.
+- **4×4 supersampling anti-aliasing** of dots (`coverage_aa` + `blend_coverage`).
+  Dot edges are no longer jagged. (`src/filter/render.rs`)
+- **Full validation** of parameters: `cols > 0`, `palette_size >= 2`,
+  `variance_sensitivity ∈ [0,1]`, `max_boost >= 1.0`, dimension/pixel bounds.
+  (`src/filter/params.rs::validate_params`)
+- **Declared MSRV**: Rust 1.95 (`rust-version` in `Cargo.toml`).
+- **Modular split** of `src/filter.rs` (2072 lines) into 10 files: `params`,
+  `density`, `render`, `svg`, `seedgrid`, `sampling`, `util`,
   `algorithms/{grid,kmeans,voronoi,quadtree}`, `dither`, `gamma`, `halftone`.
-- **Tests d'intégration** (`tests/{pipeline,svg,reproducibility,palette,halftone}.rs`)
-  et benches Criterion (`benches/filter.rs`).
-- **CI GitHub Actions** réécrite : cache `Swatinem/rust-cache`, matrix
-  Ubuntu/macOS/Windows, job `msrv` (1.95 + stable), job `audit`, job `docs`
-  (`--cfg docsrs`), job `build` release.
-- **Fond transparent** (`--bg transparent`) avec sortie RGBA via `apply_rgba`.
-  Le rendu SVG omet le `<rect>` de fond en mode transparent. La prévisualisation
-  GUI composite sur damier (effet Photoshop).
-- **Correction gamma** (`--gamma`) : moyennes en espace linéaire
-  (sRGB→linear→moyenne→sRGB) via LUT 256-entrées.
-- **Niveaux de verbosité CLI** : `-v` (info), `-vv` (debug), `-q` (warnings only).
-  `RUST_LOG` prioritaire via `parse_default_env`.
-- **Presets TOML** : `--preset FILE` / `--save-preset FILE`.
-  `FilterParams::to_toml_string` / `from_toml_str` (derives `Serialize`/`Deserialize`).
-- **Dithering Floyd-Steinberg** (`--dithering`) sur palette quantifiée
+- **Integration tests** (`tests/{pipeline,svg,reproducibility,palette,halftone}.rs`)
+  and Criterion benches (`benches/filter.rs`).
+- **GitHub Actions CI** rewritten: `Swatinem/rust-cache` cache, Ubuntu/macOS/
+  Windows matrix, `msrv` job (1.95 + stable), `audit` job, `docs` job
+  (`--cfg docsrs`), `build` release job.
+- **Transparent background** (`--bg transparent`) with RGBA output via
+  `apply_rgba`. The SVG rendering omits the background `<rect>` in transparent
+  mode. The GUI preview composites on a checkerboard (Photoshop effect).
+- **Gamma correction** (`--gamma`): averages in linear space
+  (sRGB→linear→average→sRGB) via a 256-entry LUT.
+- **CLI verbosity levels**: `-v` (info), `-vv` (debug), `-q` (warnings only).
+  `RUST_LOG` takes priority via `parse_default_env`.
+- **TOML presets**: `--preset FILE` / `--save-preset FILE`.
+  `FilterParams::to_toml_string` / `from_toml_str` (derives `Serialize`/
+  `Deserialize`).
+- **Floyd-Steinberg dithering** (`--dithering`) on a quantized palette
   (`src/filter/dither.rs`).
-- **Dossier d'exemples** `assets/examples/` avec `result.png`.
-- **Badges README** : MSRV 1.95 + exemples + docs des nouveaux flags (EN/FR).
+- **Examples folder** `assets/examples/` with `result.png`.
+- **README badges**: MSRV 1.95 + examples + docs for the new flags (EN/FR).
 
-### Interface graphique — refonte des deux front-ends
+### GUI — overhaul of both front-ends
 
-Décisions communes à `pointimg-gui` (egui) et `pointimg-gtk` (GTK4/libadwaita),
-appliquées après une inspection des deux interfaces en conditions réelles
-(fenêtre vide, image chargée, redimensionnement, molette, 1:1).
+Decisions common to `pointimg-gui` (egui) and `pointimg-gtk` (GTK4/libadwaita),
+applied after an inspection of both interfaces in real conditions (empty window,
+image loaded, resizing, wheel, 1:1).
 
-**Ajouté**
+**Added**
 
-- **Comparaison avant/après par balayage** : nouveau mode par défaut dans les
-  deux interfaces ; un curseur sépare la source du résultat dans la même zone
-  (double-clic pour le recentrer, glissement pour le déplacer). GTK : rendu
-  cairo avec clipping de part et d'autre du curseur ; egui : deux `clip_rect`.
-  (`src/gtk/compare.rs`, `src/gui/ui.rs`)
-- **Aperçu rapide avec finalisation automatique** : les réglages sont calculés
-  sur une image à 50 % ou 25 % (au choix), puis une passe en pleine résolution
-  est déclenchée après ~900 ms d'inactivité. Le rendu affiché est signalé
-  « obsolète » (opacité réduite + badge) et l'export reste désactivé tant qu'il
-  ne l'est pas. Le mode choisi par l'utilisateur n'est plus écrasé par la
-  finalisation. (`src/gtk/actions.rs`, `src/gui/compute.rs`)
-- **Presets intégrés** : `filter::builtin_presets()` expose neuf points de
-  départ validés (pointillisme classique, stippling fin, aplats graphiques,
-  rosette CMJN, trame FM, moiré, mosaïque, pastilles, calques transparents),
-  proposés dans une liste déroulante par les deux interfaces. Chaque preset est
-  testé (`validate_params` + aller-retour TOML). (`src/filter/presets.rs`)
-- **Réglages en saisie directe, avec les plages réelles du moteur** :
-  `adw::SpinRow` côté GTK (au lieu de curseurs nus) et `DragValue` côté egui.
-  Les bornes suivent `validate_params` : 100 000 points, 8 192 colonnes, 100
-  itérations, 256 couleurs de palette, 32 canaux halftone, rayon max 1.0 — des
-  valeurs auparavant inaccessibles à la souris.
-- **Navigation dans un dossier** : « Ouvrir un dossier » puis `←`/`→` pour
-  passer d'une image à l'autre ; le titre de la fenêtre affiche la position.
-- **Export rapide et presse-papiers** : `Ctrl+E` écrit `<nom>-pointimg.png` à
-  côté de la source sans dialogue, `Ctrl+C` copie l'image, et un menu GTK
-  regroupe ces actions ainsi que l'export SVG rapide.
-- **Bouton « Varier »** : tire une nouvelle graine aléatoire et relance le
-  calcul, pour explorer une variante en un clic.
-- **Réinitialisation par section** : un bouton dans l'en-tête de chaque groupe
-  du panneau GTK rétablit uniquement les réglages de cette section (les autres
-  sont conservés) ; l'opération reste annulable.
-- **État d'accueil** : au lieu d'un écran vide, les deux interfaces proposent
-  « Ouvrir une image », « Ouvrir un dossier » et « Utiliser un exemple » (si
-  `assets/examples/` est présent à côté du binaire).
-- **Notifications** : les erreurs et les actions (enregistrement, copie) passent
-  par des toasts (`adw::Toast`) ou la barre d'état, au lieu de voler la ligne de
-  statut qui décrit l'état courant.
-- **Titre de fenêtre et barre d'état nommants le fichier** : nom du fichier,
-  dimensions et mégapixels, état du calcul, position dans le dossier.
-- **Fenêtre de raccourcis** GTK (`Ctrl+?`) et anneau de raccourcis complet
-  (`+`/`-`/`0`/`1` zoom, `Tab` vue suivante, `Ctrl+molette`, `F11`,
-  `Ctrl+Shift+O`, `Ctrl+E`, `Ctrl+C`, `Ctrl+R`, `Ctrl+P`, `Échap`).
-- **Bordure de sécurité autour de la density map** : `State.density_scale`
-  mémorise l'échelle du cache ; sans cela, la passe pleine résolution
-  réutilisait une density map calculée en ½ et échouait (« density map
-  invalide : 2 095 686 valeurs, 8 382 744 attendues »).
+- **Side-by-side comparison by sweeping**: new default mode in both interfaces;
+  a cursor separates the source from the result in the same area (double-click to
+  recenter, drag to move). GTK: cairo rendering with clipping on either side of
+  the cursor; egui: two `clip_rect`s. (`src/gtk/compare.rs`, `src/gui/ui.rs`)
+- **Quick preview with automatic finalization**: settings are computed on an
+  image at 50% or 25% (user's choice), then a full-resolution pass is triggered
+  after ~900 ms of inactivity. The displayed rendering is marked "obsolete"
+  (reduced opacity + badge) and export stays disabled until it is not. The mode
+  chosen by the user is no longer overwritten by finalization.
+  (`src/gtk/actions.rs`, `src/gui/compute.rs`)
+- **Built-in presets**: `filter::builtin_presets()` exposes nine validated
+  starting points (classic pointillism, fine stippling, graphic flats, CMYK
+  rosette, FM screen, moiré, mosaic, dots, transparent layers), offered in a
+  dropdown by both interfaces. Each preset is tested (`validate_params` + TOML
+  round-trip). (`src/filter/presets.rs`)
+- **Settings entered directly, with the engine's real ranges**:
+  `adw::SpinRow` on the GTK side (instead of bare sliders) and `DragValue` on
+  the egui side. Bounds follow `validate_params`: 100 000 points, 8 192 columns,
+  100 iterations, 256 palette colors, 32 halftone channels, max radius 1.0 —
+  values previously unreachable with the mouse.
+- **Folder navigation**: "Open a folder" then `←`/`→` to move from one image to
+  another; the window title shows the position.
+- **Quick export and clipboard**: `Ctrl+E` writes `<name>-pointimg.png` next to
+  the source without a dialog, `Ctrl+C` copies the image, and a GTK menu groups
+  these actions as well as quick SVG export.
+- **"Vary" button**: draws a new random seed and relaunches the computation, to
+  explore a variant in one click.
+- **Reset by section**: a button in the header of each GTK panel group restores
+  only that section's settings (the others are kept); the operation remains
+  undoable.
+- **Home screen**: instead of an empty screen, both interfaces offer "Open an
+  image", "Open a folder" and "Use an example" (if `assets/examples/` is present
+  next to the binary).
+- **Notifications**: errors and actions (save, copy) go through toasts
+  (`adw::Toast`) or the status bar, instead of stealing the status line that
+  describes the current state.
+- **Window title and status bar naming the file**: file name, dimensions and
+  megapixels, computation state, position in the folder.
+- **GTK shortcut window** (`Ctrl+?`) and full shortcut ring
+  (`+`/`-`/`0`/`1` zoom, `Tab` next view, `Ctrl+wheel`, `F11`,
+  `Ctrl+Shift+O`, `Ctrl+E`, `Ctrl+C`, `Ctrl+R`, `Ctrl+P`, `Esc`).
+- **Safety border around the density map**: `State.density_scale` remembers the
+  cache scale; without it, the full-resolution pass reused a density map
+  computed at ½ and failed ("invalid density map: 2 095 686 values, 8 382 744
+  expected").
 
-**Corrigé**
+**Fixed**
 
-- **La molette sur le panneau des réglages GTK ne faisait pas défiler le
-  panneau** : elle changeait la valeur du réglage situé sous le curseur et
-  relançait un calcul à chaque cran (mesuré : « Boost zones uniformes » 2,5 →
-  1,0, puis « Sensibilité variance » et « Rayon min » modifiés au passage).
-  Un `EventControllerScroll` en phase *capture* redirige maintenant la molette
-  vers le `ScrolledWindow` parent ; `Ctrl`/`Shift`/`Alt` ajustent le réglage.
-  (`src/gtk/controls.rs`)
-- **Les actions importantes étaient sous la ligne de flottaison** : « Annuler »,
-  « Export » et la progression étaient dans un panneau de ~1 100 px de haut
-  pour 800 px de fenêtre. Elles sont passées dans l'en-tête, avec la progression
-  et le bouton d'annulation visibles pendant un long calcul.
-- **Le curseur de zoom restait actif en mode « Ajuster »** sans effet et
-  affichait une valeur fictive ; il est désormais insensible et le pourcentage
-  réellement appliqué est affiché. (`src/gtk/preview.rs`)
-- **Passage de « Ajuster » à 1:1** : saut vers le coin haut-gauche ; le centre
-  du viewport est désormais conservé.
-- **Les vues n'étaient pas synchronisées** : faire défiler « Source » ne
-  déplaçait pas « Résultat », rendant la comparaison impossible ; les
-  adjustments sont désormais miroités.
-- **Double affichage du temps de calcul** dans la barre d'état (« Dernier
-  calcul : 671ms » et « Terminé en 671ms. ») ; le message d'état n'est plus
-  redondant.
-- **L'estimation mémoire était anxiogène et peu parlante** : elle affichait
-  « 174 Mo » pour une image de 1,5 Mpx (le plancher de 64 Mio de
-  l'estimateur domine). Elle est signalée par un avertissement au-delà de
-  1,5 Go, et l'image courante est décrite par ses dimensions.
-- **Libellés incohérents** : « Undo »/« Redo » en anglais dans une interface
-  française, boutons d'annulation toujours actifs au lieu d'être désactivés,
-  « Sensibilité variance » sans indication d'unité.
-- **Sections repliées** : « Forme des points » et « Fond et rendu » étaient
-  repliées par défaut alors que la forme est le paramètre le plus identitaire
-  d'un pointillisme ; toutes les sections sont désormais visibles (chacune tient
-  sur une ligne).
-- **Redimensionnement d'une `SpinRow` hors de sa plage** : les curseurs min/max
-  se désynchronisaient (le rayon max restait à l'ancienne valeur) ; la ligne
-  contrainte est réalignée, sans réécrire tous les widgets à chaque cran.
-- **Panneau de gauche déborduant sous la barre d'état** côté egui : l'ordre
-  d'allocation des panneaux (`haut`, `bas`, puis `gauche`) est corrigé et le
-  panneau de réglages est déroulable.
-- **Vue comparaison egui affichée à 2 %** : le zoom était déduit d'une hauteur
-  calculée une ligne trop tôt ; il est maintenant mesuré sur l'espace réellement
-  disponible.
-- **Couleurs fausse dans la comparaison egui** : la teinte des deux couches
-  était verdâtre (teinte sentinelle au lieu de blanc) ; les images sont
-  désormais peintes sans teinte.
+- **The GTK settings panel wheel did not scroll the panel**: it changed the value
+  of the setting under the cursor and relaunched a computation at every notch
+  (measured: "Uniform-zone boost" 2.5 → 1.0, then "Variance sensitivity" and
+  "Min radius" modified along the way). An `EventControllerScroll` in *capture*
+  phase now redirects the wheel to the parent `ScrolledWindow`; `Ctrl`/`Shift`/
+  `Alt` adjust the setting. (`src/gtk/controls.rs`)
+- **Important actions were below the fold**: "Undo", "Export" and progress were in
+  a ~1 100 px panel for an 800 px window. They have been moved to the header,
+  with progress and the cancel button visible during a long computation.
+- **The zoom slider stayed active in "Fit" mode** without effect and displayed a
+  fictitious value; it is now insensitive and the actually applied percentage is
+  displayed. (`src/gtk/preview.rs`)
+- **Switching from "Fit" to 1:1**: jump to the top-left corner; the viewport
+  center is now preserved.
+- **Views were not synchronized**: scrolling "Source" did not move "Result",
+  making comparison impossible; the adjustments are now mirrored.
+- **Double display of computation time** in the status bar ("Last computation:
+  671ms" and "Finished in 671ms."); the status message is no longer redundant.
+- **Memory estimate was anxiety-inducing and unclear**: it displayed "174 MB" for
+  a 1.5 Mpx image (the estimator's 64 MiB floor dominates). It is signalled by
+  a warning beyond 1.5 GB, and the current image is described by its dimensions.
+- **Inconsistent labels**: "Undo"/"Redo" in English in a French interface,
+  cancel buttons always active instead of disabled, "Variance sensitivity"
+  without a unit indication.
+- **Collapsed sections**: "Dot shape" and "Background and rendering" were
+  collapsed by default whereas shape is the most identity-defining parameter of
+  a pointillism; all sections are now visible (each fits on one line).
+- **Resizing a `SpinRow` outside its range**: the min/max sliders desynchronized
+  (max radius stayed at the old value); the constrained row is realigned, without
+  rewriting all widgets at every notch.
+- **Left panel overflowing under the status bar** on the egui side: the panel
+  allocation order (`top`, `bottom`, then `left`) is corrected and the settings
+  panel is scrollable.
+- **egui comparison view displayed at 2%**: zoom was deduced from a height
+  computed one line too early; it is now measured on the space actually
+  available.
+- **Wrong colors in the egui comparison**: the tint of both layers was greenish
+  (sentinel tint instead of white); the images are now painted without tint.
 
-**Modifié**
+**Changed**
 
-- Le panneau GTK est une `adw::PreferencesPage` : une ligne par réglage
-  (`adw::SpinRow`), groupes `adw::PreferencesGroup`, titre et description par
-  groupe, `adw::SwitchRow` pour les bascules, `adw::ComboRow` pour les listes.
-  Le socle reste libadwaita 1.4 (les widgets 1.6+ — `AdwButtonRow`,
-  `AdwMenuButton`, `AdwSpinner` — sont remplacés par leurs équivalents GTK).
-- egui : style global appliqué une fois (plus d'air, texte à 13 pt), panneaux
-  encadrés, légendes de panneaux, et plus aucun pictogramme Unicode (les
-  emojis s'affichaient en « tofu » selon les polices installées).
-- egui : `eframe::App::style` n'existe plus en 0.36, le style est donc appliqué
-  via `Context::all_styles_mut` au premier rendu ; l'API `Panel::left/top/bottom`
-  remplace `SidePanel`/`TopBottomPanel`.
+- The GTK panel is an `adw::PreferencesPage`: one row per setting
+  (`adw::SpinRow`), `adw::PreferencesGroup` groups, title and description per
+  group, `adw::SwitchRow` for toggles, `adw::ComboRow` for lists. The base
+  remains libadwaita 1.4 (the 1.6+ widgets — `AdwButtonRow`, `AdwMenuButton`,
+  `AdwSpinner` — are replaced by their GTK equivalents).
+- egui: global style applied once (more air, 13 pt text), framed panels, panel
+  captions, and no more Unicode pictograms (emojis displayed as "tofu" depending
+  on installed fonts).
+- egui: `eframe::App::style` no longer exists in 0.36, so the style is applied
+  via `Context::all_styles_mut` at first render; the `Panel::left/top/bottom` API
+  replaces `SidePanel`/`TopBottomPanel`.
 
-### Curseurs de réglage (les deux interfaces)
+### Slider controls (both interfaces)
 
-- **Saisie + curseur** : les réglages à course large sont doublés d'un curseur
-  sous leur champ de saisie. La molette d'un `SpinButton` a un pas fixe (0,1),
-  ce qui rend les quatre décimales du rayon min pénibles à atteindre ; le
-  curseur se règle à la souris, la saisie chiffrée reste l'outil de la valeur
-  exacte. Curseurs ajoutés à la sensibilité, au boost, au nombre de points, aux
-  itérations, aux colonnes, à la fréquence de trame, et à la paire min/max des
-  rayons (points et halftone).
-- **Échelle adaptée à la plage** : logarithmique sur le nombre de points
-  (10 → 100 000), les colonnes (2 → 8 192), la fréquence de trame et les rayons
-  (0,0005 → 1) ; racine sur la plage du halftone (0 → 10), où le logarithme est
-  indéfini et où le linéaire confinerait les valeurs utiles dans le premier
-  dixième du rail. La courbe est partagée par les deux interfaces
-  (`pointimg::frontend::Curve`) et le curseur arrondit à la précision du champ
-  voisin, pour ne pas laisser « 0,25317937 » dans les réglages.
-- **Curseur à deux poignées (egui)** : egui n'a pas d'équivalent du curseur à
-  deux poignées, le widget est donc dessiné à la main — rail coupé en deux zones
-  de saisie disjointes, les bornes ne pouvant pas se croiser. Le segment entre
-  les poignées porte la couleur d'accent, la largeur de la plage se lit d'un
-  coup d'œil.
-- **Paire min/max (GTK)** : GTK n'a pas plus de curseur à deux poignées que
-  libadwaita (`AdwSliderRow` n'existe qu'à partir de 1.6). Les deux curseurs
-  sont donc empilés, étiquetés « min » et « max », chacun marquant la position de
-  l'autre borne ; la contrainte `min ≤ max` reste appliquée, comme sur les
-  champs de saisie.
-- **Erreur de curseur** : la sensibilité était en échelle logarithmique sur une
-  plage commençant à 0 (position indéfinie, poignée collée au maximum) ; elle
-  est linéaire.
+- **Input + slider**: settings with a wide range are doubled with a slider under
+  their input field. A `SpinButton` wheel has a fixed step (0.1), which makes
+  the four decimals of the min radius painful to reach; the slider is set with
+  the mouse, the numeric input remains the tool for the exact value. Sliders
+  added to sensitivity, boost, number of points, iterations, columns, frame rate,
+  and the min/max pair of radii (dots and halftone).
+- **Scale adapted to the range**: logarithmic on number of points
+  (10 → 100 000), columns (2 → 8 192), frame rate and radii
+  (0.0005 → 1); square root on the halftone range (0 → 10), where logarithm is
+  undefined and where linear would confine useful values to the first tenth of
+  the rail. The curve is shared by both interfaces
+  (`pointimg::frontend::Curve`) and the slider rounds to the precision of the
+  neighboring field, so as not to leave "0.25317937" in the settings.
+- **Two-handle slider (egui)**: egui has no equivalent of a two-handle slider,
+  so the widget is drawn by hand — rail cut into two disjoint input zones, the
+  bounds unable to cross. The segment between the handles carries the accent
+  color, the width of the range reads at a glance.
+- **Min/max pair (GTK)**: GTK has no more two-handle slider than libadwaita
+  (`AdwSliderRow` exists only from 1.6). The two sliders are therefore stacked,
+  labelled "min" and "max", each marking the position of the other bound; the
+  `min ≤ max` constraint remains applied, as on the input fields.
+- **Slider error**: sensitivity was on a logarithmic scale over a range starting
+  at 0 (undefined position, handle stuck at maximum); it is now linear.
 
-### Interface graphique (egui) — confort et répartition de l'espace
-- **Côte-à-côte rogné** : dans une mise en page horizontale, `available_width()`
-  vaut la largeur restante *pour chaque enfant* ; le premier panneau prenait
-  toute la place et le second était expulsé hors de la fenêtre (les deux
-  images s'affichaient minuscules dans un coin). La place est maintenant
-  imposée par l'appelant, et le séparateur est déduit de la largeur disponible
-  au lieu d'être compté en double.
-- **Empilement automatique** : sous 640 px de largeur centrale, le
-  côte-à-côte devient un empilement vertical (deux images de ~300 px de large
-  côte à côte sont illisibles).
-- **Échelle d'interface** : un réglage « Interface » (85 – 160 %) qui agrandit
-  ou réduit d'un coup les textes, les espacements, la hauteur des widgets, la
-  largeur des curseurs et les arrondis. Le nouveau style de base est
-  confortable (corps 14 pt, interlignes plus généreux, angles arrondis) au
-  lieu du rendu par défaut très serré.
-- **Thème clair / sombre** commutable depuis le même emplacement (« Auto »
-  suit la préférence du système).
-- **Préférences d'interface mémorisées** : l'échelle et le thème sont
-  enregistrés dès qu'on les change (fichier `ui-prefs.ron` dans le répertoire
-  de données de l'application, écrit via l'écriture atomique du projet) et
-  relus au lancement. L'`app.ron` d'eframe complète l'ensemble en restaurant
-  la taille de la fenêtre et la largeur des panneaux. (`src/gui/prefs.rs`)
-- **Barres qui se replient** : l'en-tête d'actions et la rangée
-  « Affichage » passent en `horizontal_wrapped`, donc à 160 % ou dans une
-  fenêtre étroite les boutons passent à la ligne au lieu d'être coupés.
-- La ligne « Interface » est compacte et repliable : elle élargissait le
-  panneau de réglages de 415 px et volait de la place à l'aperçu.
+### GUI (egui) — comfort and space distribution
 
-### Outillage / CI
+- **Side-by-side cropped**: in a horizontal layout, `available_width()` equals
+  the remaining width *for each child*; the first panel took all the space and
+  the second was expelled outside the window (both images displayed tiny in a
+  corner). The space is now imposed by the caller, and the separator is deduced
+  from the available width instead of being counted twice.
+- **Automatic stacking**: below 640 px of central width, side-by-side becomes
+  vertical stacking (two ~300 px images side by side are unreadable).
+- **Interface scale**: a "UI" setting (85 – 160 %) that enlarges or reduces at
+  once texts, spacings, widget heights, slider widths and rounding. The new base
+  style is comfortable (14 pt body, more generous line spacing, rounded corners)
+  instead of the very tight default rendering.
+- **Light / dark theme** switchable from the same place ("Auto" follows the
+  system preference).
+- **Interface preferences remembered**: scale and theme are saved as soon as they
+  change (file `ui-prefs.ron` in the application's data directory, written via
+  the project's atomic write) and re-read at launch. eframe's `app.ron`
+  completes the set by restoring window size and panel widths.
+  (`src/gui/prefs.rs`)
+- **Collapsing bars**: the action header and the "Display" row use
+  `horizontal_wrapped`, so at 160% or in a narrow window the buttons wrap to the
+  next line instead of being cut.
+- The "UI" line is compact and collapsible: it widened the settings panel to
+  415 px and stole space from the preview.
 
-- **Clippy couvre tous les targets** : la CI lint désormais tests, benches et
-  exemples via `--all-targets`, ce qui aurait détecté le lint de
+### Tooling / CI
+
+- **Clippy covers all targets**: CI now lints tests, benches and examples via
+  `--all-targets`, which would have detected the lint in
   `tests/gpu_density.rs`.
-- **Couverture CLI-only** : les jobs clippy et test exécutent aussi
-  `--no-default-features --all-targets`, et le job GTK lance la suite de tests
-  avec `--features gtk`. Le build sans dépendances GUI est ainsi protégé.
+- **CLI-only coverage**: the clippy and test jobs also run
+  `--no-default-features --all-targets`, and the GTK job runs the test suite
+  with `--features gtk`. The build without GUI dependencies is thus protected.
   (`.github/workflows/ci.yml`)
-- **`rust-toolchain.toml`** : canal `stable` avec `rustfmt` et `clippy`
-  déclarés, pour un environnement local reproductible (les jobs MSRV
-  épinglent toujours `+1.95`).
-- **Release GTK4** : le binaire `pointimg-gtk` est construit et publié
-  (`libgtk-4-dev`/`libadwaita-1-dev`) aux côtés des autres artefacts. Le job de
-  la GUI egui (`pointimg-gui`) n'installe plus `libgtk-3-dev`/`libspeechd-dev`,
-  inutiles : `rfd` 0.17 passe par le portail XDG, et le front GTK4 est un
-  binaire distinct.
-- **Audit** : l'alerte de maintenance `RUSTSEC-2024-0436` (`paste`, tiré par
-  l'encodeur AVIF optionnel) est documentée dans `audit.toml`.
-- **Corpus de fuzzing** versionné (`fuzz/corpus/`) comme graines de régression.
-- **Release reproductible** : tous les builds de `release.yml` utilisent
-  `--locked`, et `softprops/action-gh-release` passe en `v2`.
-  (`.github/workflows/release.yml`)
-- **Fuzz réparé en CI** : le `rust-toolchain.toml` stable de la racine écrasait
-  le nightly installé par le job, donc `cargo fuzz` échouait (`-Z` refusé sur
-  stable). Un `fuzz/rust-toolchain.toml` (nightly) et `RUSTUP_TOOLCHAIN=nightly`
-  dans le job garantissent le bon toolchain. (`.github/workflows/ci.yml`,
+- **`rust-toolchain.toml`**: `stable` channel with `rustfmt` and `clippy`
+  declared, for a reproducible local environment (MSRV jobs still pin `+1.95`).
+- **GTK4 release**: the `pointimg-gtk` binary is built and published
+  (`libgtk-4-dev`/`libadwaita-1-dev`) alongside the other artefacts. The egui
+  GUI job (`pointimg-gui`) no longer installs `libgtk-3-dev`/`libspeechd-dev`,
+  useless: `rfd` 0.17 goes through the XDG portal, and the GTK4 frontend is a
+  separate binary.
+- **Audit**: the maintenance alert `RUSTSEC-2024-0436` (`paste`, pulled by the
+  optional AVIF encoder) is documented in `audit.toml`.
+- **Versioned fuzz corpus** (`fuzz/corpus/`) as regression seeds.
+- **Reproducible release**: all `release.yml` builds use `--locked`, and
+  `softprops/action-gh-release` moves to `v2`. (`.github/workflows/release.yml`)
+- **Fuzz repaired in CI**: the root `rust-toolchain.toml` stable overwrote the
+  nightly installed by the job, so `cargo fuzz` failed (`-Z` refused on stable).
+  A `fuzz/rust-toolchain.toml` (nightly) and `RUSTUP_TOOLCHAIN=nightly` in the
+  job guarantee the right toolchain. (`.github/workflows/ci.yml`,
   `fuzz/rust-toolchain.toml`)
-- **Graine de fuzzing image réelle** : le corpus `image` ne contenait qu'un
-  fichier de 4 octets (jamais décodé) ; une petite image PNG valide
-  (`fuzz/corpus/image/seed-image-12x12`) fait passer la couverture du target de
-  331 à 10 501 branches. (`fuzz/corpus/image/`)
+- **Real image fuzz seed**: the `image` corpus contained only a 4-byte file
+  (never decoded); a small valid PNG (`fuzz/corpus/image/seed-image-12x12`)
+  raises the target's coverage from 331 to 10 501 branches.
+  (`fuzz/corpus/image/`)
 
-### Modifié
+### Changed
 
-- **CI et docs.rs** : la feature `gtk` est exclue de `--all-features` (GTK4 et
-  libadwaita ne sont pas disponibles sur tous les runners ni sur docs.rs). Les
-  jobs clippy/test/msrv/build/docs utilisent désormais `--features gui,gpu,avif`
-  et `[package.metadata.docs.rs]` liste explicitement ces features.
-- **Mise à jour des dépendances** : `egui`/`eframe` 0.31 → 0.36 (trait
-  `App::ui` et `egui::Panel` unifié), `wgpu` 24 → 30 (API instance/adapter/
-  pipeline), `rfd` 0.15 → 0.17, `moxcms` 0.8 → 0.9, `toml` 0.8 → 1,
-  `criterion` 0.5 → 0.8 (`black_box` via `std::hint`), plus les mises à jour
-  transitives. Adaptations dans `src/gui/{ui,main,convert}.rs`,
-  `src/filter/gpu.rs` et `benches/filter.rs`.
-- **Accélération K-means (~15× sur bench, résultat bit-à-bit identique)** :
-  recherche du centre le plus proche via `SeedGrid::nearest_by` (borne
-  inférieure sur la distance spatiale², départage des égalités par index
-  comme `min_by`), LUTs de normalisation précalculées, accumulation f64 en
-  chunks fixes déterministes (évite la dépendance au work-stealing), arrêt
-  précoce au point fixe exact. (`src/filter/algorithms/kmeans.rs`,
+- **CI and docs.rs**: the `gtk` feature is excluded from `--all-features` (GTK4
+  and libadwaita are not available on all runners nor on docs.rs). The
+  clippy/test/msrv/build/docs jobs now use `--features gui,gpu,avif` and
+  `[package.metadata.docs.rs]` explicitly lists these features.
+- **Dependency updates**: `egui`/`eframe` 0.31 → 0.36 (trait `App::ui` and
+  unified `egui::Panel`), `wgpu` 24 → 30 (instance/adapter/pipeline API),
+  `rfd` 0.15 → 0.17, `moxcms` 0.8 → 0.9, `toml` 0.8 → 1, `criterion` 0.5 →
+  0.8 (`black_box` via `std::hint`), plus transitive updates. Adaptations in
+  `src/gui/{ui,main,convert}.rs`, `src/filter/gpu.rs` and `benches/filter.rs`.
+- **K-means acceleration (~15× on bench, byte-identical result)**: nearest-center
+  search via `SeedGrid::nearest_by` (lower bound on spatial distance², ties
+  broken by index like `min_by`), precomputed normalization LUTs, deterministic
+  fixed-chunk f64 accumulation (avoids work-stealing dependence), exact
+  fixed-point early stop. (`src/filter/algorithms/kmeans.rs`,
   `src/filter/seedgrid.rs`)
-- **Accélération Quadtree** (`src/filter/algorithms/quadtree.rs`) :
-  tables intégrales u64 (sommes + sommes de carrés RGB) → requêtes de
-  somme/variance O(1) au lieu de re-parcourir les pixels du nœud.
-- **Rendu par bandes parallèles (rayon)** : `render`/`render_rgba` dessinent
-  les dots par bandes horizontales en préservant l'ordre global par rayon
-  — résultat pixel-identique, plusieurs fois plus rapide. (`src/filter/render.rs`)
-- **`apply()` sans previews gaspillées** : pour Kmeans/Voronoi, le chemin
-  non-progressif calcule les dots directement puis rend une seule fois au
-  lieu de jeter un rendu complet à chaque itération. (`src/filter/mod.rs`)
-- **Estimation mémoire** à jour pour les tables intégrales du quadtree
-  (6 u64/canal-pixel). (`src/filter/util.rs::estimate_memory_bytes`)
-- **Quantification de palette accélérée** : les couleurs des dots sont
-  dédupliquées une seule fois et le centre le plus proche n'est cherché qu'une
-  fois par couleur unique (sortie anticipée sur correspondance exacte). Le
-  résultat reste bit-à-bit identique (accumulation f64 dans l'ordre d'origine).
-  (`src/filter/render.rs`)
-- **Halftone dominant : mémoire ÷4** : les cartes de couverture passent de
-  `f32` à `u8` (quantification 1/255, visuellement neutre). Le pic passe
-  d'environ 1 Go à ~268 Mo pour `n = 32` sur une image au plafond.
+- **Quadtree acceleration** (`src/filter/algorithms/quadtree.rs`): u64 integral
+  tables (sums + sums of squares RGB) → O(1) sum/variance queries instead of
+  re-walking the node's pixels.
+- **Parallel band rendering (rayon)**: `render`/`render_rgba` draw the dots in
+  horizontal bands while preserving global order by radius — pixel-identical
+  result, several times faster. (`src/filter/render.rs`)
+- **`apply()` without wasted previews**: for Kmeans/Voronoi, the non-progressive
+  path computes the dots directly then renders once instead of discarding a full
+  render at each iteration. (`src/filter/mod.rs`)
+- **Memory estimate** updated for the quadtree integral tables
+  (6 u64/channel-pixel). (`src/filter/util.rs::estimate_memory_bytes`)
+- **Accelerated palette quantization**: dot colors are deduplicated once and the
+  nearest center is searched only once per unique color (early exit on exact
+  match). The result stays bit-for-bit identical (f64 accumulation in original
+  order). (`src/filter/render.rs`)
+- **Dominant halftone: memory ÷4**: coverage maps go from `f32` to `u8`
+  (1/255 quantization, visually neutral). The peak drops from about 1 GB to
+  ~268 MB for `n = 32` on a maxed-out image. (`src/filter/halftone.rs`)
+- **Dominant halftone: deduplicated k-means**: pixel colors are deduplicated
+  once; the nearest center is searched only once per unique color (instead of
+  once per pixel and per iteration), identical result.
   (`src/filter/halftone.rs`)
-- **Halftone dominant : k-means dédupliqué** : les couleurs de pixels sont
-  dédupliquées une fois ; le centre le plus proche n'est cherché qu'une fois par
-  couleur unique (au lieu d'une fois par pixel et par itération), à résultat
-  identique. (`src/filter/halftone.rs`)
-- **Export SVG accéléré** : écriture directe via `write!` dans un `String`
-  pré-dimensionné (plus de `format!` par dot ni de `Vec<String>` + `join` pour
-  les polygones), sortie inchangée. (`src/filter/svg.rs`)
-- **Dithering Floyd-Steinberg accéléré** : palette pré-convertie en `f32`,
-  recherche manuelle du plus proche avec sortie anticipée sur correspondance
-  exacte (mêmes résultats). (`src/filter/dither.rs`)
-- **Normalisation de la densité en place** : `normalize_variance` transforme son
-  `Vec<f32>` au lieu d'en allouer un second pleine résolution (~33 Mo
-  économisés sur une image de 8 Mpx). (`src/filter/density.rs`)
-- **API publique entièrement documentée** : `#![warn(missing_docs)]` dans la
-  lib (donc bloquant via le `-D warnings` de la CI) ; les 24 items publics
-  manquants (`Algorithm`, `FilterParams`, `Dot`, constantes de bornes, API
-  colorimétrique, density map…) sont désormais documentés. (`src/lib.rs`,
-  `src/filter/params.rs`, `src/color.rs`, `src/filter/density.rs`)
-- **Métadonnées du paquet** : `license`, `repository`, `homepage`,
-  `documentation`, `readme`, `keywords` et `categories` ajoutés (le warning
-  « manifest has no license … » de `cargo package` disparaît) ; `.github` et
-  `.idea` exclus du paquet. (`Cargo.toml`)
-- **Voronoï refactoré** : la boucle de Lloyd pondérée est extraite dans
-  `run_lloyd`, partagée entre le chemin progressif et le chemin direct
-  (auparavant ~60 lignes dupliquées). (`src/filter/algorithms/voronoi.rs`)
-- **Transformation ICC par chunks** : les buffers `f32` intermédiaires sont
-  limités à 64 k pixels par appel au lieu de deux buffers pleine image
-  (24–32 o/px) ; sortie identique. (`src/color.rs`)
-- **Profil de release** : `codegen-units = 1` (meilleure optimisation
-  inter-modules) et `strip = true` (binaires sans symboles). (`Cargo.toml`)
-- **Benchmarks complétés** : halftone `dominant-6-am` et estimation mémoire
-  tenant compte du halftone. (`benches/filter.rs`)
-- **`apply_dynamic` simplifié** : aplatit puis délègue à `apply`, ce qui
-  supprime la duplication du chemin gamma et le panic associé.
-  (`src/filter/mod.rs`)
-- **CLI dédupliqué** : `main.rs` réutilise `pointimg::frontend` pour les
-  écritures atomiques, l'aplatissement RGBA et la détection d'alpha
-  (suppression de ~90 lignes dupliquées). (`src/main.rs`)
-- **`Ctrl+S` cohérent** : la boîte de dialogue propose désormais WebP/BMP/TIFF
-  comme le bouton d'export, au lieu de PNG/JPEG seulement. (`src/gui/ui.rs`)
+- **Accelerated SVG export**: direct writing via `write!` into a pre-sized
+  `String` (no more `format!` per dot nor `Vec<String>` + `join` for polygons),
+  unchanged output. (`src/filter/svg.rs`)
+- **Accelerated Floyd-Steinberg dithering**: palette pre-converted to `f32`,
+  manual nearest search with early exit on exact match (same results).
+  (`src/filter/dither.rs`)
+- **In-place density normalization**: `normalize_variance` transforms its
+  `Vec<f32>` instead of allocating a second full-resolution one (~33 MB saved
+  on an 8 Mpx image). (`src/filter/density.rs`)
+- **Fully documented public API**: `#![warn(missing_docs)]` in the lib (hence
+  blocking via CI's `-D warnings`); the 24 missing public items (`Algorithm`,
+  `FilterParams`, `Dot`, bound constants, colorimetric API, density map…) are
+  now documented. (`src/lib.rs`, `src/filter/params.rs`, `src/color.rs`,
+  `src/filter/density.rs`)
+- **Package metadata**: `license`, `repository`, `homepage`, `documentation`,
+  `readme`, `keywords` and `categories` added (the "manifest has no license …"
+  warning from `cargo package` disappears); `.github` and `.idea` excluded from
+  the package. (`Cargo.toml`)
+- **Voronoi refactored**: the weighted Lloyd loop is extracted into `run_lloyd`,
+  shared between the progressive and direct paths (previously ~60 duplicated
+  lines). (`src/filter/algorithms/voronoi.rs`)
+- **Chunked ICC transformation**: intermediate `f32` buffers are limited to
+  64 k pixels per call instead of two full-image buffers (24–32 B/px); identical
+  output. (`src/color.rs`)
+- **Release profile**: `codegen-units = 1` (better cross-module optimization) and
+  `strip = true` (symbol-less binaries). (`Cargo.toml`)
+- **Completed benchmarks**: halftone `dominant-6-am` and memory estimate
+  accounting for halftone. (`benches/filter.rs`)
 
-### Traitement par lot (`--input` glob/dossier, `--output` pattern)
+- **`apply_dynamic` simplified**: flattens then delegates to `apply`, removing
+  the gamma-path duplication and the associated panic. (`src/filter/mod.rs`)
+- **CLI deduplicated**: `main.rs` reuses `pointimg::frontend` for atomic writes,
+  RGBA flattening and alpha detection (removal of ~90 duplicated lines).
+  (`src/main.rs`)
+- **Consistent `Ctrl+S`**: the dialog now offers WebP/BMP/TIFF like the export
+  button, instead of PNG/JPEG only. (`src/gui/ui.rs`)
 
-- Expansion `--input` : fichier unique, glob (`*`/`?`/`[`), dossier (filtre images).
-- Pattern `--output` avec substitutions : `{n}` (index 0-padded),
-  `{stem}` (nom source sans ext.), `{name}` (nom source complet).
-- Continuation du batch sur fichier défectueux (log error + suite).
+### Batch processing (`--input` glob/folder, `--output` pattern)
 
-### Sorties WebP/AVIF
+- `--input` expansion: single file, glob (`*`/`?`/`[`), folder (image filter).
+- `--output` pattern with substitutions: `{n}` (0-padded index), `{stem}`
+  (source name without ext.), `{name}` (full source name).
+- Batch continues on a defective file (log error + continue).
 
-- **WebP** inclus par défaut (extension `.webp`).
-- **AVIF** opt-in : `cargo build --features avif` (pull `image/avif` / `ravif`).
+### WebP/AVIF outputs
 
-### Aperçu rapide (`--preview WxH`)
+- **WebP** included by default (`.webp` extension).
+- **AVIF** opt-in: `cargo build --features avif` (pulls `image/avif` / `ravif`).
 
-- Sous-échantillonnage source (filtre Triangle, aspect ratio préservé)
-  avant le pipeline. 7.7× plus rapide sur 2000×2000→300×300.
+### Quick preview (`--preview WxH`)
 
-### Halftone multi-canal (`--halftone`) — Rosette CMJN et couleurs dominantes
+- Source subsampling (Triangle filter, aspect ratio preserved) before the
+  pipeline. 7.7× faster on 2000×2000→300×300.
 
-- **`HalftoneMode`** : `Off`, `Cmyk{angles}` (15°/75°/0°/45° par défaut),
-  `Dominant{n, base_angle_deg}` (N couleurs extraites via k-means sur pixels source).
-- **`Screening`** : `Am` (grille rotationnée par canal, rayon = coverage)
-  ou `Fm` (acceptation stochastique + jitter sub-pixel, rayon quasi constant).
-- **Compositeur multiply** (`render_halftone`) : part d'un papier blanc,
-  applique chaque dot en mode soustractif (Magenta + Jaune = Rouge).
-- **Séparation CMYK** avec UCR partiel (retire 50% de la composante neutre
-  quand C+M+Y > 0.3).
-- **Angles dominants** répartis par `base + i × 180° / n` pour éviter le moiré.
-- Flags CLI : `--halftone`, `--screening`, `--halftone-freq`,
+### Multi-channel halftone (`--halftone`) — CMYK rosette and dominant colors
+
+- **`HalftoneMode`**: `Off`, `Cmyk{angles}` (15°/75°/0°/45° by default),
+  `Dominant{n, base_angle_deg}` (N colors extracted via k-means on source
+  pixels).
+- **`Screening`**: `Am` (grid rotated per channel, radius = coverage) or
+  `Fm` (stochastic acceptance + sub-pixel jitter, near-constant radius).
+- **Multiply compositor** (`render_halftone`): starts from white paper, applies
+  each dot in subtractive mode (Magenta + Yellow = Red).
+- **CMYK separation** with partial UCR (removes 50% of the neutral component
+  when C+M+Y > 0.3).
+- **Dominant angles** spread by `base + i × 180° / n` to avoid moiré.
+- CLI flags: `--halftone`, `--screening`, `--halftone-freq`,
   `--halftone-min-radius`, `--halftone-max-dot`.
 
-### Corrigé
+### Fixed
 
-- **Résultats GUI obsolètes** : un worker lié à une ancienne image ou à un ancien
-  calcul ne peut plus publier son résultat, ses dots ou son erreur après un
-  changement de source/paramètres.
-- **Textures GPU GUI** : les textures de preview ne sont plus détruites et
-  recréées à chaque frame ; elles sont mises à jour uniquement lorsqu'un buffer
-  change réellement.
-- **Export transparent CLI** : JPEG/BMP sont maintenant composités sur le fond
-  au lieu de recevoir directement un buffer RGBA incompatible.
-- **SVG défensif** : dimensions, paramètres et coordonnées/rayons non finis ou
-  invalides sont rejetés avant génération.
-- **Density map** : la mémoire des tables intégrales a été réduite en utilisant
-  deux tables `f64` de luminance au lieu de six tables RGB, tout en conservant
-  une précision stable sur les grandes images.
-- **Audit sécurité** : la chaîne AccessKit responsable des vulnérabilités
-  `quick-xml` avait été retirée des features `eframe`; elle est réactivée
-  (`accesskit`, support des lecteurs d'écran) maintenant que `quick-xml` 0.41 a
-  corrigé les advisories. Les dépendances de codecs inutiles par défaut restent
-  désactivées.
-- **Angle de trame `--grid-angle`** : rotation de la grille (algorithme Grid)
-  autour du centre de l'image. Effet "halftone screen" expérimental.
-- **Validation uniforme** : `apply()` valide désormais aussi les paramètres des
-  algorithmes Grid et Quadtree ; les fréquences et rayons halftone invalides,
-  non finis ou négatifs sont rejetés.
-- **Density map mise en cache** : une map de longueur incorrecte retourne une
-  erreur au lieu de provoquer un panic.
-- **Dithering RGBA** : le chemin transparent applique maintenant la même
-  quantification Floyd-Steinberg que le chemin RGB, tout en conservant l'alpha.
-- **Sauvegardes atomiques** : les fichiers temporaires sont supprimés en cas
-  d'erreur et le remplacement de fichiers existants est géré pour Windows.
-- **Batch CLI** : le traitement continue après une erreur, mais retourne
-  désormais un code d'échec si au moins un fichier n'a pas pu être traité.
-- **Documentation des limites** : les plafonds de ressources et la portée des
-  paramètres par algorithme sont documentés dans les README et l'architecture.
+- **Stale GUI results**: a worker tied to an old image or an old computation can
+  no longer publish its result, its dots or its error after a source/parameter
+  change.
+- **GPU GUI textures**: preview textures are no longer destroyed and recreated
+  every frame; they are updated only when a buffer actually changes.
+- **Transparent CLI export**: JPEG/BMP are now composited onto the background
+  instead of receiving an incompatible RGBA buffer directly.
+- **Defensive SVG**: dimensions, parameters and non-finite or invalid
+  coordinates/radii are rejected before generation.
+- **Density map**: integral-table memory was reduced by using two `f64`
+  luminance tables instead of six RGB tables, while keeping stable precision on
+  large images.
+- **Security audit**: the AccessKit chain responsible for the `quick-xml`
+  vulnerabilities had been removed from the `eframe` features; it is re-enabled
+  (`accesskit`, screen-reader support) now that `quick-xml` 0.41 fixed the
+  advisories. Unnecessary codec dependencies remain disabled by default.
+- **Screen angle `--grid-angle`**: grid rotation (Grid algorithm) around the
+  image center. Experimental "halftone screen" effect.
+- **Uniform validation**: `apply()` now also validates the parameters of the Grid
+  and Quadtree algorithms; invalid, non-finite or negative halftone frequencies
+  and radii are rejected.
+- **Cached density map**: a map of incorrect length returns an error instead of
+  causing a panic.
+- **RGBA dithering**: the transparent path now applies the same
+  Floyd-Steinberg quantization as the RGB path, while preserving alpha.
+- **Atomic saves**: temporary files are deleted on error and replacement of
+  existing files is handled for Windows.
+- **CLI batch**: processing continues after an error, but now returns a failure
+  code if at least one file could not be processed.
+- **Documented limits**: resource ceilings and parameter scope per algorithm are
+  documented in the READMEs and the architecture.
 
-### Modifié
+### Changed
 
-- **`Algorithm` dérive `clap::ValueEnum`** directement — suppression du
-  wrapper `AlgoArg` et des redondances conversion `From<AlgoArg>`.
-- **`Args::to_filter_params()`** extraite : la construction `FilterParams`
-  depuis les flags CLI est centralisée (main.rs ne fait plus que router).
-  La GUI reste inchangée (elle construit `DotShape` directement depuis sliders).
+- **`Algorithm` derives `clap::ValueEnum`** directly — removal of the `AlgoArg`
+  wrapper and of the redundant `From<AlgoArg>` conversions.
+- **`Args::to_filter_params()`** extracted: building `FilterParams` from CLI
+  flags is centralized (main.rs only routes). The GUI is unchanged (it builds
+  `DotShape` directly from sliders).
 
 ### Documentation
 
-- **`CHANGELOG.md`** au format [Keep a Changelog](https://keepachangelog.com).
+- **`CHANGELOG.md`** in [Keep a Changelog](https://keepachangelog.com) format.
 
-### Interface graphique
+### GUI
 
-- **Undo / Redo** (`Ctrl+Z` / `Ctrl+Y` ou `Ctrl+Shift+Z`) : pile d'états
-  `FilterParams` avec debounce sur drag. 50 entrées max (FIFO).
-- Affichage de l'estimation mémoire de travail et avertissement lors d'un
-  redimensionnement automatique d'image.
-- Les rayons minimum et maximum sont manipulés dans un contrôle couplé avec
-  bornes dynamiques.
-- `FilterParams: PartialEq` dérivé pour détecter changements réels.
-- Indicateur visuel "Annulé." / "Refait." dans la barre de statut.
+- **Undo / Redo** (`Ctrl+Z` / `Ctrl+Y` or `Ctrl+Shift+Z`): `FilterParams`
+  state stack with drag debounce. 50 entries max (FIFO).
+- Display of working-memory estimate and warning on automatic image resize.
+- Minimum and maximum radii manipulated in a coupled control with dynamic bounds.
+- `FilterParams: PartialEq` derived to detect real changes.
+- Visual indicator "Cancelled." / "Redone." in the status bar.
 
-#### Simplifications et ergonomie (egui + GTK4)
+#### Simplifications and ergonomics (egui + GTK4)
 
-- **Sections repliables** : le panneau de réglages n'est plus une liste plate de
-  séparateurs. `Ui::collapsing` (egui) et `gtk::Expander` (GTK4) ; « Forme des
-  points » et « Fond et rendu » démarrent repliés, le flux courant
-  (ouvrir → algorithme → calculer → exporter) tient sans défiler.
-- **Infobulles sur tous les paramètres** (≈30 dans chaque frontend) : plus aucun
-  réglage n'est une étiquette opaque (« Boost zones uniformes », « Screening
-  AM/FM », « Rayon max (frac. step) », description de chaque algorithme…).
-- **Plus de contrôles grisés** : le mode halftone affiche désormais son bloc à la
-  place des paramètres de placement qu'il ignore, au lieu de les laisser
-  visibles mais inactifs. Supprime 4 `add_enabled(!is_halftone, …)` (egui) et le
-  `set_sensitive` (GTK4). Le bloc halftone est en outre remonté juste sous le
-  sélecteur d'algorithme dans les deux frontends.
-- **Barre d'affichage en haut (egui)** : mode d'affichage et zoom quittent le
-  panneau de réglages pour une barre au-dessus de l'aperçu — parité avec GTK4,
-  et le contrôle est au plus près de son effet.
-- **Barre d'état épinglée** : message de statut, mémoire estimée et durée du
-  dernier calcul sortent de la zone défilante (`Panel::bottom` en egui, barre
-  dédiée sous l'aperçu en GTK4) et restent donc lisibles pendant qu'on parcourt
-  les réglages.
-- **Algorithme en liste déroulante (egui)** : 5 `selectable_label` empilés
-  remplacés par un `ComboBox`, aligné sur le `DropDown` de GTK4.
-- **Boutons Undo / Redo dans egui** : la fonction n'était découvrable que par
-  `Ctrl+Z` ; les deux boutons existent désormais (parité GTK4).
-- **Bouton « Réinitialiser »** (les deux frontends) : rétablit
-  `FilterParams::default()` en passant par l'historique, donc annulable.
-- **Dialogues d'enregistrement pré-remplis** : dernier dossier utilisé et nom
-  dérivé de l'image source (`photo.jpg` → `photo-pointimg.png`).
+- **Collapsible sections**: the settings panel is no longer a flat list of
+  separators. `Ui::collapsing` (egui) and `gtk::Expander` (GTK4); "Dot shape"
+  and "Background and rendering" start collapsed, the current flow
+  (open → algorithm → compute → export) fits without scrolling.
+- **Tooltips on all parameters** (~30 in each frontend): no setting is an opaque
+  label anymore ("Uniform-zone boost", "AM/FM screening", "Max radius (frac.
+  step)", description of each algorithm…).
+- **No more greyed-out controls**: halftone mode now displays its block in place
+  of the placement parameters it ignores, instead of leaving them visible but
+  inactive. Removes 4 `add_enabled(!is_halftone, …)` (egui) and the
+  `set_sensitive` (GTK4). The halftone block is also moved up just below the
+  algorithm selector in both frontends.
+- **Display bar on top (egui)**: display mode and zoom leave the settings panel
+  for a bar above the preview — parity with GTK4, and the control is as close
+  as possible to its effect.
+- **Pinned status bar**: status message, estimated memory and last computation
+  duration leave the scrolling area (`Panel::bottom` in egui, dedicated bar
+  under the preview in GTK4) and therefore remain readable while browsing the
+  settings.
+- **Algorithm as dropdown (egui)**: 5 stacked `selectable_label`s replaced by a
+  `ComboBox`, aligned with GTK4's `DropDown`.
+- **Undo/Redo buttons in egui**: the feature was only discoverable via
+  `Ctrl+Z`; both buttons now exist (GTK4 parity).
+- **"Reset" button** (both frontends): restores `FilterParams::default()` via
+  the history, hence undoable.
+- **Pre-filled save dialogs**: last used folder and name derived from the source
+  image (`photo.jpg` → `photo-pointimg.png`).
 
-### Sauvegarde GUI multi-format
+### GUI multi-format save
 
-- Outlet dialog étendu : PNG / JPEG / WebP / BMP / TIFF.
-- PNG/WebP/TIFF préservent l'alpha ; JPEG/BMP compositent sur `bg_color`
-  si `--bg transparent`.
+- Output dialog extended: PNG / JPEG / WebP / BMP / TIFF.
+- PNG/WebP/TIFF preserve alpha; JPEG/BMP composite onto `bg_color` if
+  `--bg transparent`.
 
-### Affichage GUI transparent
+### GUI transparent display
 
-- Preview RGBA composite sur damier 8×8 (gris clair/gris foncé, effet Photoshop)
-  via `rgba_to_color_image_checker`. La zone transparente est visible entre dots.
+- RGBA preview composites on an 8×8 checkerboard (light grey/dark grey,
+  Photoshop effect) via `rgba_to_color_image_checker`. The transparent area is
+  visible between dots.
 
-### Accélération GPU
+### GPU acceleration
 
-- Feature optionnelle `gpu` avec compute shader WGSL pour calculer la variance
-  locale de la density map en parallèle par pixel.
-- Activation explicite : `cargo build --features gpu` puis `POINTIMG_GPU=1`.
-- Fallback CPU/SAT automatique si l'option runtime est absente ou si aucun
-  adapter/device GPU n'est disponible.
-- Tests GPU exécutables sur une machine équipée :
+- Optional `gpu` feature with WGSL compute shader to compute the local variance
+  of the density map in parallel per pixel.
+- Explicit activation: `cargo build --features gpu` then `POINTIMG_GPU=1`.
+- Automatic CPU/SAT fallback if the runtime option is absent or no GPU
+  adapter/device is available.
+- GPU tests runnable on an equipped machine:
   `POINTIMG_GPU=1 cargo test --features gpu`.
 
-### Routing GUI halftone/transparent
+### GUI halftone/transparent routing
 
-- `start_compute` route vers `apply_rgba` quand `transparent` ou `halftone != Off`
-  (pas de preview progressive pour ces deux modes — single-pass).
+- `start_compute` routes to `apply_rgba` when `transparent` or `halftone != Off`
+  (no progressive preview for these two modes — single-pass).
 
-## [0.1.0] — Version initiale publiée
+## [0.1.0] — Initial release
 
-- 4 algorithmes : Grid, K-means, Voronoi (Lloyd pondéré), Quadtree adaptatif.
-- 4 formes de dots : Cercle, Carré, Ellipse (aspect + rotation),
-  Polygone régulier (3-12 côtés).
+- 4 algorithms: Grid, K-means, Voronoi (weighted Lloyd), adaptive Quadtree.
+- 4 dot shapes: Circle, Square, Ellipse (aspect + rotation), regular Polygon
+  (3-12 sides).
 - Density map via summed-area tables (O(W×H)).
-- Spatiale accélération `SeedGrid` (hash grid 2D + early stopping).
-- Export PNG + SVG vectoriel.
-- GUI interactive (egui/wgpu) avec preview progressive et drag & drop.
-- CLI `clap` avec tous les paramètres.
-- Palette réduite optionnelle (k-means RGB sur dots).
-- Fond personnalisable : white, black, ou `#rrggbb`.
-- 26 tests unitaires + clippy strict.
+- Spatial acceleration `SeedGrid` (2D hash grid + early stopping).
+- PNG + vector SVG export.
+- Interactive GUI (egui/wgpu) with progressive preview and drag & drop.
+- `clap` CLI with all parameters.
+- Optional reduced palette (k-means RGB on dots).
+- Customizable background: white, black, or `#rrggbb`.
+- 26 unit tests + strict clippy.
 
 [Unreleased]: https://github.com/pvtc/pointimg/compare/v0.1.0...HEAD
 [0.1.0]: https://github.com/pvtc/pointimg/releases/tag/v0.1.0
