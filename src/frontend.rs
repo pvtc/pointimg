@@ -362,29 +362,53 @@ pub const ZOOM_STEP: f32 = 1.25;
 /// other).
 pub mod msg {
     /// A computation is in progress.
-    pub const COMPUTING: &str = "Calcul en cours…";
+    pub fn computing() -> &'static str {
+        super::t("Calcul en cours…")
+    }
     /// The displayed render predates the last setting change.
-    pub const STALE: &str = "aperçu obsolète — recalcul en cours";
+    pub fn stale() -> &'static str {
+        super::t("aperçu obsolète — recalcul en cours")
+    }
     /// The full-resolution pass follows the reduced preview.
-    pub const FINALIZING: &str = "pleine résolution…";
+    pub fn finalizing() -> &'static str {
+        super::t("pleine résolution…")
+    }
     /// No previous state to restore.
-    pub const NOTHING_TO_UNDO: &str = "Rien à annuler.";
+    pub fn nothing_to_undo() -> &'static str {
+        super::t("Rien à annuler.")
+    }
     /// An undo has just been applied.
-    pub const UNDONE: &str = "Annulé.";
+    pub fn undone() -> &'static str {
+        super::t("Annulé.")
+    }
     /// No undone state to redo.
-    pub const NOTHING_TO_REDO: &str = "Rien à rétablir.";
+    pub fn nothing_to_redo() -> &'static str {
+        super::t("Rien à rétablir.")
+    }
     /// A redo has just been applied.
-    pub const REDONE: &str = "Rétabli.";
+    pub fn redone() -> &'static str {
+        super::t("Rétabli.")
+    }
     /// The settings are already the default ones.
-    pub const ALREADY_DEFAULT: &str = "Réglages déjà par défaut.";
+    pub fn already_default() -> &'static str {
+        super::t("Réglages déjà par défaut.")
+    }
     /// No image is loaded.
-    pub const OPEN_FIRST: &str = "Ouvrez d'abord une image.";
+    pub fn open_first() -> &'static str {
+        super::t("Ouvrez d'abord une image.")
+    }
     /// No render to copy.
-    pub const NOTHING_TO_COPY: &str = "Aucun résultat à copier.";
+    pub fn nothing_to_copy() -> &'static str {
+        super::t("Aucun résultat à copier.")
+    }
     /// The render is in the clipboard.
-    pub const COPIED: &str = "Image copiée dans le presse-papiers.";
+    pub fn copied() -> &'static str {
+        super::t("Image copiée dans le presse-papiers.")
+    }
     /// The user gave up on overwriting a file.
-    pub const SAVE_CANCELLED: &str = "Sauvegarde annulée.";
+    pub fn save_cancelled() -> &'static str {
+        super::t("Sauvegarde annulée.")
+    }
 }
 
 /// Looks for an assets folder near the binary then in the current directory.
@@ -585,21 +609,21 @@ pub fn describe_parameter_change(before: &FilterParams, after: &FilterParams) ->
         return format!("Itérations : {} → {}", before.iterations, after.iterations);
     }
     if before.dot_shape != after.dot_shape {
-        return "Forme des points modifiée".to_string();
+        return t("Forme des points modifiée").to_string();
     }
     if before.palette_size != after.palette_size {
-        return "Palette modifiée".to_string();
+        return t("Palette modifiée").to_string();
     }
     if before.bg_color != after.bg_color || before.transparent != after.transparent {
-        return "Fond modifié".to_string();
+        return t("Fond modifié").to_string();
     }
     if before.gamma_correct != after.gamma_correct {
-        return "Correction gamma modifiée".to_string();
+        return t("Correction gamma modifiée").to_string();
     }
     if before.halftone != after.halftone || before.screening != after.screening {
-        return "Paramètres halftone modifiés".to_string();
+        return t("Paramètres halftone modifiés").to_string();
     }
-    "Paramètres modifiés".to_string()
+    t("Paramètres modifiés").to_string()
 }
 
 // ─── Output paths ────────────────────────────────────────────────────────────
@@ -1224,5 +1248,92 @@ mod tests {
             "un temporaire d'un échec doit être supprimé"
         );
         let _ = std::fs::remove_dir_all(&dir);
+    }
+}
+
+// ─── Internationalisation ────────────────────────────────────────────────────
+
+/// Interface language supported by the application.
+#[derive(Clone, Copy, PartialEq, Eq, Debug, Default)]
+pub enum Locale {
+    /// English.
+    #[default]
+    En,
+    /// French.
+    Fr,
+}
+
+impl Locale {
+    /// Short code used in preferences and the system environment.
+    pub fn code(self) -> &'static str {
+        match self {
+            Locale::En => "en",
+            Locale::Fr => "fr",
+        }
+    }
+
+    /// Parses a code; anything that is not `fr*` becomes English.
+    pub fn from_code(code: &str) -> Self {
+        let code = code.trim().to_ascii_lowercase();
+        if code.starts_with("fr") {
+            Locale::Fr
+        } else {
+            Locale::En
+        }
+    }
+}
+
+static LOCALE: std::sync::atomic::AtomicU8 = std::sync::atomic::AtomicU8::new(0);
+
+/// Currently selected interface language.
+pub fn locale() -> Locale {
+    match LOCALE.load(std::sync::atomic::Ordering::Relaxed) {
+        1 => Locale::Fr,
+        _ => Locale::En,
+    }
+}
+
+/// Changes the interface language. The change is immediate for egui (which
+/// rebuilds every frame); GTK applies it on the next launch.
+pub fn set_locale(locale: Locale) {
+    LOCALE.store(
+        match locale {
+            Locale::En => 0,
+            Locale::Fr => 1,
+        },
+        std::sync::atomic::Ordering::Relaxed,
+    );
+}
+
+/// Guesses the language from the environment (`LC_ALL`, `LC_MESSAGES`, `LANG`).
+pub fn detect_system_locale() -> Locale {
+    for var in ["LC_ALL", "LC_MESSAGES", "LANG"] {
+        if let Ok(value) = std::env::var(var) {
+            let value = value.to_ascii_lowercase();
+            if value.starts_with("fr") {
+                return Locale::Fr;
+            }
+            if !value.is_empty() && value != "c" && value != "posix" {
+                return Locale::En;
+            }
+        }
+    }
+    Locale::En
+}
+
+include!("i18n_table.rs");
+
+/// Translates a source string. The source string is the French text: it is
+/// returned as-is in French, and looked up in the table in English. An entry
+/// missing from the table falls back to the source string, so a not-yet
+/// translated string never disappears.
+pub fn t(key: &'static str) -> &'static str {
+    match locale() {
+        Locale::Fr => key,
+        Locale::En => TRANSLATIONS
+            .iter()
+            .find(|(source, _)| *source == key)
+            .map(|(_, translation)| *translation)
+            .unwrap_or(key),
     }
 }
