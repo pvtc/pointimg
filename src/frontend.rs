@@ -362,52 +362,52 @@ pub const ZOOM_STEP: f32 = 1.25;
 /// other).
 pub mod msg {
     /// A computation is in progress.
-    pub fn computing() -> &'static str {
-        super::t("Calcul en cours…")
+    pub fn computing() -> String {
+        super::gettext("Calcul en cours…").to_string()
     }
     /// The displayed render predates the last setting change.
-    pub fn stale() -> &'static str {
-        super::t("aperçu obsolète — recalcul en cours")
+    pub fn stale() -> String {
+        super::gettext("aperçu obsolète — recalcul en cours").to_string()
     }
     /// The full-resolution pass follows the reduced preview.
-    pub fn finalizing() -> &'static str {
-        super::t("pleine résolution…")
+    pub fn finalizing() -> String {
+        super::gettext("pleine résolution…").to_string()
     }
     /// No previous state to restore.
-    pub fn nothing_to_undo() -> &'static str {
-        super::t("Rien à annuler.")
+    pub fn nothing_to_undo() -> String {
+        super::gettext("Rien à annuler.").to_string()
     }
     /// An undo has just been applied.
-    pub fn undone() -> &'static str {
-        super::t("Annulé.")
+    pub fn undone() -> String {
+        super::gettext("Annulé.").to_string()
     }
     /// No undone state to redo.
-    pub fn nothing_to_redo() -> &'static str {
-        super::t("Rien à rétablir.")
+    pub fn nothing_to_redo() -> String {
+        super::gettext("Rien à rétablir.").to_string()
     }
     /// A redo has just been applied.
-    pub fn redone() -> &'static str {
-        super::t("Rétabli.")
+    pub fn redone() -> String {
+        super::gettext("Rétabli.").to_string()
     }
     /// The settings are already the default ones.
-    pub fn already_default() -> &'static str {
-        super::t("Réglages déjà par défaut.")
+    pub fn already_default() -> String {
+        super::gettext("Réglages déjà par défaut.").to_string()
     }
     /// No image is loaded.
-    pub fn open_first() -> &'static str {
-        super::t("Ouvrez d'abord une image.")
+    pub fn open_first() -> String {
+        super::gettext("Ouvrez d'abord une image.").to_string()
     }
     /// No render to copy.
-    pub fn nothing_to_copy() -> &'static str {
-        super::t("Aucun résultat à copier.")
+    pub fn nothing_to_copy() -> String {
+        super::gettext("Aucun résultat à copier.").to_string()
     }
     /// The render is in the clipboard.
-    pub fn copied() -> &'static str {
-        super::t("Image copiée dans le presse-papiers.")
+    pub fn copied() -> String {
+        super::gettext("Image copiée dans le presse-papiers.").to_string()
     }
     /// The user gave up on overwriting a file.
-    pub fn save_cancelled() -> &'static str {
-        super::t("Sauvegarde annulée.")
+    pub fn save_cancelled() -> String {
+        super::gettext("Sauvegarde annulée.").to_string()
     }
 }
 
@@ -609,21 +609,21 @@ pub fn describe_parameter_change(before: &FilterParams, after: &FilterParams) ->
         return format!("Itérations : {} → {}", before.iterations, after.iterations);
     }
     if before.dot_shape != after.dot_shape {
-        return t("Forme des points modifiée").to_string();
+        return gettext("Forme des points modifiée").to_string();
     }
     if before.palette_size != after.palette_size {
-        return t("Palette modifiée").to_string();
+        return gettext("Palette modifiée").to_string();
     }
     if before.bg_color != after.bg_color || before.transparent != after.transparent {
-        return t("Fond modifié").to_string();
+        return gettext("Fond modifié").to_string();
     }
     if before.gamma_correct != after.gamma_correct {
-        return t("Correction gamma modifiée").to_string();
+        return gettext("Correction gamma modifiée").to_string();
     }
     if before.halftone != after.halftone || before.screening != after.screening {
-        return t("Paramètres halftone modifiés").to_string();
+        return gettext("Paramètres halftone modifiés").to_string();
     }
-    t("Paramètres modifiés").to_string()
+    gettext("Paramètres modifiés").to_string()
 }
 
 // ─── Output paths ────────────────────────────────────────────────────────────
@@ -1251,7 +1251,10 @@ mod tests {
     }
 }
 
-// ─── Internationalisation ────────────────────────────────────────────────────
+// ─── Internationalisation (gettext, pure Rust) ───────────────────────────────
+
+use gettext::Catalog;
+use std::sync::OnceLock;
 
 /// Interface language supported by the application.
 #[derive(Clone, Copy, PartialEq, Eq, Debug, Default)]
@@ -1283,29 +1286,7 @@ impl Locale {
     }
 }
 
-static LOCALE: std::sync::atomic::AtomicU8 = std::sync::atomic::AtomicU8::new(0);
-
-/// Currently selected interface language.
-pub fn locale() -> Locale {
-    match LOCALE.load(std::sync::atomic::Ordering::Relaxed) {
-        1 => Locale::Fr,
-        _ => Locale::En,
-    }
-}
-
-/// Changes the interface language. The change is immediate for egui (which
-/// rebuilds every frame); GTK applies it on the next launch.
-pub fn set_locale(locale: Locale) {
-    LOCALE.store(
-        match locale {
-            Locale::En => 0,
-            Locale::Fr => 1,
-        },
-        std::sync::atomic::Ordering::Relaxed,
-    );
-}
-
-/// Guesses the language from the environment (`LC_ALL`, `LC_MESSAGES`, `LANG`).
+/// Guesses the language from the environment.
 pub fn detect_system_locale() -> Locale {
     for var in ["LC_ALL", "LC_MESSAGES", "LANG"] {
         if let Ok(value) = std::env::var(var) {
@@ -1321,19 +1302,57 @@ pub fn detect_system_locale() -> Locale {
     Locale::En
 }
 
-include!("i18n_table.rs");
+/// Embedded English catalogue (compiled .mo).
+static ENGLISH_MO: &[u8] = include_bytes!("../locales/en/LC_MESSAGES/pointimg.mo");
 
-/// Translates a source string. The source string is the French text: it is
-/// returned as-is in French, and looked up in the table in English. An entry
-/// missing from the table falls back to the source string, so a not-yet
-/// translated string never disappears.
-pub fn t(key: &'static str) -> &'static str {
+/// Parsed English catalogue, initialised once.
+static ENGLISH_CATALOG: OnceLock<Catalog> = OnceLock::new();
+
+fn english_catalog() -> Option<&'static Catalog> {
+    ENGLISH_CATALOG.get_or_init(|| {
+        Catalog::parse(Cursor::new(ENGLISH_MO)).unwrap_or_else(|_| Catalog::empty())
+    });
+    ENGLISH_CATALOG.get()
+}
+
+static LOCALE: std::sync::atomic::AtomicU8 = std::sync::atomic::AtomicU8::new(0);
+
+/// Currently selected interface language.
+pub fn locale() -> Locale {
+    match LOCALE.load(std::sync::atomic::Ordering::Relaxed) {
+        1 => Locale::Fr,
+        _ => Locale::En,
+    }
+}
+
+/// Changes the active language.
+pub fn set_locale(locale: Locale) {
+    LOCALE.store(
+        match locale {
+            Locale::En => 0,
+            Locale::Fr => 1,
+        },
+        std::sync::atomic::Ordering::Relaxed,
+    );
+}
+
+/// Initialises the i18n layer (pure Rust, no system dependencies).
+pub fn init_i18n() {
+    // Parse the embedded catalogue once.
+    let _ = english_catalog();
+    // Follow the environment by default; prefs may override later.
+    set_locale(detect_system_locale());
+}
+
+/// Translates a source string (French msgid) into the current language.
+/// Returns a `&'static str`: the msgid itself in French, the catalogue entry
+/// in English (or the msgid if no entry exists).
+pub fn gettext(msgid: &'static str) -> &'static str {
     match locale() {
-        Locale::Fr => key,
-        Locale::En => TRANSLATIONS
-            .iter()
-            .find(|(source, _)| *source == key)
-            .map(|(_, translation)| *translation)
-            .unwrap_or(key),
+        Locale::Fr => msgid,
+        Locale::En => english_catalog()
+            .map(|c| c.gettext(msgid))
+            .filter(|s| *s != msgid)
+            .unwrap_or(msgid),
     }
 }

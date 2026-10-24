@@ -1,0 +1,1292 @@
+msgid ""
+msgstr ""
+"Content-Type: text/plain; charset=UTF-8\n"
+"Language: en\n"
+
+msgid "{:.0} Ko"
+msgstr "{:.0} kB"
+
+msgid "0 = répartition uniforme · 1 = détail maximal"
+msgstr "0 = uniform distribution · 1 = maximum detail"
+
+msgid "0 = uniforme · 1 = détail maximal"
+msgstr "0 = uniform · 1 = maximum detail"
+
+msgid "{:.1} Go"
+msgstr "{:.1} GB"
+
+msgid "{:.1} Mo"
+msgstr "{:.1} MB"
+
+msgid "8 Mo"
+msgstr "8 MB"
+
+msgid "Affichage"
+msgstr "Display"
+
+msgid "Afficher les réglages"
+msgstr "Show settings"
+
+msgid "Agrandit les points dans les zones sans détail. 1 = aucun agrandissement."
+msgstr "Enlarges points in areas without detail. 1 = no enlargement."
+
+msgid "Agrandit les points dans les zones sans détail. 1 = aucun agrandissement, 2.5 = réglage par défaut."
+msgstr "Enlarges points in areas without detail. 1 = no enlargement, 2.5 = default setting."
+
+msgid "ai-je personnalisé un preset ?"
+msgstr "did I customize a preset?"
+
+msgid "Ajuster"
+msgstr "Fit"
+
+msgid "_Ajuster à la fenêtre"
+msgstr "_Fit to window"
+
+msgid "Ajuster à la fenêtre"
+msgstr "Fit to window"
+
+msgid "Ajuster l'agrandissement des points en zones sans détail"
+msgstr "Adjust point enlargement in areas without detail"
+
+msgid "Ajuster l'aperçu à la fenêtre (0)"
+msgstr "Fit preview to window (0)"
+
+msgid "Ajuster la sensibilité à la souris ; l'infobulle du réglage explique son effet"
+msgstr "Adjust mouse sensitivity; the setting's tooltip explains its effect"
+
+msgid "Algorithme : {:?} → {:?}"
+msgstr "Algorithm: {:?} → {:?}"
+
+msgid "Algorithme"
+msgstr "Algorithm"
+
+msgid "{algorithm:?} figure plus d'une fois"
+msgstr "{algorithm:?} appears more than once"
+
+msgid "aller-retour cassé"
+msgstr "round trip broken"
+
+msgid "aller-retour instable"
+msgstr "round trip unstable"
+
+msgid "Alpha conservé à l'export PNG/WebP/TIFF"
+msgstr "Alpha preserved on PNG/WebP/TIFF export"
+
+msgid "AM (grille)"
+msgstr "AM (grid)"
+
+msgid "AM : la taille du dot code l'encre. FM : c'est la densité qui la code."
+msgstr "AM: dot size encodes ink. FM: density encodes it."
+
+msgid "Angle de base"
+msgstr "Base angle"
+
+msgid "Angle de la grille"
+msgstr "Grid angle"
+
+msgid "Angle de la première trame ; les suivantes sont réparties régulièrement pour éviter le moiré."
+msgstr "Angle of the first screen; subsequent ones are evenly distributed to avoid moiré."
+
+msgid "Angle grille"
+msgstr "Grid angle"
+
+msgid "Angles C/M/Y/K : {:.0}° / {:.0}° / {:.0}° / {:.0}°"
+msgstr "C/M/Y/K angles: {:.0}° / {:.0}° / {:.0}° / {:.0}°"
+
+msgid "Annulation…"
+msgstr "Canceling…"
+
+msgid "Annulé"
+msgstr "Canceled"
+
+msgid "Annulé."
+msgstr "Canceled."
+
+msgid "Annuler"
+msgstr "Cancel"
+
+msgid "Annuler : {} (Ctrl+Z)"
+msgstr "Undo: {} (Ctrl+Z)"
+
+msgid "Annuler la dernière modification"
+msgstr "Undo last change"
+
+msgid "Annuler la dernière modification (Ctrl+Z)"
+msgstr "Undo last change (Ctrl+Z)"
+
+msgid "Annuler le calcul"
+msgstr "Cancel computation"
+
+msgid "Annuler le calcul en cours"
+msgstr "Cancel current computation"
+
+msgid "Annuler / Rétablir"
+msgstr "Undo / Redo"
+
+msgid "Aperçu"
+msgstr "Preview"
+
+msgid "Aperçu calculé — finalisation en cours…"
+msgstr "Preview computed — finalizing…"
+
+msgid "aperçu obsolète — recalcul en cours"
+msgstr "stale preview — recomputing"
+
+msgid "Aperçu _précédent"
+msgstr "Preview _previous"
+
+msgid "Aperçu précédent"
+msgstr "Previous preview"
+
+msgid "aperçu rapide"
+msgstr "quick preview"
+
+msgid "Aperçu rapide en cours…"
+msgstr "Quick preview in progress…"
+
+msgid "_Aperçu suivant"
+msgstr "_Next preview"
+
+msgid "Aperçu suivant"
+msgstr "Next preview"
+
+msgid "Aperçu suivant / précédent"
+msgstr "Next / previous preview"
+
+msgid "Appliquée au rendu et aux zones transparentes de la source"
+msgstr "Applied to rendering and transparent areas of the source"
+
+msgid "Aucun"
+msgstr "None"
+
+msgid "Aucune commande ne correspond."
+msgstr "No command matches."
+
+msgid "Aucune image"
+msgstr "No image"
+
+msgid "Aucune image dans {}"
+msgstr "No image in {}"
+
+msgid "Aucun fichier d'entrée trouvé pour '{}'"
+msgstr "No input file found for '{}'"
+
+msgid "Aucun résultat à copier."
+msgstr "No result to copy."
+
+msgid "Aucun résultat à sauvegarder."
+msgstr "No result to save."
+
+msgid "au revoir"
+msgstr "goodbye"
+
+msgid "batch parallèle : {} worker(s)"
+msgstr "parallel batch: {} worker(s)"
+
+msgid "Blanc"
+msgstr "White"
+
+msgid "bleu"
+msgstr "blue"
+
+msgid "bonjour"
+msgstr "hello"
+
+msgid "Boost zones uniformes"
+msgstr "Boost uniform areas"
+
+msgid "Boutons de l'en-tête et de l'accueil"
+msgstr "Header and home buttons"
+
+msgid "{bytes} o"
+msgstr "{bytes} B"
+
+msgid "Calcul"
+msgstr "Computation"
+
+msgid "Calcul…"
+msgstr "Computing…"
+
+msgid "Calcul annulé."
+msgstr "Computation canceled."
+
+msgid "Calcul en cours…"
+msgstr "Computation in progress…"
+
+msgid "Calcul sur une image à 25 % : le plus réactif"
+msgstr "Computation on a 25% image: most responsive"
+
+msgid "Calcul sur une image à 50 % : très réactif"
+msgstr "Computation on a 50% image: very responsive"
+
+msgid "Calcul terminé."
+msgstr "Computation finished."
+
+msgid "Calcul terminé en {}."
+msgstr "Computation finished in {}."
+
+msgid "Canaux"
+msgstr "Channels"
+
+msgid "Carré"
+msgstr "Square"
+
+msgid "Carte de densité"
+msgstr "Density map"
+
+msgid "Cellules de la trame par unité de longueur"
+msgstr "Screen cells per unit length"
+
+msgid "Cercle"
+msgstr "Circle"
+
+msgid "_Charger un preset…"
+msgstr "_Load a preset…"
+
+msgid "Charger un preset"
+msgstr "Load a preset"
+
+msgid "Charger un preset…"
+msgstr "Load a preset…"
+
+msgid "Clair"
+msgstr "Light"
+
+msgid "CMJN est valide"
+msgstr "CMYK is valid"
+
+msgid "CMJN (rosette)"
+msgstr "CMYK (rosette)"
+
+msgid "Colonnes : {} → {}"
+msgstr "Columns: {} → {}"
+
+msgid "Colonnes"
+msgstr "Columns"
+
+msgid "Commandes"
+msgstr "Commands"
+
+msgid "comparaison"
+msgstr "comparison"
+
+msgid "Comparaison"
+msgstr "Comparison"
+
+msgid "condition de point de rupture valide"
+msgstr "valid breakpoint condition"
+
+msgid "Copier"
+msgstr "Copy"
+
+msgid "Copier dans le presse-papiers"
+msgstr "Copy to clipboard"
+
+msgid "Copier l'image"
+msgstr "Copy image"
+
+msgid "Copier l'image dans le presse-papiers (Ctrl+C)"
+msgstr "Copy image to clipboard (Ctrl+C)"
+
+msgid "Correction gamma"
+msgstr "Gamma correction"
+
+msgid "Correction gamma modifiée"
+msgstr "Gamma correction modified"
+
+msgid "Côte à côte"
+msgstr "Side by side"
+
+msgid "Côtés"
+msgstr "Sides"
+
+msgid "Couleur de fond"
+msgstr "Background color"
+
+msgid "Couleur de fond du rendu"
+msgstr "Rendering background color"
+
+msgid "Couleur du fond"
+msgstr "Background color"
+
+msgid "Couleur invalide '{}'"
+msgstr "Invalid color '{}'"
+
+msgid "Couleur invalide '{}'. Valeurs valides : white, black, transparent, #rrggbb"
+msgstr "Invalid color '{}'. Valid values: white, black, transparent, #rrggbb"
+
+msgid "Couleurs"
+msgstr "Colors"
+
+msgid "Couleurs de la palette"
+msgstr "Palette colors"
+
+msgid "couleurs dominantes"
+msgstr "dominant colors"
+
+msgid "Couleurs dominantes"
+msgstr "Dominant colors"
+
+msgid "Ctrl+Maj+O"
+msgstr "Ctrl+Shift+O"
+
+msgid "Ctrl+Maj+S"
+msgstr "Ctrl+Shift+S"
+
+msgid "curseur"
+msgstr "cursor"
+
+msgid "Curseurs des bornes min et max du halftone ; le repère marque la position de l'autre borne"
+msgstr "Min and max halftone bound cursors; the marker shows the other bound's position"
+
+msgid "{curve:?} : {value} est revenu {back}"
+msgstr "{curve:?}: {value} came back {back}"
+
+msgid "De 10 à 100 000 points, en échelle logarithmique"
+msgstr "From 10 to 100,000 points, on a logarithmic scale"
+
+msgid "Densité de points"
+msgstr "Point density"
+
+msgid "Dernier calcul : {}"
+msgstr "Last computation: {}"
+
+msgid "Deux exécutions avec les mêmes réglages donnent le même résultat"
+msgstr "Two runs with the same settings give the same result"
+
+msgid "Deux exécutions identiques donnent le même résultat"
+msgstr "Two identical runs give the same result"
+
+msgid "Dézoomer (−)"
+msgstr "Zoom out (−)"
+
+msgid "Dézoomer"
+msgstr "Zoom out"
+
+msgid "Diffusion à queue longue : moins de vers, motif plus lisse"
+msgstr "Long-tail diffusion: fewer worms, smoother pattern"
+
+msgid "Diffusion de l'erreur : dégradés préservés, motif légèrement « verreux »"
+msgstr "Error diffusion: gradients preserved, slightly 'glassy' pattern"
+
+msgid "Dimensions de l'image chargée"
+msgstr "Loaded image dimensions"
+
+msgid "Dimensions invalides pour '{}'"
+msgstr "Invalid dimensions for '{}'"
+
+msgid "{dithering:?} figure plus d'une fois"
+msgstr "{dithering:?} appears more than once"
+
+msgid "Documents récents"
+msgstr "Recent documents"
+
+msgid "`dominant-N` : N doit être ≥ 2, got {n}"
+msgstr "`dominant-N`: N must be ≥ 2, got {n}"
+
+msgid "`dominant-N` : N doit être un entier ≥ 2, got '{}'"
+msgstr "`dominant-N`: N must be an integer ≥ 2, got '{}'"
+
+msgid "Dossier…"
+msgstr "Folder…"
+
+msgid "Dossier illisible : {}"
+msgstr "Unreadable folder: {}"
+
+msgid "du texte n'est pas une image"
+msgstr "text is not an image"
+
+msgid "Échap"
+msgstr "Esc"
+
+msgid "échec '{}': {}"
+msgstr "failure '{}': {}"
+
+msgid "écriture"
+msgstr "writing"
+
+msgid "Entrée : première commande · Échap : fermer"
+msgstr "Enter: first command · Esc: close"
+
+msgid "Erreur chargement : {e}"
+msgstr "Loading error: {e}"
+
+msgid "Erreur chargement preset : {e}"
+msgstr "Preset loading error: {e}"
+
+msgid "Erreur de chargement du preset : {e}"
+msgstr "Preset loading error: {e}"
+
+msgid "Erreur de chargement : {e}"
+msgstr "Loading error: {e}"
+
+msgid "Erreur d'écriture SVG : {e}"
+msgstr "SVG writing error: {e}"
+
+msgid "Erreur de sauvegarde : {e}"
+msgstr "Save error: {e}"
+
+msgid "Erreur : {e}"
+msgstr "Error: {e}"
+
+msgid "Erreur écriture SVG : {e}"
+msgstr "SVG writing error: {e}"
+
+msgid "Erreur lecture dimensions : {e}"
+msgstr "Dimension reading error: {e}"
+
+msgid "Erreur lors du calcul du filtre"
+msgstr "Error computing the filter"
+
+msgid "Erreur lors du calcul du filtre (RGBA)"
+msgstr "Error computing the filter (RGBA)"
+
+msgid "Erreur lors du rendu SVG"
+msgstr "Error rendering SVG"
+
+msgid "Erreur rendu SVG : {e}"
+msgstr "SVG rendering error: {e}"
+
+msgid "Erreur sauvegarde : {e}"
+msgstr "Save error: {e}"
+
+msgid "Erreur sauvegarde preset : {e}"
+msgstr "Preset save error: {e}"
+
+msgid "Espace"
+msgstr "Space"
+
+msgid "État annulé"
+msgstr "State canceled"
+
+msgid "État rétabli"
+msgstr "State restored"
+
+msgid "« {} » existe déjà, son contenu sera remplacé."
+msgstr "\"{}\" already exists, its content will be replaced."
+
+msgid "Export : {}"
+msgstr "Export: {}"
+
+msgid "Export en attente du rendu en pleine résolution…"
+msgstr "Export waiting for full-resolution render…"
+
+msgid "Exporter"
+msgstr "Export"
+
+msgid "Exporter à côté de la source"
+msgstr "Export next to source"
+
+msgid "Exporter en SVG…"
+msgstr "Export as SVG…"
+
+msgid "Exporter le rendu en SVG (Ctrl+Shift+S)"
+msgstr "Export render as SVG (Ctrl+Shift+S)"
+
+msgid "Exporter le rendu.\\n{comparison}"
+msgstr "Export render.\\n{comparison}"
+
+msgid "Exporter le SVG à côté de la source"
+msgstr "Export SVG next to source"
+
+msgid "Exporter l'image…"
+msgstr "Export image…"
+
+msgid "Exporter l'image (Ctrl+S)"
+msgstr "Export image (Ctrl+S)"
+
+msgid "Exporter l'image (Ctrl+S)\\n{comparison}"
+msgstr "Export image (Ctrl+S)\\n{comparison}"
+
+msgid "Exporter sans dialogue"
+msgstr "Export without dialog"
+
+msgid "Exporter SVG…"
+msgstr "Export SVG…"
+
+msgid "Export : mesure…"
+msgstr "Export: measuring…"
+
+msgid "Export : PNG 1.4 MB · WebP — · JPEG…"
+msgstr "Export: PNG 1.4 MB · WebP — · JPEG…"
+
+msgid "Export : {sizes_label}"
+msgstr "Export: {sizes_label}"
+
+msgid "Fichier"
+msgstr "File"
+
+msgid "{} fichier(s) à traiter"
+msgstr "{} file(s) to process"
+
+msgid "{} fichier(s) n'ont pas pu être traité(s)"
+msgstr "{} file(s) could not be processed"
+
+msgid "Filtre pointilliste — CLI"
+msgstr "Pointillist filter — CLI"
+
+msgid "Fond et rendu"
+msgstr "Background and rendering"
+
+msgid "Fond modifié"
+msgstr "Background modified"
+
+msgid "Fond transparent (RGBA)"
+msgstr "Transparent background (RGBA)"
+
+msgid "format attendu : WxH (ex. 200x150), got '{}'"
+msgstr "expected format: WxH (e.g. 200x150), got '{}'"
+
+msgid "format d'export non pris en charge : {extension}"
+msgstr "unsupported export format: {extension}"
+
+msgid "Forme"
+msgstr "Shape"
+
+msgid "Forme des points"
+msgstr "Point shape"
+
+msgid "Forme des points modifiée"
+msgstr "Point shape modified"
+
+msgid "fraction du petit côté"
+msgstr "fraction of the short side"
+
+msgid "Fréquence de trame"
+msgstr "Screen frequency"
+
+msgid "Fréquence de trame, de 4 à 400 cellules, en échelle logarithmique"
+msgstr "Screen frequency, from 4 to 400 cells, on a logarithmic scale"
+
+msgid "Glissez-déposez un fichier dans la fenêtre, ou ouvrez-en un."
+msgstr "Drag and drop a file into the window, or open one."
+
+msgid "glissez le curseur (double-clic : centré)"
+msgstr "drag the slider (double-click: centered)"
+
+msgid "glob invalide '{}'"
+msgstr "invalid glob '{}'"
+
+msgid "Graine"
+msgstr "Seed"
+
+msgid "Graine du générateur aléatoire"
+msgstr "Random generator seed"
+
+msgid "Graine fixée"
+msgstr "Fixed seed"
+
+msgid "Grille"
+msgstr "Grid"
+
+msgid "Grille régulière : une cellule = un point. Rapide et prévisible."
+msgstr "Regular grid: one cell = one point. Fast and predictable."
+
+msgid "halftone invalide '{s}'. Valeurs valides : off, cmyk, dominant-N (ex: dominant-6)"
+msgstr "invalid halftone '{s}'. Valid values: off, cmyk, dominant-N (e.g. dominant-6)"
+
+msgid "Halftone sans mode doit être refusé"
+msgstr "Halftone without mode must be rejected"
+
+msgid "hauteur invalide dans '{}'"
+msgstr "invalid height in '{}'"
+
+msgid "{hint}\\nPlage autorisée : {range_label}"
+msgstr "{hint}\\nAllowed range: {range_label}"
+
+msgid "icône de fenêtre illisible : {e}"
+msgstr "unreadable window icon: {e}"
+
+msgid "Image chargée : {}"
+msgstr "Image loaded: {}"
+
+msgid "Image chargée et réduite de {}x{} à {}x{} pour respecter la mémoire."
+msgstr "Image loaded and downscaled from {}x{} to {}x{} to fit memory."
+
+msgid "Image copiée dans le presse-papiers."
+msgstr "Image copied to clipboard."
+
+msgid "_Image précédente"
+msgstr "_Previous image"
+
+msgid "Image précédente"
+msgstr "Previous image"
+
+msgid "Image précédente / suivante"
+msgstr "Previous / next image"
+
+msgid "image '{}' réduite automatiquement à {:?} pour respecter les limites mémoire"
+msgstr "image '{}' automatically reduced to {:?} to fit memory limits"
+
+msgid "Image réduite de {orig_w}x{orig_h} à {}x{} pour respecter la mémoire."
+msgstr "Image reduced from {orig_w}x{orig_h} to {}x{} to fit memory."
+
+msgid "Images du dossier"
+msgstr "Folder images"
+
+msgid "Images récentes"
+msgstr "Recent images"
+
+msgid "Image _suivante"
+msgstr "Image _next"
+
+msgid "Image suivante"
+msgstr "Next image"
+
+msgid "Image vide ({}x{})"
+msgstr "Empty image ({}x{})"
+
+msgid "impossible de créer le pool de threads du batch"
+msgstr "could not create batch thread pool"
+
+msgid "Impossible d'ecrire '{}'"
+msgstr "Cannot write '{}'"
+
+msgid "Impossible d'écrire '{}'"
+msgstr "Cannot write '{}'"
+
+msgid "Impossible de lire le preset '{}'"
+msgstr "Cannot read preset '{}'"
+
+msgid "Impossible de lire les dimensions de '{}'"
+msgstr "Cannot read dimensions of '{}'"
+
+msgid "Impossible d'énumérer les entrées '{}'"
+msgstr "Cannot enumerate entries '{}'"
+
+msgid "Impossible de sauvegarder '{}'"
+msgstr "Cannot save '{}'"
+
+msgid "Impossible de sérialiser les paramètres"
+msgstr "Cannot serialize parameters"
+
+msgid "Inconnu"
+msgstr "Unknown"
+
+msgid "inexistant"
+msgstr "nonexistent"
+
+msgid "--input est requis sauf si --save-preset seul est fourni (utilise --help)"
+msgstr "--input is required unless only --save-preset is provided (use --help)"
+
+msgid "Itérations : {} → {}"
+msgstr "Iterations: {} → {}"
+
+msgid "Itérations"
+msgstr "Iterations"
+
+msgid "Itérations de relaxation de Lloyd (K-means, Voronoï). Davantage = plus régulier, plus lent."
+msgstr "Lloyd relaxation iterations (K-means, Voronoi). More = smoother, slower."
+
+msgid "k-means spatial : les points se répartissent selon la couleur et la position."
+msgstr "spatial k-means: points distribute by color and position."
+
+msgid "la densité est conservée"
+msgstr "density is preserved"
+
+msgid "la forme est conservée"
+msgstr "shape is preserved"
+
+msgid "l'algorithme est conservé"
+msgstr "algorithm is preserved"
+
+msgid "la liste doit se relire dans l'ordre pour {nombre} entrée(s)"
+msgstr "the list must be read back in order for {nombre} entry(ies)"
+
+msgid "la même image ne doit pas se répéter"
+msgstr "the same image must not repeat"
+
+msgid "la plus récente passe en tête"
+msgstr "the most recent goes first"
+
+msgid "largeur invalide dans '{}'"
+msgstr "invalid width in '{}'"
+
+msgid "le centre du logo devrait être le cyan du point principal"
+msgstr "the logo center should be the cyan of the main point"
+
+msgid "le curseur vient d'être dessiné"
+msgstr "the cursor has just been drawn"
+
+msgid "Le fichier '{}' existe déjà."
+msgstr "File '{}' already exists."
+
+msgid "le fond est conservé"
+msgstr "background is preserved"
+
+msgid "le message doit expliquer le vide, pas l'illisibilité : {e}"
+msgstr "the message must explain emptiness, not unreadability: {e}"
+
+msgid "Le mode rapide calcule sur une image réduite, puis repasse en pleine résolution."
+msgstr "Quick mode computes on a reduced image, then switches back to full resolution."
+
+msgid "le moteur accepte une valeur que l'interface ne devrait pas proposer"
+msgstr "the engine accepts a value the UI should not offer"
+
+msgid "Les N couleurs dominantes de l'image deviennent chacune une encre"
+msgstr "The N dominant colors of the image each become an ink"
+
+msgid "Les réglages se recalculent automatiquement (Espace)"
+msgstr "Settings recompute automatically (Space)"
+
+msgid "le temporaire a disparu après le remplacement"
+msgstr "the temporary file disappeared after replacement"
+
+msgid "Lloyd pondéré : le rendu le plus « naturel »."
+msgstr "Weighted Lloyd: the most 'natural' rendering."
+
+msgid "Lloyd pondéré : répartition régulière guidée par le détail. Rendu le plus « naturel »."
+msgstr "Weighted Lloyd: even distribution guided by detail. Most 'natural' rendering."
+
+msgid "Maj+Tab"
+msgstr "Shift+Tab"
+
+msgid "mémoire de travail estimée : {} Mo"
+msgstr "estimated working memory: {} MB"
+
+msgid "Menu principal"
+msgstr "Main menu"
+
+msgid "{} Mo"
+msgstr "{} MB"
+
+msgid "{mode:?} n'a pas été parcouru"
+msgstr "{mode:?} was not traversed"
+
+msgid "Mode preview : {:?}x{:?} max"
+msgstr "Preview mode: {:?}x{:?} max"
+
+msgid "molette"
+msgstr "scroll wheel"
+
+msgid "Moyennes de couleur en espace linéaire : évite les mi-tons trop sombres"
+msgstr "Color averages in linear space: avoids overly dark midtones"
+
+msgid "Moyennes en espace linéaire : évite les mi-tons trop sombres"
+msgstr "Averages in linear space: avoids overly dark midtones"
+
+msgid "Noir"
+msgstr "Black"
+
+msgid "Nombre de cellules de la grille"
+msgstr "Number of grid cells"
+
+msgid "Nombre de cellules de la grille (algorithme Grille)."
+msgstr "Number of grid cells (Grid algorithm)."
+
+msgid "Nombre de cellules de la grille, de 2 à 8 192, en échelle logarithmique"
+msgstr "Number of grid cells, from 2 to 8,192, on a logarithmic scale"
+
+msgid "Nombre de cellules de trame sur le plus petit côté. Plus c'est élevé, plus le pointillé est fin."
+msgstr "Number of screen cells on the shorter side. The higher, the finer the stippling."
+
+msgid "Nombre de côtés du polygone régulier."
+msgstr "Number of sides of the regular polygon."
+
+msgid "Nombre de couleurs de la palette réduite."
+msgstr "Number of colors in the reduced palette."
+
+msgid "Nombre de couleurs de la trame (une trame par couleur)."
+msgstr "Number of screen colors (one screen per color)."
+
+msgid "Nombre d'encres retenues parmi les couleurs dominantes"
+msgstr "Number of inks retained among dominant colors"
+
+msgid "Nombre de points : {} → {}"
+msgstr "Number of points: {} → {}"
+
+msgid "Nombre de points"
+msgstr "Number of points"
+
+msgid "Nombre de points, de 10 à 100 000, en échelle logarithmique"
+msgstr "Number of points, from 10 to 100,000, on a logarithmic scale"
+
+msgid "Nombre de points générés (K-means, Voronoï, Quadtree)."
+msgstr "Number of generated points (K-means, Voronoi, Quadtree)."
+
+msgid "--output-profile ne s'applique pas à l'export SVG"
+msgstr "--output-profile does not apply to SVG export"
+
+msgid "Ouvrez d'abord une image."
+msgstr "Open an image first."
+
+msgid "Ouvrez une image pour commencer (ou faites glisser un fichier)."
+msgstr "Open an image to start (or drag a file)."
+
+msgid "Ouvrez une image pour commencer (ou glissez-déposez un fichier)."
+msgstr "Open an image to start (or drag and drop a file)."
+
+msgid "Ouvrir…"
+msgstr "Open…"
+
+msgid "Ouvrir un dossier"
+msgstr "Open a folder"
+
+msgid "Ouvrir un dossier…"
+msgstr "Open a folder…"
+
+msgid "Ouvrir un _dossier d'images…"
+msgstr "Open a _folder of images…"
+
+msgid "Ouvrir un dossier d'images"
+msgstr "Open a folder of images"
+
+msgid "Ouvrir un dossier d'images…"
+msgstr "Open a folder of images…"
+
+msgid "Ouvrir un dossier et passer d'une image à l'autre avec ← et → (Ctrl+Maj+O)"
+msgstr "Open a folder and navigate images with ← and → (Ctrl+Shift+O)"
+
+msgid "_Ouvrir une image…"
+msgstr "_Open an image…"
+
+msgid "Ouvrir une image"
+msgstr "Open an image"
+
+msgid "Ouvrir une image…"
+msgstr "Open an image…"
+
+msgid "Ouvrir une image (Ctrl+O)"
+msgstr "Open an image (Ctrl+O)"
+
+msgid "Palette franche, sans motif"
+msgstr "Solid palette, no pattern"
+
+msgid "Palette modifiée"
+msgstr "Palette modified"
+
+msgid "Palette réduite"
+msgstr "Reduced palette"
+
+msgid "Paramètres halftone modifiés"
+msgstr "Halftone settings modified"
+
+msgid "Paramètres modifiés"
+msgstr "Settings modified"
+
+msgid "× pas de trame"
+msgstr "× no screen"
+
+msgid "Passes de Lloyd. Au-delà de ~30, le gain devient marginal."
+msgstr "Lloyd passes. Beyond ~30, gains become marginal."
+
+msgid "Passes de Lloyd ; au-delà d'une trentaine, le gain devient marginal"
+msgstr "Lloyd passes; beyond about thirty, gains become marginal"
+
+msgid "pas une image"
+msgstr "not an image"
+
+msgid "Personnalisé"
+msgstr "Custom"
+
+msgid "Personnalisé — les réglages ne correspondent à aucun preset"
+msgstr "Custom — settings match no preset"
+
+msgid "Pic mémoire estimé pour le calcul en cours."
+msgstr "Estimated peak memory for the current computation."
+
+msgid "Plage autorisée : {range_label}"
+msgstr "Allowed range: {range_label}"
+
+msgid "Plein"
+msgstr "Full"
+
+msgid "Plein _écran"
+msgstr "Full _screen"
+
+msgid "Plein écran"
+msgstr "Full screen"
+
+msgid "pleine résolution…"
+msgstr "full resolution…"
+
+msgid "Pleine résolution : ~{}"
+msgstr "Full resolution: ~{}"
+
+msgid "Pleine résolution"
+msgstr "Full resolution"
+
+msgid "Plus de points là où l'image est détaillée."
+msgstr "More points where the image is detailed."
+
+msgid "Polygone"
+msgstr "Polygon"
+
+msgid "position : {position}"
+msgstr "position: {position}"
+
+msgid "Préférences d'interface non enregistrées : {error}"
+msgstr "Interface preferences not saved: {error}"
+
+msgid "Preset « {} » appliqué."
+msgstr "Preset \"{}\" applied."
+
+msgid "Preset chargé : {}"
+msgstr "Preset loaded: {}"
+
+msgid "Preset invalide : '{}'"
+msgstr "Invalid preset: '{}'"
+
+msgid "Preset précédent / suivant"
+msgstr "Previous / next preset"
+
+msgid "Preset sauvegardé : {}"
+msgstr "Preset saved: {}"
+
+msgid "Preset suivant"
+msgstr "Next preset"
+
+msgid "Preset suivant (Ctrl+P)"
+msgstr "Next preset (Ctrl+P)"
+
+msgid "--preview invalide"
+msgstr "--preview invalid"
+
+msgid "preview WxH doit être > 0, got '{}'"
+msgstr "preview WxH must be > 0, got '{}'"
+
+msgid "profil colorimétrique converti vers sRGB"
+msgstr "color profile converted to sRGB"
+
+msgid "Profil ICC converti vers sRGB."
+msgstr "ICC profile converted to sRGB."
+
+msgid "Quadtree accepte 50 001"
+msgstr "Quadtree accepts 50,001"
+
+msgid "Qualité de l'aperçu"
+msgstr "Preview quality"
+
+msgid "Quantifie l'image vers quelques couleurs (effet sérigraphie)"
+msgstr "Quantizes the image to a few colors (screen printing effect)"
+
+msgid "Quel aperçu afficher"
+msgstr "Which preview to display"
+
+msgid "Raccourcis _clavier"
+msgstr "Keyboard _shortcuts"
+
+msgid "Raccourcis clavier"
+msgstr "Keyboard shortcuts"
+
+msgid "Rapide (1/2)"
+msgstr "Fast (1/2)"
+
+msgid "Rapide ½"
+msgstr "Fast ½"
+
+msgid "Rapide (1/4)"
+msgstr "Fast (1/4)"
+
+msgid "Rapide ¼"
+msgstr "Fast ¼"
+
+msgid "Rapport largeur/hauteur"
+msgstr "Aspect ratio"
+
+msgid "Rapport largeur/hauteur de l'ellipse."
+msgstr "Ellipse aspect ratio."
+
+msgid "Rapport l/h"
+msgstr "Aspect ratio"
+
+msgid "rayon"
+msgstr "radius"
+
+msgid "Rayon max"
+msgstr "Max radius"
+
+msgid "Rayon maximal des points, en fraction du plus petit côté de l'image."
+msgstr "Maximum point radius, as a fraction of the image's shorter side."
+
+msgid "Rayon maximal, en fraction du pas de trame. Au-delà de 1, les dots se touchent."
+msgstr "Maximum radius, as a fraction of the screen pitch. Above 1, dots touch."
+
+msgid "Rayon min"
+msgstr "Min radius"
+
+msgid "Rayon min et max des dots d'encre"
+msgstr "Min and max ink dot radii"
+
+msgid "Rayon min et max, en fraction du plus petit côté"
+msgstr "Min and max radii, as a fraction of the shorter side"
+
+msgid "Rayon minimal des dots de trame, en fraction du plus petit côté."
+msgstr "Minimum screen dot radius, as a fraction of the shorter side."
+
+msgid "Rayon minimal des points, en fraction du plus petit côté de l'image."
+msgstr "Minimum point radius, as a fraction of the image's shorter side."
+
+msgid "Recalculer"
+msgstr "Recompute"
+
+msgid "Recalculer en pleine résolution"
+msgstr "Recompute at full resolution"
+
+msgid "Recalculer maintenant, en pleine résolution (Espace)"
+msgstr "Recompute now at full resolution (Space)"
+
+msgid "Rechercher une commande…"
+msgstr "Search a command…"
+
+msgid "Redistribue les points vers les zones détaillées. 0 = répartition uniforme, 1 = maximum de détail."
+msgstr "Redistributes points toward detailed areas. 0 = uniform distribution, 1 = maximum detail."
+
+msgid "réécriture"
+msgstr "rewriting"
+
+msgid "refusé"
+msgstr "rejected"
+
+msgid "Réglages"
+msgstr "Settings"
+
+msgid "Réglages déjà par défaut."
+msgstr "Settings already default."
+
+msgid "Réglages personnalisés"
+msgstr "Custom settings"
+
+msgid "Réglages rapides"
+msgstr "Quick settings"
+
+msgid "réglages refusés : {e}"
+msgstr "settings rejected: {e}"
+
+msgid "Réglages réinitialisés."
+msgstr "Settings reset."
+
+msgid "Réinitialiser les _réglages"
+msgstr "Reset _settings"
+
+msgid "Réinitialiser les réglages"
+msgstr "Reset settings"
+
+msgid "Remplacer"
+msgstr "Replace"
+
+msgid "Remplacer le fichier ?"
+msgstr "Replace file?"
+
+msgid "Rendu"
+msgstr "Rendering"
+
+msgid "Rendu en pleine résolution en cours — réessayez dans un instant."
+msgstr "Full-resolution rendering in progress — try again in a moment."
+
+msgid "Répartition par couleur et position."
+msgstr "Distribution by color and position."
+
+msgid "Reprendre où vous en étiez"
+msgstr "Resume where you left off"
+
+msgid "Résultat"
+msgstr "Result"
+
+msgid "Rétabli."
+msgstr "Restored."
+
+msgid "Rétablir"
+msgstr "Redo"
+
+msgid "Rétablir : {} (Ctrl+Y)"
+msgstr "Redo: {} (Ctrl+Y)"
+
+msgid "Rétablir la modification annulée (Ctrl+Y)"
+msgstr "Redo canceled change (Ctrl+Y)"
+
+msgid "Rétablir les valeurs par défaut de « {title} »"
+msgstr "Restore default values of \"{title}\""
+
+msgid "Rétablir tous les réglages par défaut (Ctrl+R)"
+msgstr "Restore all settings to default (Ctrl+R)"
+
+msgid "Revenir à 100 % (1)"
+msgstr "Back to 100% (1)"
+
+msgid "Rien à annuler"
+msgstr "Nothing to undo"
+
+msgid "Rien à annuler."
+msgstr "Nothing to undo."
+
+msgid "Rien à rétablir"
+msgstr "Nothing to redo"
+
+msgid "Rien à rétablir."
+msgstr "Nothing to redo."
+
+msgid "Rosette classique Cyan / Magenta / Jaune / Noir, à 15°/75°/0°/45°"
+msgstr "Classic rosette Cyan / Magenta / Yellow / Black, at 15°/75°/0°/45°"
+
+msgid "Rosette CMJN ou couleurs dominantes (offset print)."
+msgstr "CMYK rosette or dominant colors (offset print)."
+
+msgid "Rotation de la grille pour un effet de trame (algorithme Grille)."
+msgstr "Grid rotation for a screening effect (Grid algorithm)."
+
+msgid "Rotation de l'ellipse en degrés."
+msgstr "Ellipse rotation in degrees."
+
+msgid "Sans"
+msgstr "None"
+
+msgid "Sauvegarde : {}"
+msgstr "Save: {}"
+
+msgid "Sauvegardé : {}"
+msgstr "Saved: {}"
+
+msgid "Sauvegarde annulée."
+msgstr "Save canceled."
+
+msgid "Sauvegarde (RGBA) : {}"
+msgstr "Save (RGBA): {}"
+
+msgid "Sauvegarder le preset"
+msgstr "Save preset"
+
+msgid "Sauvegarder le SVG"
+msgstr "Save SVG"
+
+msgid "Sauvegarder l'image"
+msgstr "Save image"
+
+msgid "_Sauver le preset…"
+msgstr "_Save preset…"
+
+msgid "Sauver le preset…"
+msgstr "Save preset…"
+
+msgid "screening invalide '{other}'. Valeurs valides : am, fm"
+msgstr "invalid screening '{other}'. Valid values: am, fm"
+
+msgid "Section déjà par défaut."
+msgstr "Section already default."
+
+msgid "Section réinitialisée."
+msgstr "Section reset."
+
+msgid "(sélectionnez CMJN ou Dominant)"
+msgstr "(select CMYK or Dominant)"
+
+msgid "Sensibilité variance"
+msgstr "Variance sensitivity"
+
+msgid "Séparation de l'image en canaux d'encre, une trame par canal."
+msgstr "Separation of the image into ink channels, one screen per channel."
+
+msgid "Sombre"
+msgstr "Dark"
+
+msgid "Source à gauche du curseur, résultat à droite — glissez pour le déplacer."
+msgstr "Source left of the cursor, result right — drag to move it."
+
+msgid "Subdivision par contraste : davantage de points là où l'image est détaillée."
+msgstr "Subdivision by contrast: more points where the image is detailed."
+
+msgid "{subtitle} (modifié)"
+msgstr "{subtitle} (modified)"
+
+msgid "Suivant"
+msgstr "Next"
+
+msgid "SVG sauvegarde : {}"
+msgstr "SVG save: {}"
+
+msgid "SVG sauvegardé : {}"
+msgstr "SVG saved: {}"
+
+msgid "Tirer une nouvelle graine"
+msgstr "Draw a new seed"
+
+msgid "Tirer une nouvelle graine et recalculer"
+msgstr "Draw a new seed and recompute"
+
+msgid "Toujours en pleine résolution"
+msgstr "Always at full resolution"
+
+msgid "traité plus haut"
+msgstr "handled above"
+
+msgid "Tramage de la palette quantifiée"
+msgstr "Dithering of the quantized palette"
+
+msgid "Tramage ordonné plus fin : motif de trame 8×8"
+msgstr "Finer ordered dithering: 8×8 screen pattern"
+
+msgid "Tramage ordonné : rendu « pixel art », sans diffusion d'erreur"
+msgstr "Ordered dithering: 'pixel art' rendering, without error diffusion"
+
+msgid "Trame"
+msgstr "Screen"
+
+msgid "Trame d'encre : rosette CMJN ou couleurs dominantes, style offset print."
+msgstr "Ink screen: CMYK rosette or dominant colors, offset print style."
+
+msgid "Trame régulière : le rayon du dot code la couverture d'encre"
+msgstr "Regular screen: dot radius encodes ink coverage"
+
+msgid "Trame stochastique : la densité des dots code la couverture d'encre"
+msgstr "Stochastic screen: dot density encodes ink coverage"
+
+msgid "un aller-retour doit revenir"
+msgstr "a round trip must return"
+
+msgid "Une cellule = un point. Rapide et prévisible."
+msgstr "One cell = one point. Fast and predictable."
+
+msgid "une valeur aberrante est ignorée"
+msgstr "an outlier value is ignored"
+
+msgid "un fichier absent est vide"
+msgstr "a missing file is empty"
+
+msgid "un pixel à moitié opaque doit tomber entre le noir et le gris clair, pas à {}"
+msgstr "a half-opaque pixel must fall between black and light gray, not at {}"
+
+msgid "un pixel opaque ne dépend pas du damier"
+msgstr "an opaque pixel does not depend on the checkerboard"
+
+msgid "un temporaire d'un échec doit être supprimé"
+msgstr "a temporary file from a failure must be deleted"
+
+msgid "Utiliser un exemple"
+msgstr "Use an example"
+
+msgid "valeur {value}"
+msgstr "value {value}"
+
+msgid "variante absente de la table"
+msgstr "variant absent from the table"
+
+msgid "Varier"
+msgstr "Vary"
+
+msgid "Varier la graine"
+msgstr "Vary the seed"
+
+msgid "vignette de preset illisible ({}) : {e}"
+msgstr "unreadable preset thumbnail ({}): {e}"
+
+msgid "Voronoi doit rester plafonné à 50 000 points"
+msgstr "Voronoi must stay capped at 50,000 points"
+
+msgid "Zoom ajusté à la fenêtre (0)"
+msgstr "Zoom to fit window (0)"
+
+msgid "Zoom à la souris"
+msgstr "Mouse zoom"
+
+msgid "Zoomer (+)"
+msgstr "Zoom in (+)"
+
+msgid "Zoomer"
+msgstr "Zoom in"
+
+msgid "Zoomer / Dézoomer"
+msgstr "Zoom in / out"
+
+msgid "Zoom réellement appliqué à l'aperçu"
+msgstr "Zoom actually applied to preview"
+
