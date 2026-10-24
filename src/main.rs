@@ -19,7 +19,7 @@ enum ShapeArg {
 }
 
 #[derive(Parser, Debug)]
-#[command(author, version, about = "Filtre pointilliste — CLI")]
+#[command(author, version, about = pointimg::frontend::t("Filtre pointilliste — CLI"))]
 struct Args {
     #[arg(short, long)]
     input: Option<String>,
@@ -180,10 +180,18 @@ fn parse_halftone(s: &str) -> anyhow::Result<HalftoneMode> {
     }
     if let Some(rest) = s.strip_prefix("dominant-") {
         let n: usize = rest.parse().map_err(|_| {
-            anyhow::anyhow!("`dominant-N` : N doit être un entier ≥ 2, got '{}'", rest)
+            anyhow::anyhow!(
+                "{}",
+                pointimg::frontend::t("`dominant-N` : N doit être un entier ≥ 2, got '{}'")
+                    .replace("{}", rest)
+            )
         })?;
         if n < 2 {
-            anyhow::bail!("`dominant-N` : N doit être ≥ 2, got {n}");
+            anyhow::bail!(
+                "{}",
+                pointimg::frontend::t("`dominant-N` : N doit être ≥ 2, got {n}")
+                    .replace("{n}", &n.to_string())
+            );
         }
         return Ok(HalftoneMode::Dominant {
             n,
@@ -191,7 +199,10 @@ fn parse_halftone(s: &str) -> anyhow::Result<HalftoneMode> {
         });
     }
     anyhow::bail!(
-        "halftone invalide '{s}'. Valeurs valides : off, cmyk, dominant-N (ex: dominant-6)"
+        pointimg::frontend::t(
+            "halftone invalide '{s}'. Valeurs valides : off, cmyk, dominant-N (ex: dominant-6)"
+        )
+        .replace("{s}", &s)
     );
 }
 
@@ -200,7 +211,11 @@ fn parse_screening(s: &str) -> anyhow::Result<Screening> {
     match s.to_lowercase().as_str() {
         "am" => Ok(Screening::Am),
         "fm" => Ok(Screening::Fm),
-        other => anyhow::bail!("screening invalide '{other}'. Valeurs valides : am, fm"),
+        other => anyhow::bail!(
+            "{}",
+            pointimg::frontend::t("screening invalide '{other}'. Valeurs valides : am, fm")
+                .replace("{other}", other)
+        ),
     }
 }
 
@@ -215,16 +230,28 @@ fn parse_bg_color(s: &str) -> anyhow::Result<([u8; 3], bool)> {
             let hex = hex.strip_prefix('#').unwrap_or(hex);
             if hex.len() != 6 {
                 anyhow::bail!(
-                    "Couleur invalide '{}'. Valeurs valides : white, black, transparent, #rrggbb",
-                    s
+                    "{}",
+                    pointimg::frontend::t("Couleur invalide '{}'. Valeurs valides : white, black, transparent, #rrggbb").replace("{}", s)
                 );
             }
-            let r = u8::from_str_radix(&hex[0..2], 16)
-                .map_err(|_| anyhow::anyhow!("Couleur invalide '{}'", s))?;
-            let g = u8::from_str_radix(&hex[2..4], 16)
-                .map_err(|_| anyhow::anyhow!("Couleur invalide '{}'", s))?;
-            let b = u8::from_str_radix(&hex[4..6], 16)
-                .map_err(|_| anyhow::anyhow!("Couleur invalide '{}'", s))?;
+            let r = u8::from_str_radix(&hex[0..2], 16).map_err(|_| {
+                anyhow::anyhow!(
+                    "{}",
+                    pointimg::frontend::t("Couleur invalide '{}'").replace("{}", s)
+                )
+            })?;
+            let g = u8::from_str_radix(&hex[2..4], 16).map_err(|_| {
+                anyhow::anyhow!(
+                    "{}",
+                    pointimg::frontend::t("Couleur invalide '{}'").replace("{}", s)
+                )
+            })?;
+            let b = u8::from_str_radix(&hex[4..6], 16).map_err(|_| {
+                anyhow::anyhow!(
+                    "{}",
+                    pointimg::frontend::t("Couleur invalide '{}'").replace("{}", s)
+                )
+            })?;
             Ok(([r, g, b], false))
         }
     }
@@ -325,20 +352,34 @@ fn main() -> Result<()> {
     // TOML preset: loaded from a file, overrides the flags.
     // Saved to a file (early exit after writing).
     if let Some(ref preset_path) = args.preset {
-        let txt = std::fs::read_to_string(preset_path)
-            .with_context(|| format!("Impossible de lire le preset '{}'", preset_path.display()))?;
-        let loaded = FilterParams::from_toml_str(&txt)
-            .with_context(|| format!("Preset invalide : '{}'", preset_path.display()))?;
+        let txt = std::fs::read_to_string(preset_path).with_context(|| {
+            pointimg::frontend::t("Impossible de lire le preset '{}'")
+                .replace("{}", &preset_path.display().to_string())
+        })?;
+        let loaded = FilterParams::from_toml_str(&txt).with_context(|| {
+            pointimg::frontend::t("Preset invalide : '{}'")
+                .replace("{}", &preset_path.display().to_string())
+        })?;
         params = loaded;
-        log::info!("Preset chargé : {}", preset_path.display());
+        log::info!(
+            "{}",
+            pointimg::frontend::t("Preset chargé : {}")
+                .replace("{}", &preset_path.display().to_string())
+        );
     }
     if let Some(ref save_path) = args.save_preset {
         let txt = params
             .to_toml_string()
-            .with_context(|| "Impossible de sérialiser les paramètres")?;
-        std::fs::write(save_path, &txt)
-            .with_context(|| format!("Impossible d'écrire '{}'", save_path.display()))?;
-        println!("Preset sauvegardé : {}", save_path.display());
+            .with_context(|| pointimg::frontend::t("Impossible de sérialiser les paramètres"))?;
+        std::fs::write(save_path, &txt).with_context(|| {
+            pointimg::frontend::t("Impossible d'écrire '{}'")
+                .replace("{}", &save_path.display().to_string())
+        })?;
+        println!(
+            "{}",
+            pointimg::frontend::t("Preset sauvegardé : {}")
+                .replace("{}", &save_path.display().to_string())
+        );
         // If --save-preset is given without --input, exit after the write
         // (no pipeline to run).
         if args.input.is_none() {
@@ -348,36 +389,53 @@ fn main() -> Result<()> {
 
     // Expansion of the inputs: single file, glob (`*`, `?`, `[`), or folder.
     let input_str = args.input.as_deref().ok_or_else(|| {
-        anyhow::anyhow!("--input est requis sauf si --save-preset seul est fourni (utilise --help)")
+        anyhow::anyhow!(pointimg::frontend::t(
+            "--input est requis sauf si --save-preset seul est fourni (utilise --help)"
+        ))
     })?;
-    let inputs = expand_inputs(input_str)
-        .with_context(|| format!("Impossible d'énumérer les entrées '{}'", input_str))?;
+    let inputs = expand_inputs(input_str).with_context(|| {
+        pointimg::frontend::t("Impossible d'énumérer les entrées '{}'").replace("{}", input_str)
+    })?;
     if inputs.is_empty() {
-        anyhow::bail!("Aucun fichier d'entrée trouvé pour '{}'", input_str);
+        anyhow::bail!(
+            "{}",
+            pointimg::frontend::t("Aucun fichier d'entrée trouvé pour '{}'")
+                .replace("{}", input_str)
+        );
     }
-    log::info!("{} fichier(s) à traiter", inputs.len());
+    log::info!(
+        "{}",
+        pointimg::frontend::t("{} fichier(s) à traiter").replace("{}", &inputs.len().to_string())
+    );
 
     let preview_size = args
         .preview
         .as_deref()
         .map(parse_preview_size)
         .transpose()
-        .context("--preview invalide")?;
+        .context(pointimg::frontend::t("--preview invalide"))?;
     if let Some((pw, ph)) = preview_size {
-        log::info!("Mode preview : {:?}x{:?} max", pw, ph);
+        log::info!("{}", {
+            let mut s = pointimg::frontend::t("Mode preview : {:?}x{:?} max").to_string();
+            s = s.replacen("{:?}", &format!("{:?}", pw), 1);
+            s = s.replacen("{:?}", &format!("{:?}", ph), 1);
+            s
+        });
     }
 
     let total = inputs.len();
     let default_output = args.output == "output.png";
     let parallel = args.jobs != 1 && total > 1;
     if parallel {
+        let workers = if args.jobs == 0 {
+            num_cpus_hint()
+        } else {
+            args.jobs
+        };
         log::info!(
-            "batch parallèle : {} worker(s)",
-            if args.jobs == 0 {
-                num_cpus_hint()
-            } else {
-                args.jobs
-            }
+            "{}",
+            pointimg::frontend::t("batch parallèle : {} worker(s)")
+                .replace("{}", &workers.to_string())
         );
     }
     let failures = if parallel {
@@ -388,7 +446,9 @@ fn main() -> Result<()> {
         let pool = rayon::ThreadPoolBuilder::new()
             .num_threads(args.jobs)
             .build()
-            .context("impossible de créer le pool de threads du batch")?;
+            .context(pointimg::frontend::t(
+                "impossible de créer le pool de threads du batch",
+            ))?;
         pool.install(|| {
             inputs
                 .par_iter()
@@ -405,7 +465,12 @@ fn main() -> Result<()> {
                     match process_one(input_path, &out, &params, &args, preview_size, false) {
                         Ok(()) => 0usize,
                         Err(e) => {
-                            log::error!("échec '{}': {}", input_path.display(), e);
+                            log::error!("{}", {
+                                let mut s = pointimg::frontend::t("échec '{}': {}").to_string();
+                                s = s.replacen("{}", &input_path.display().to_string(), 1);
+                                s = s.replacen("{}", &e.to_string(), 1);
+                                s
+                            });
                             1
                         }
                     }
@@ -421,7 +486,12 @@ fn main() -> Result<()> {
                 println!("[{}/{}] {}", i + 1, total, input_path.display());
             }
             if let Err(e) = process_one(input_path, &out, &params, &args, preview_size, true) {
-                log::error!("échec '{}': {}", input_path.display(), e);
+                log::error!("{}", {
+                    let mut s = pointimg::frontend::t("échec '{}': {}").to_string();
+                    s = s.replacen("{}", &input_path.display().to_string(), 1);
+                    s = s.replacen("{}", &e.to_string(), 1);
+                    s
+                });
                 failures += 1;
                 // Continue the batch: the whole queue is not stopped for one
                 // defective file.
@@ -431,7 +501,11 @@ fn main() -> Result<()> {
     };
 
     if failures > 0 {
-        anyhow::bail!("{} fichier(s) n'ont pas pu être traité(s)", failures);
+        anyhow::bail!(
+            "{}",
+            pointimg::frontend::t("{} fichier(s) n'ont pas pu être traité(s)")
+                .replace("{}", &failures.to_string())
+        );
     }
     Ok(())
 }
@@ -445,17 +519,29 @@ fn num_cpus_hint() -> usize {
 /// Parses `"WxH"` (case-insensitive) into `(u32, u32)`.
 /// E.g.: `"200x150"` → `(200, 150)`.
 fn parse_preview_size(s: &str) -> Result<(u32, u32)> {
-    let (w, h) = s
-        .split_once(['x', 'X', '×'])
-        .ok_or_else(|| anyhow::anyhow!("format attendu : WxH (ex. 200x150), got '{}'", s))?;
-    let w: u32 = w
-        .parse()
-        .map_err(|_| anyhow::anyhow!("largeur invalide dans '{}'", s))?;
-    let h: u32 = h
-        .parse()
-        .map_err(|_| anyhow::anyhow!("hauteur invalide dans '{}'", s))?;
+    let (w, h) = s.split_once(['x', 'X', '×']).ok_or_else(|| {
+        anyhow::anyhow!(
+            "{}",
+            pointimg::frontend::t("format attendu : WxH (ex. 200x150), got '{}'").replace("{}", s)
+        )
+    })?;
+    let w: u32 = w.parse().map_err(|_| {
+        anyhow::anyhow!(
+            "{}",
+            pointimg::frontend::t("largeur invalide dans '{}'").replace("{}", s)
+        )
+    })?;
+    let h: u32 = h.parse().map_err(|_| {
+        anyhow::anyhow!(
+            "{}",
+            pointimg::frontend::t("hauteur invalide dans '{}'").replace("{}", s)
+        )
+    })?;
     if w == 0 || h == 0 {
-        anyhow::bail!("preview WxH doit être > 0, got '{}'", s);
+        anyhow::bail!(
+            "{}",
+            pointimg::frontend::t("preview WxH doit être > 0, got '{}'").replace("{}", s)
+        );
     }
     Ok((w, h))
 }
@@ -494,7 +580,9 @@ fn expand_inputs(input: &str) -> Result<Vec<PathBuf>> {
     let has_glob_chars = input.contains('*') || input.contains('?') || input.contains('[');
     if has_glob_chars {
         let mut out = Vec::new();
-        for entry in glob::glob(input).with_context(|| format!("glob invalide '{}'", input))? {
+        for entry in glob::glob(input)
+            .with_context(|| pointimg::frontend::t("glob invalide '{}'").replace("{}", input))?
+        {
             let path = entry?;
             if path.is_file() {
                 out.push(path);
@@ -600,22 +688,39 @@ fn process_one(
     iter_progress: bool,
 ) -> Result<()> {
     let dimensions = ImageReader::open(input)
-        .with_context(|| format!("Impossible de lire les dimensions de '{}'", input.display()))?
+        .with_context(|| {
+            pointimg::frontend::t("Impossible de lire les dimensions de '{}'")
+                .replace("{}", &input.display().to_string())
+        })?
         .into_dimensions()
-        .with_context(|| format!("Dimensions invalides pour '{}'", input.display()))?;
+        .with_context(|| {
+            pointimg::frontend::t("Dimensions invalides pour '{}'")
+                .replace("{}", &input.display().to_string())
+        })?;
     if dimensions.0 == 0 || dimensions.1 == 0 {
-        anyhow::bail!("Image vide ({}x{})", dimensions.0, dimensions.1);
+        anyhow::bail!(
+            "{}",
+            pointimg::frontend::t("Image vide ({}x{})")
+                .replace("{}", &dimensions.0.to_string())
+                .replacen("{}", &dimensions.1.to_string(), 1)
+        );
     }
     let (src_orig, profile_converted, was_resized) =
         pointimg::color::decode_to_srgb(input, &args.input_profile)?;
     if profile_converted {
-        log::info!("profil colorimétrique converti vers sRGB");
+        log::info!(
+            "{}",
+            pointimg::frontend::t("profil colorimétrique converti vers sRGB")
+        );
     }
     if was_resized {
         log::warn!(
-            "image '{}' réduite automatiquement à {:?} pour respecter les limites mémoire",
-            input.display(),
-            src_orig.dimensions()
+            "{}",
+            pointimg::frontend::t(
+                "image '{}' réduite automatiquement à {:?} pour respecter les limites mémoire"
+            )
+            .replace("{}", &input.display().to_string())
+            .replace("{:?}", &format!("{:?}", src_orig.dimensions()))
         );
     }
     // Preview subsampling when requested.
@@ -627,11 +732,17 @@ fn process_one(
     let rgb = filter::flatten_to_rgb(&src, params.bg_color);
     let output_profile = pointimg::color::output_profile_from_spec(&args.output_profile)?;
     if args.svg && output_profile.is_some() {
-        anyhow::bail!("--output-profile ne s'applique pas à l'export SVG");
+        anyhow::bail!(pointimg::frontend::t(
+            "--output-profile ne s'applique pas à l'export SVG"
+        ));
     }
     log::info!(
-        "mémoire de travail estimée : {} Mo",
-        filter::estimate_memory_bytes_for(rgb.width(), rgb.height(), params) / (1024 * 1024)
+        "{}",
+        pointimg::frontend::t("mémoire de travail estimée : {} Mo").replace(
+            "{}",
+            &(filter::estimate_memory_bytes_for(rgb.width(), rgb.height(), params) / (1024 * 1024))
+                .to_string()
+        )
     );
     let never_cancel = AtomicBool::new(false);
 
@@ -648,19 +759,25 @@ fn process_one(
                     eprint!("\r  Iteration {iter}/{total}");
                 }
             })
-            .with_context(|| "Erreur lors du calcul du filtre")?;
+            .with_context(|| pointimg::frontend::t("Erreur lors du calcul du filtre"))?;
         if show_progress {
             eprintln!();
         }
         let (w, h) = rgb.dimensions();
         let svg = filter::render_svg_from_dots(w, h, &dots, params)
-            .with_context(|| "Erreur lors du rendu SVG")?;
-        frontend::atomic_text_write(output, &svg)
-            .with_context(|| format!("Impossible d'ecrire '{}'", output.display()))?;
-        println!("SVG sauvegarde : {}", output.display());
+            .with_context(|| pointimg::frontend::t("Erreur lors du rendu SVG"))?;
+        frontend::atomic_text_write(output, &svg).with_context(|| {
+            pointimg::frontend::t("Impossible d'ecrire '{}'")
+                .replace("{}", &output.display().to_string())
+        })?;
+        println!(
+            "{}",
+            pointimg::frontend::t("SVG sauvegarde : {}")
+                .replace("{}", &output.display().to_string())
+        );
     } else if params.transparent {
         let (dst, _dots) = filter::apply_rgba(&rgb, params)
-            .with_context(|| "Erreur lors du calcul du filtre (RGBA)")?;
+            .with_context(|| pointimg::frontend::t("Erreur lors du calcul du filtre (RGBA)"))?;
         if let Some((profile, bytes)) = output_profile.as_ref() {
             let supports_alpha = matches!(
                 output
@@ -679,14 +796,24 @@ fn process_one(
             frontend::atomic_image_save(output, |tmp| {
                 save_dynamic_with_profile(&dst, Some(bytes), tmp)
             })
-            .with_context(|| format!("Impossible de sauvegarder '{}'", output.display()))?;
+            .with_context(|| {
+                pointimg::frontend::t("Impossible de sauvegarder '{}'")
+                    .replace("{}", &output.display().to_string())
+            })?;
         } else {
             frontend::atomic_image_save(output, |tmp| {
                 save_rgba_for_output(&dst, params.bg_color, tmp)
             })
-            .with_context(|| format!("Impossible de sauvegarder '{}'", output.display()))?;
+            .with_context(|| {
+                pointimg::frontend::t("Impossible de sauvegarder '{}'")
+                    .replace("{}", &output.display().to_string())
+            })?;
         }
-        println!("Sauvegarde (RGBA) : {}", output.display());
+        println!(
+            "{}",
+            pointimg::frontend::t("Sauvegarde (RGBA) : {}")
+                .replace("{}", &output.display().to_string())
+        );
     } else {
         let (dst, _dots) =
             filter::apply_with_iteration_counts(&rgb, params, &never_cancel, |iter, total| {
@@ -694,7 +821,7 @@ fn process_one(
                     eprint!("\r  Iteration {iter}/{total}");
                 }
             })
-            .with_context(|| "Erreur lors du calcul du filtre")?;
+            .with_context(|| pointimg::frontend::t("Erreur lors du calcul du filtre"))?;
         if show_progress {
             eprintln!();
         }
@@ -706,8 +833,14 @@ fn process_one(
         frontend::atomic_image_save(output, |tmp| {
             save_dynamic_with_profile(&dst, output_profile.as_ref().map(|(_, bytes)| bytes), tmp)
         })
-        .with_context(|| format!("Impossible de sauvegarder '{}'", output.display()))?;
-        println!("Sauvegarde : {}", output.display());
+        .with_context(|| {
+            pointimg::frontend::t("Impossible de sauvegarder '{}'")
+                .replace("{}", &output.display().to_string())
+        })?;
+        println!(
+            "{}",
+            pointimg::frontend::t("Sauvegarde : {}").replace("{}", &output.display().to_string())
+        );
     }
     Ok(())
 }
