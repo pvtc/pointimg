@@ -209,6 +209,7 @@ pub(crate) struct WindowWidgets {
     pub export: gtk::MenuButton,
     pub shortcuts: adw::Window,
     pub toast_overlay: adw::ToastOverlay,
+    pub locale_combo: adw::ComboRow,
 }
 
 /// Built-in presets, opening of files and folders.
@@ -348,29 +349,56 @@ pub(crate) struct Widgets {
     pub status_bar: StatusWidgets,
 }
 
-const ALGOS: [&str; 5] = [
-    "Grille",
-    "K-means",
-    "Voronoi (Lloyd)",
-    "Quadtree",
-    "Halftone (rosette)",
-];
-const ALGO_HELP: [&str; 5] = [
-    "Grille régulière : une cellule = un point. Rapide et prévisible.",
-    "k-means spatial : les points se répartissent selon la couleur et la position.",
-    "Lloyd pondéré : répartition régulière guidée par le détail. Rendu le plus « naturel ».",
-    "Subdivision par contraste : davantage de points là où l'image est détaillée.",
-    "Trame d'encre : rosette CMJN ou couleurs dominantes, style offset print.",
-];
-const SHAPES: [&str; 4] = ["Cercle", "Carré", "Ellipse", "Polygone"];
-const VIEWS: [&str; 5] = [
-    "Comparaison",
-    "Côte à côte",
-    "Résultat",
-    "Source",
-    "Carte de densité",
-];
-const QUALITIES: [&str; 3] = ["Rapide (1/2)", "Rapide (1/4)", "Pleine résolution"];
+fn algos() -> [&'static str; 5] {
+    [
+        pointimg::frontend::t("Grille"),
+        "K-means",
+        "Voronoi (Lloyd)",
+        "Quadtree",
+        "Halftone (rosette)",
+    ]
+}
+fn algo_help() -> [&'static str; 5] {
+    [
+        pointimg::frontend::t("Grille régulière : une cellule = un point. Rapide et prévisible."),
+        pointimg::frontend::t(
+            "k-means spatial : les points se répartissent selon la couleur et la position.",
+        ),
+        pointimg::frontend::t(
+            "Lloyd pondéré : répartition régulière guidée par le détail. Rendu le plus « naturel ».",
+        ),
+        pointimg::frontend::t(
+            "Subdivision par contraste : davantage de points là où l'image est détaillée.",
+        ),
+        pointimg::frontend::t(
+            "Trame d'encre : rosette CMJN ou couleurs dominantes, style offset print.",
+        ),
+    ]
+}
+fn shapes() -> [&'static str; 4] {
+    [
+        pointimg::frontend::t("Cercle"),
+        pointimg::frontend::t("Carré"),
+        "Ellipse",
+        pointimg::frontend::t("Polygone"),
+    ]
+}
+fn views() -> [&'static str; 5] {
+    [
+        pointimg::frontend::t("Comparaison"),
+        pointimg::frontend::t("Côte à côte"),
+        pointimg::frontend::t("Résultat"),
+        "Source",
+        pointimg::frontend::t("Carte de densité"),
+    ]
+}
+fn qualities() -> [&'static str; 3] {
+    [
+        pointimg::frontend::t("Rapide (1/2)"),
+        pointimg::frontend::t("Rapide (1/4)"),
+        pointimg::frontend::t("Pleine résolution"),
+    ]
+}
 
 /// Composes the upper toolbar.
 ///
@@ -405,35 +433,51 @@ fn header_bar(widgets: &Widgets) -> adw::HeaderBar {
     } = widgets.clone();
     // `adw::ButtonContent` imposes the content (icon + label): `set_label`
     // followed by `set_icon_name` on a GtkButton keeps only the icon.
-    set_button_content(&open, "document-open-symbolic", "Ouvrir…");
-    open.set_tooltip_text(Some("Ouvrir une image (Ctrl+O)"));
-    set_button_content(&open_folder, "folder-open-symbolic", "Dossier…");
-    open_folder.set_tooltip_text(Some(
+    set_button_content(
+        &open,
+        "document-open-symbolic",
+        pointimg::frontend::t("Ouvrir…"),
+    );
+    open.set_tooltip_text(Some(pointimg::frontend::t("Ouvrir une image (Ctrl+O)")));
+    set_button_content(
+        &open_folder,
+        "folder-open-symbolic",
+        pointimg::frontend::t("Dossier…"),
+    );
+    open_folder.set_tooltip_text(Some(pointimg::frontend::t(
         "Ouvrir un dossier et passer d'une image à l'autre avec ← et → (Ctrl+Maj+O)",
-    ));
+    )));
     progress.set_show_text(true);
     progress.set_valign(gtk::Align::Center);
     progress.set_size_request(200, -1);
     progress.set_visible(false);
-    set_button_content(&cancel, "process-stop-symbolic", "Annuler");
-    cancel.set_tooltip_text(Some("Annuler le calcul en cours"));
+    set_button_content(
+        &cancel,
+        "process-stop-symbolic",
+        pointimg::frontend::t("Annuler"),
+    );
+    cancel.set_tooltip_text(Some(pointimg::frontend::t("Annuler le calcul en cours")));
     set_icon_button(
         &undo,
         "edit-undo-symbolic",
-        "Annuler la dernière modification (Ctrl+Z)",
+        pointimg::frontend::t("Annuler la dernière modification (Ctrl+Z)"),
     );
     set_icon_button(
         &redo,
         "edit-redo-symbolic",
-        "Rétablir la modification annulée (Ctrl+Y)",
+        pointimg::frontend::t("Rétablir la modification annulée (Ctrl+Y)"),
     );
-    set_button_content(&export, "document-save-symbolic", "Exporter");
+    set_button_content(
+        &export,
+        "document-save-symbolic",
+        pointimg::frontend::t("Exporter"),
+    );
     export.add_css_class("suggested-action");
-    export.set_tooltip_text(Some("Exporter l'image (Ctrl+S)"));
+    export.set_tooltip_text(Some(pointimg::frontend::t("Exporter l'image (Ctrl+S)")));
     // The button only offers the exports: the full menu (folder, presets,
     // display, shortcuts) is under the hamburger button.
     export.set_menu_model(Some(&crate::wire::export_menu_model()));
-    menu.set_tooltip_text(Some("Menu principal"));
+    menu.set_tooltip_text(Some(pointimg::frontend::t("Menu principal")));
 
     let header = adw::HeaderBar::new();
     header.set_title_widget(Some(&window_title));
@@ -493,12 +537,12 @@ fn status_bar(
 /// Builds the complete layout: header, settings panel, preview.
 pub(crate) fn build() -> (adw::ToastOverlay, Rc<Widgets>) {
     // ── Base widgets ──────────────────────────────────────────────────────────
-    let open = gtk::Button::with_label("Ouvrir…");
-    let open_empty = gtk::Button::with_label("Ouvrir une image…");
-    let sample_button = gtk::Button::with_label("Utiliser un exemple");
-    let window_title = adw::WindowTitle::new("pointimg", "Aucune image");
+    let open = gtk::Button::with_label(pointimg::frontend::t("Ouvrir…"));
+    let open_empty = gtk::Button::with_label(pointimg::frontend::t("Ouvrir une image…"));
+    let sample_button = gtk::Button::with_label(pointimg::frontend::t("Utiliser un exemple"));
+    let window_title = adw::WindowTitle::new("pointimg", pointimg::frontend::t("Aucune image"));
     let progress = gtk::ProgressBar::new();
-    let cancel = gtk::Button::with_label("Annuler");
+    let cancel = gtk::Button::with_label(pointimg::frontend::t("Annuler"));
     let undo = gtk::Button::new();
     let redo = gtk::Button::new();
     let export = gtk::MenuButton::new();
@@ -509,49 +553,61 @@ pub(crate) fn build() -> (adw::ToastOverlay, Rc<Widgets>) {
     // field of `Widgets`, hence declared before building the literal.
     let panel_toggle = gtk::ToggleButton::new();
     panel_toggle.set_icon_name("sidebar-show-symbolic");
-    panel_toggle.set_tooltip_text(Some("Afficher les réglages"));
+    panel_toggle.set_tooltip_text(Some(pointimg::frontend::t("Afficher les réglages")));
     panel_toggle.set_visible(false);
     let toast_overlay = adw::ToastOverlay::new();
     let shortcuts = adw::Window::new();
 
-    let preset_combo = combo_row("Preset", &["Personnalisé"], None);
-    let load_preset = gtk::Button::with_label("Charger un preset…");
-    let save_preset = gtk::Button::with_label("Sauver le preset…");
+    let preset_combo = combo_row("Preset", &[pointimg::frontend::t("Personnalisé")], None);
+    let load_preset = gtk::Button::with_label(pointimg::frontend::t("Charger un preset…"));
+    let save_preset = gtk::Button::with_label(pointimg::frontend::t("Sauver le preset…"));
     let open_folder = gtk::Button::new();
     let folder_label = gtk::Label::new(None);
 
-    let algo = combo_row("Algorithme", &ALGOS, Some(ALGO_HELP[0]));
+    let algo = combo_row(
+        pointimg::frontend::t("Algorithme"),
+        &algos(),
+        Some(algo_help()[0]),
+    );
     let variance = spin_row(
-        "Sensibilité variance",
-        Some("0 = uniforme · 1 = détail maximal"),
-        "Redistribue les points vers les zones détaillées. 0 = répartition uniforme, 1 = maximum de détail.",
+        pointimg::frontend::t("Sensibilité variance"),
+        Some(pointimg::frontend::t("0 = uniforme · 1 = détail maximal")),
+        pointimg::frontend::t(
+            "Redistribue les points vers les zones détaillées. 0 = répartition uniforme, 1 = maximum de détail.",
+        ),
         0.0,
         1.0,
         0.01,
         2,
     );
     let min_radius = spin_row(
-        "Rayon min",
-        Some("fraction du petit côté"),
-        "Rayon minimal des points, en fraction du plus petit côté de l'image.",
+        pointimg::frontend::t("Rayon min"),
+        Some(pointimg::frontend::t("fraction du petit côté")),
+        pointimg::frontend::t(
+            "Rayon minimal des points, en fraction du plus petit côté de l'image.",
+        ),
         0.0005,
         1.0,
         0.0005,
         4,
     );
     let max_radius = spin_row(
-        "Rayon max",
-        Some("fraction du petit côté"),
-        "Rayon maximal des points, en fraction du plus petit côté de l'image.",
+        pointimg::frontend::t("Rayon max"),
+        Some(pointimg::frontend::t("fraction du petit côté")),
+        pointimg::frontend::t(
+            "Rayon maximal des points, en fraction du plus petit côté de l'image.",
+        ),
         0.0005,
         1.0,
         0.0025,
         4,
     );
     let max_boost = spin_row(
-        "Boost zones uniformes",
+        pointimg::frontend::t("Boost zones uniformes"),
         Some("× maximum"),
-        "Agrandit les points dans les zones sans détail. 1 = aucun agrandissement, 2.5 = réglage par défaut.",
+        pointimg::frontend::t(
+            "Agrandit les points dans les zones sans détail. 1 = aucun agrandissement, 2.5 = réglage par défaut.",
+        ),
         1.0,
         8.0,
         0.1,
@@ -565,27 +621,27 @@ pub(crate) fn build() -> (adw::ToastOverlay, Rc<Widgets>) {
     let mut max_radius_slider = ValueSlider::new(0.0005, 1.0, 4, Curve::Log);
     let mut max_boost_slider = ValueSlider::new(1.0, 8.0, 2, Curve::Log);
     let cols = spin_row(
-        "Colonnes",
+        pointimg::frontend::t("Colonnes"),
         Some("2 – 8 192"),
-        "Nombre de cellules de la grille (algorithme Grille).",
+        pointimg::frontend::t("Nombre de cellules de la grille (algorithme Grille)."),
         2.0,
         8192.0,
         1.0,
         0,
     );
     let grid_angle = spin_row(
-        "Angle de la grille",
+        pointimg::frontend::t("Angle de la grille"),
         Some("°"),
-        "Rotation de la grille pour un effet de trame (algorithme Grille).",
+        pointimg::frontend::t("Rotation de la grille pour un effet de trame (algorithme Grille)."),
         -180.0,
         180.0,
         1.0,
         0,
     );
     let num_points = spin_row(
-        "Nombre de points",
+        pointimg::frontend::t("Nombre de points"),
         Some("10 – 100 000"),
-        "Nombre de points générés (K-means, Voronoï, Quadtree).",
+        pointimg::frontend::t("Nombre de points générés (K-means, Voronoï, Quadtree)."),
         10.0,
         100_000.0,
         10.0,
@@ -594,9 +650,11 @@ pub(crate) fn build() -> (adw::ToastOverlay, Rc<Widgets>) {
     let mut cols_slider = ValueSlider::new(2.0, 8192.0, 0, Curve::Log);
     let mut num_points_slider = ValueSlider::new(10.0, 100_000.0, 0, Curve::Log);
     let iterations = spin_row(
-        "Itérations",
+        pointimg::frontend::t("Itérations"),
         Some("1 – 100"),
-        "Itérations de relaxation de Lloyd (K-means, Voronoï). Davantage = plus régulier, plus lent.",
+        pointimg::frontend::t(
+            "Itérations de relaxation de Lloyd (K-means, Voronoï). Davantage = plus régulier, plus lent.",
+        ),
         1.0,
         100.0,
         1.0,
@@ -607,20 +665,29 @@ pub(crate) fn build() -> (adw::ToastOverlay, Rc<Widgets>) {
     // where the setting is decided ("5 or 10 iterations?").
     let mut iterations_slider = ValueSlider::new(1.0, 100.0, 0, Curve::Linear);
 
-    let halftone_mode = combo_row("Mode", &["CMJN (rosette)", "Couleurs dominantes"], None);
+    let halftone_mode = combo_row(
+        "Mode",
+        &[
+            pointimg::frontend::t("CMJN (rosette)"),
+            pointimg::frontend::t("Couleurs dominantes"),
+        ],
+        None,
+    );
     let dominant_n = spin_row(
-        "Canaux",
-        Some("couleurs dominantes"),
-        "Nombre de couleurs de la trame (une trame par couleur).",
+        pointimg::frontend::t("Canaux"),
+        Some(pointimg::frontend::t("couleurs dominantes")),
+        pointimg::frontend::t("Nombre de couleurs de la trame (une trame par couleur)."),
         2.0,
         32.0,
         1.0,
         0,
     );
     let dominant_angle = spin_row(
-        "Angle de base",
+        pointimg::frontend::t("Angle de base"),
         Some("°"),
-        "Angle de la première trame ; les suivantes sont réparties régulièrement pour éviter le moiré.",
+        pointimg::frontend::t(
+            "Angle de la première trame ; les suivantes sont réparties régulièrement pour éviter le moiré.",
+        ),
         0.0,
         180.0,
         1.0,
@@ -629,31 +696,37 @@ pub(crate) fn build() -> (adw::ToastOverlay, Rc<Widgets>) {
     let dominant_box = rows_box(&[&dominant_n, &dominant_angle]);
     let screening = combo_row(
         "Screening",
-        &["AM (grille)", "FM (blue noise)"],
-        Some("AM : la taille du dot code l'encre. FM : c'est la densité qui la code."),
+        &[pointimg::frontend::t("AM (grille)"), "FM (blue noise)"],
+        Some(pointimg::frontend::t(
+            "AM : la taille du dot code l'encre. FM : c'est la densité qui la code.",
+        )),
     );
     let halftone_freq = spin_row(
-        "Fréquence de trame",
+        pointimg::frontend::t("Fréquence de trame"),
         Some("20 – 400"),
-        "Nombre de cellules de trame sur le plus petit côté. Plus c'est élevé, plus le pointillé est fin.",
+        pointimg::frontend::t(
+            "Nombre de cellules de trame sur le plus petit côté. Plus c'est élevé, plus le pointillé est fin.",
+        ),
         4.0,
         400.0,
         1.0,
         0,
     );
     let halftone_min_radius = spin_row(
-        "Rayon min",
-        Some("fraction du petit côté"),
-        "Rayon minimal des dots de trame, en fraction du plus petit côté.",
+        pointimg::frontend::t("Rayon min"),
+        Some(pointimg::frontend::t("fraction du petit côté")),
+        pointimg::frontend::t("Rayon minimal des dots de trame, en fraction du plus petit côté."),
         0.0,
         1.0,
         0.001,
         3,
     );
     let halftone_max_dot = spin_row(
-        "Rayon max",
-        Some("× pas de trame"),
-        "Rayon maximal, en fraction du pas de trame. Au-delà de 1, les dots se touchent.",
+        pointimg::frontend::t("Rayon max"),
+        Some(pointimg::frontend::t("× pas de trame")),
+        pointimg::frontend::t(
+            "Rayon maximal, en fraction du pas de trame. Au-delà de 1, les dots se touchent.",
+        ),
         0.05,
         10.0,
         0.05,
@@ -671,11 +744,11 @@ pub(crate) fn build() -> (adw::ToastOverlay, Rc<Widgets>) {
     let mut halftone_min_slider = ValueSlider::new(0.0, 1.0, 3, Curve::Sqrt);
     let mut halftone_max_slider = ValueSlider::new(0.05, 10.0, 2, Curve::Sqrt);
 
-    let shape = combo_row("Forme", &SHAPES, None);
+    let shape = combo_row(pointimg::frontend::t("Forme"), &shapes(), None);
     let ellipse_aspect = spin_row(
-        "Rapport largeur/hauteur",
+        pointimg::frontend::t("Rapport largeur/hauteur"),
         None,
-        "Rapport largeur/hauteur de l'ellipse.",
+        pointimg::frontend::t("Rapport largeur/hauteur de l'ellipse."),
         0.1,
         10.0,
         0.1,
@@ -684,16 +757,16 @@ pub(crate) fn build() -> (adw::ToastOverlay, Rc<Widgets>) {
     let ellipse_angle = spin_row(
         "Angle",
         Some("°"),
-        "Rotation de l'ellipse en degrés.",
+        pointimg::frontend::t("Rotation de l'ellipse en degrés."),
         -180.0,
         180.0,
         1.0,
         0,
     );
     let polygon_sides = spin_row(
-        "Côtés",
+        pointimg::frontend::t("Côtés"),
         Some("3 – 12"),
-        "Nombre de côtés du polygone régulier.",
+        pointimg::frontend::t("Nombre de côtés du polygone régulier."),
         3.0,
         12.0,
         1.0,
@@ -702,13 +775,13 @@ pub(crate) fn build() -> (adw::ToastOverlay, Rc<Widgets>) {
     let ellipse_box = rows_box(&[&ellipse_aspect, &ellipse_angle]);
     let polygon_box = rows_box(&[&polygon_sides]);
     let use_palette = switch_row(
-        "Palette réduite",
-        "Quantifie l'image vers quelques couleurs (effet sérigraphie)",
+        pointimg::frontend::t("Palette réduite"),
+        pointimg::frontend::t("Quantifie l'image vers quelques couleurs (effet sérigraphie)"),
     );
     let palette_size = spin_row(
-        "Couleurs de la palette",
+        pointimg::frontend::t("Couleurs de la palette"),
         Some("2 – 256"),
-        "Nombre de couleurs de la palette réduite.",
+        pointimg::frontend::t("Nombre de couleurs de la palette réduite."),
         2.0,
         256.0,
         1.0,
@@ -719,69 +792,83 @@ pub(crate) fn build() -> (adw::ToastOverlay, Rc<Widgets>) {
     let dithering = combo_row(
         "Dithering",
         &[
-            "Aucun",
+            pointimg::frontend::t("Aucun"),
             "Floyd-Steinberg",
             "Riemersma",
             "Bayer 4×4",
             "Bayer 8×8",
         ],
-        Some("Tramage de la palette quantifiée"),
+        Some(pointimg::frontend::t("Tramage de la palette quantifiée")),
     );
 
     let color_dialog = gtk::ColorDialog::builder()
         .with_alpha(false)
-        .title("Couleur de fond")
+        .title(pointimg::frontend::t("Couleur de fond"))
         .build();
     let bg_button = gtk::ColorDialogButton::new(Some(color_dialog));
-    bg_button.set_tooltip_text(Some("Couleur de fond du rendu"));
+    bg_button.set_tooltip_text(Some(pointimg::frontend::t("Couleur de fond du rendu")));
     let transparent = switch_row(
-        "Fond transparent (RGBA)",
-        "Alpha conservé à l'export PNG/WebP/TIFF",
+        pointimg::frontend::t("Fond transparent (RGBA)"),
+        pointimg::frontend::t("Alpha conservé à l'export PNG/WebP/TIFF"),
     );
     let gamma = switch_row(
-        "Correction gamma",
-        "Moyennes en espace linéaire : évite les mi-tons trop sombres",
+        pointimg::frontend::t("Correction gamma"),
+        pointimg::frontend::t("Moyennes en espace linéaire : évite les mi-tons trop sombres"),
     );
     let use_seed = switch_row(
-        "Graine fixée",
-        "Deux exécutions identiques donnent le même résultat",
+        pointimg::frontend::t("Graine fixée"),
+        pointimg::frontend::t("Deux exécutions identiques donnent le même résultat"),
     );
     let seed = gtk::SpinButton::with_range(0.0, 4_294_967_295.0, 1.0);
     seed.set_digits(0);
-    seed.set_tooltip_text(Some("Graine du générateur aléatoire"));
+    seed.set_tooltip_text(Some(pointimg::frontend::t(
+        "Graine du générateur aléatoire",
+    )));
     forward_wheel_to_scroller(&seed);
     let vary_seed = gtk::Button::new();
     set_icon_button(
         &vary_seed,
         "view-refresh-symbolic",
-        "Tirer une nouvelle graine et recalculer",
+        pointimg::frontend::t("Tirer une nouvelle graine et recalculer"),
     );
 
     let quality = combo_row(
-        "Qualité de l'aperçu",
-        &QUALITIES,
-        Some("Le mode rapide calcule sur une image réduite, puis repasse en pleine résolution."),
+        pointimg::frontend::t("Qualité de l'aperçu"),
+        &qualities(),
+        Some(pointimg::frontend::t(
+            "Le mode rapide calcule sur une image réduite, puis repasse en pleine résolution.",
+        )),
     );
     let recalc = gtk::Button::new();
-    set_button_content(&recalc, "view-refresh-symbolic", "Recalculer");
-    recalc.set_tooltip_text(Some("Recalculer maintenant, en pleine résolution (Espace)"));
-    let reset = gtk::Button::with_label("Réinitialiser les réglages");
+    set_button_content(
+        &recalc,
+        "view-refresh-symbolic",
+        pointimg::frontend::t("Recalculer"),
+    );
+    recalc.set_tooltip_text(Some(pointimg::frontend::t(
+        "Recalculer maintenant, en pleine résolution (Espace)",
+    )));
+    let reset = gtk::Button::with_label(pointimg::frontend::t("Réinitialiser les réglages"));
 
-    let view_mode = gtk::DropDown::from_strings(&VIEWS);
-    view_mode.set_tooltip_text(Some("Quel aperçu afficher"));
+    let view_mode = gtk::DropDown::from_strings(&views());
+    view_mode.set_tooltip_text(Some(pointimg::frontend::t("Quel aperçu afficher")));
     let zoom_out = gtk::Button::from_icon_name("zoom-out-symbolic");
-    zoom_out.set_tooltip_text(Some("Dézoomer (−)"));
+    zoom_out.set_tooltip_text(Some(pointimg::frontend::t("Dézoomer (−)")));
     let zoom_in = gtk::Button::from_icon_name("zoom-in-symbolic");
-    zoom_in.set_tooltip_text(Some("Zoomer (+)"));
+    zoom_in.set_tooltip_text(Some(pointimg::frontend::t("Zoomer (+)")));
     let zoom_label = gtk::Label::new(Some("100 %"));
     zoom_label.set_width_chars(5);
     zoom_label.set_xalign(0.5);
     zoom_label.add_css_class("dim-label");
-    zoom_label.set_tooltip_text(Some("Zoom réellement appliqué à l'aperçu"));
+    zoom_label.set_tooltip_text(Some(pointimg::frontend::t(
+        "Zoom réellement appliqué à l'aperçu",
+    )));
     let zoom_one = gtk::ToggleButton::with_label("1:1");
-    zoom_one.set_tooltip_text(Some("Revenir à 100 % (1)"));
-    let zoom_fit = gtk::ToggleButton::with_label("Ajuster");
-    zoom_fit.set_tooltip_text(Some("Ajuster l'aperçu à la fenêtre (0)"));
+    zoom_one.set_tooltip_text(Some(pointimg::frontend::t("Revenir à 100 % (1)")));
+    let zoom_fit = gtk::ToggleButton::with_label(pointimg::frontend::t("Ajuster"));
+    zoom_fit.set_tooltip_text(Some(pointimg::frontend::t(
+        "Ajuster l'aperçu à la fenêtre (0)",
+    )));
     zoom_fit.set_active(true);
     let busy = gtk::Spinner::new();
     busy.set_valign(gtk::Align::Center);
@@ -790,8 +877,8 @@ pub(crate) fn build() -> (adw::ToastOverlay, Rc<Widgets>) {
     quality_badge.add_css_class("dim-label");
 
     let src_pane = preview_pane("Source");
-    let dst_pane = preview_pane("Résultat");
-    let density_pane = preview_pane("Carte de densité");
+    let dst_pane = preview_pane(pointimg::frontend::t("Résultat"));
+    let density_pane = preview_pane(pointimg::frontend::t("Carte de densité"));
     let compare_pane = crate::compare::build_pane();
 
     let empty_page = adw::StatusPage::new();
@@ -803,13 +890,29 @@ pub(crate) fn build() -> (adw::ToastOverlay, Rc<Widgets>) {
     // ── Settings panel ────────────────────────────────────────────────────────
     let page = adw::PreferencesPage::new();
 
+    // Interface language: applied on the next launch (GTK rebuilds its labels
+    // at build time), but persisted immediately.
+    let interface_group = adw::PreferencesGroup::new();
+    interface_group.set_title(pointimg::frontend::t("Interface"));
+    let locale_combo = adw::ComboRow::new();
+    locale_combo.set_title(pointimg::frontend::t("Langue"));
+    let locale_items = gtk::StringList::new(&["English", "Français"]);
+    locale_combo.set_model(Some(&locale_items));
+    let current_locale = pointimg::frontend::locale();
+    locale_combo.set_selected(match current_locale {
+        pointimg::frontend::Locale::Fr => 1,
+        _ => 0,
+    });
+    interface_group.add(&locale_combo);
+    page.add(&interface_group);
+
     let preset_group = adw::PreferencesGroup::new();
-    preset_group.set_title("Réglages rapides");
+    preset_group.set_title(pointimg::frontend::t("Réglages rapides"));
     let preset_names: Vec<String> = pointimg::filter::builtin_presets()
         .iter()
         .map(|p| p.name.to_string())
         .collect();
-    let mut preset_items = vec!["Personnalisé"];
+    let mut preset_items = vec![pointimg::frontend::t("Personnalisé")];
     preset_items.extend(preset_names.iter().map(String::as_str));
     preset_combo.set_model(Some(&gtk::StringList::new(&preset_items)));
 
@@ -859,7 +962,7 @@ pub(crate) fn build() -> (adw::ToastOverlay, Rc<Widgets>) {
     preset_group.add(&files_buttons);
 
     let folder_row = adw::ActionRow::new();
-    folder_row.set_title("Images du dossier");
+    folder_row.set_title(pointimg::frontend::t("Images du dossier"));
     folder_row.set_visible(false);
     folder_label.set_xalign(1.0);
     folder_label.add_css_class("dim-label");
@@ -868,13 +971,12 @@ pub(crate) fn build() -> (adw::ToastOverlay, Rc<Widgets>) {
     page.add(&preset_group);
 
     let algo_group = adw::PreferencesGroup::new();
-    algo_group.set_title("Algorithme");
+    algo_group.set_title(pointimg::frontend::t("Algorithme"));
     algo_group.add(&algo);
     algo_group.add(&variance);
-    algo_group.add(
-        &variance_slider
-            .row("Ajuster la sensibilité à la souris ; l'infobulle du réglage explique son effet"),
-    );
+    algo_group.add(&variance_slider.row(pointimg::frontend::t(
+        "Ajuster la sensibilité à la souris ; l'infobulle du réglage explique son effet",
+    )));
     algo_group.add(&min_radius);
     algo_group.add(&max_radius);
     algo_group.add(&pair_row(
@@ -884,55 +986,55 @@ pub(crate) fn build() -> (adw::ToastOverlay, Rc<Widgets>) {
          marque la position de l'autre borne.",
     ));
     algo_group.add(&max_boost);
-    algo_group
-        .add(&max_boost_slider.row("Ajuster l'agrandissement des points en zones sans détail"));
+    algo_group.add(&max_boost_slider.row(pointimg::frontend::t(
+        "Ajuster l'agrandissement des points en zones sans détail",
+    )));
     page.add(&algo_group);
 
     let grid_group = adw::PreferencesGroup::new();
-    grid_group.set_title("Grille");
+    grid_group.set_title(pointimg::frontend::t("Grille"));
     grid_group.add(&cols);
-    grid_group.add(
-        &cols_slider.row("Nombre de cellules de la grille, de 2 à 8 192, en échelle logarithmique"),
-    );
+    grid_group.add(&cols_slider.row(pointimg::frontend::t(
+        "Nombre de cellules de la grille, de 2 à 8 192, en échelle logarithmique",
+    )));
     grid_group.add(&grid_angle);
     page.add(&grid_group);
 
     let points_group = adw::PreferencesGroup::new();
-    points_group.set_title("Densité de points");
+    points_group.set_title(pointimg::frontend::t("Densité de points"));
     points_group.add(&num_points);
-    points_group
-        .add(&num_points_slider.row("Nombre de points, de 10 à 100 000, en échelle logarithmique"));
+    points_group.add(&num_points_slider.row(pointimg::frontend::t(
+        "Nombre de points, de 10 à 100 000, en échelle logarithmique",
+    )));
     points_group.add(&iterations);
-    points_group.add(
-        &iterations_slider
-            .row("Passes de Lloyd ; au-delà d'une trentaine, le gain devient marginal"),
-    );
+    points_group.add(&iterations_slider.row(pointimg::frontend::t(
+        "Passes de Lloyd ; au-delà d'une trentaine, le gain devient marginal",
+    )));
     page.add(&points_group);
 
     let halftone_group = adw::PreferencesGroup::new();
-    halftone_group.set_title("Trame");
-    halftone_group.set_description(Some(
+    halftone_group.set_title(pointimg::frontend::t("Trame"));
+    halftone_group.set_description(Some(pointimg::frontend::t(
         "Séparation de l'image en canaux d'encre, une trame par canal.",
-    ));
+    )));
     halftone_group.add(&halftone_mode);
     halftone_group.add(&dominant_box);
     halftone_group.add(&screening);
     halftone_group.add(&halftone_freq);
-    halftone_group.add(
-        &halftone_freq_slider
-            .row("Fréquence de trame, de 4 à 400 cellules, en échelle logarithmique"),
-    );
+    halftone_group.add(&halftone_freq_slider.row(pointimg::frontend::t(
+        "Fréquence de trame, de 4 à 400 cellules, en échelle logarithmique",
+    )));
     halftone_group.add(&halftone_min_radius);
     halftone_group.add(&halftone_max_dot);
     halftone_group.add(&pair_row(
         &mut halftone_min_slider,
         &mut halftone_max_slider,
-        "Curseurs des bornes min et max du halftone ; le repère marque la position de l'autre borne",
+        pointimg::frontend::t("Curseurs des bornes min et max du halftone ; le repère marque la position de l'autre borne"),
     ));
     page.add(&halftone_group);
 
     let shape_group = adw::PreferencesGroup::new();
-    shape_group.set_title("Forme des points");
+    shape_group.set_title(pointimg::frontend::t("Forme des points"));
     shape_group.add(&shape);
     shape_group.add(&ellipse_box);
     shape_group.add(&polygon_box);
@@ -942,17 +1044,19 @@ pub(crate) fn build() -> (adw::ToastOverlay, Rc<Widgets>) {
     page.add(&shape_group);
 
     let render_group = adw::PreferencesGroup::new();
-    render_group.set_title("Rendu");
+    render_group.set_title(pointimg::frontend::t("Rendu"));
     let bg_row = adw::ActionRow::new();
-    bg_row.set_title("Couleur de fond");
-    bg_row.set_subtitle("Appliquée au rendu et aux zones transparentes de la source");
+    bg_row.set_title(pointimg::frontend::t("Couleur de fond"));
+    bg_row.set_subtitle(pointimg::frontend::t(
+        "Appliquée au rendu et aux zones transparentes de la source",
+    ));
     bg_row.add_suffix(&bg_button);
     render_group.add(&bg_row);
     render_group.add(&transparent);
     render_group.add(&gamma);
     render_group.add(&use_seed);
     let seed_row = adw::ActionRow::new();
-    seed_row.set_title("Graine");
+    seed_row.set_title(pointimg::frontend::t("Graine"));
     seed.set_hexpand(false);
     seed_row.add_suffix(&seed);
     vary_seed.add_css_class("flat");
@@ -961,11 +1065,13 @@ pub(crate) fn build() -> (adw::ToastOverlay, Rc<Widgets>) {
     page.add(&render_group);
 
     let compute_group = adw::PreferencesGroup::new();
-    compute_group.set_title("Calcul");
+    compute_group.set_title(pointimg::frontend::t("Calcul"));
     compute_group.add(&quality);
     let compute_row = adw::ActionRow::new();
-    compute_row.set_title("Recalculer");
-    compute_row.set_subtitle("Les réglages se recalculent automatiquement (Espace)");
+    compute_row.set_title(pointimg::frontend::t("Recalculer"));
+    compute_row.set_subtitle(pointimg::frontend::t(
+        "Les réglages se recalculent automatiquement (Espace)",
+    ));
     compute_row.add_suffix(&recalc);
     compute_group.add(&compute_row);
     reset.set_halign(gtk::Align::Start);
@@ -977,17 +1083,38 @@ pub(crate) fn build() -> (adw::ToastOverlay, Rc<Widgets>) {
     // Per-section reset buttons, in the header of each group.
     let mut group_resets = Vec::new();
     for (group, title, target) in [
-        (&preset_group, "Réglages rapides", ResetTarget::Presets),
-        (&algo_group, "Algorithme", ResetTarget::Algorithm),
-        (&halftone_group, "Trame", ResetTarget::Algorithm),
-        (&shape_group, "Forme des points", ResetTarget::Shape),
-        (&render_group, "Rendu", ResetTarget::Render),
+        (
+            &preset_group,
+            pointimg::frontend::t("Réglages rapides"),
+            ResetTarget::Presets,
+        ),
+        (
+            &algo_group,
+            pointimg::frontend::t("Algorithme"),
+            ResetTarget::Algorithm,
+        ),
+        (
+            &halftone_group,
+            pointimg::frontend::t("Trame"),
+            ResetTarget::Algorithm,
+        ),
+        (
+            &shape_group,
+            pointimg::frontend::t("Forme des points"),
+            ResetTarget::Shape,
+        ),
+        (
+            &render_group,
+            pointimg::frontend::t("Rendu"),
+            ResetTarget::Render,
+        ),
     ] {
         let button = gtk::Button::new();
         button.set_icon_name("edit-undo-symbolic");
-        button.set_tooltip_text(Some(&format!(
-            "Rétablir les valeurs par défaut de « {title} »"
-        )));
+        button.set_tooltip_text(Some(
+            &pointimg::frontend::t("Rétablir les valeurs par défaut de « {title} »")
+                .replace("{title}", title),
+        ));
         button.add_css_class("flat");
         group.set_header_suffix(Some(&button));
         group_resets.push(GroupReset { button, target });
@@ -1014,7 +1141,7 @@ pub(crate) fn build() -> (adw::ToastOverlay, Rc<Widgets>) {
     preview_toolbar.set_margin_bottom(6);
     preview_toolbar.set_margin_start(10);
     preview_toolbar.set_margin_end(10);
-    preview_toolbar.append(&gtk::Label::new(Some("Affichage")));
+    preview_toolbar.append(&gtk::Label::new(Some(pointimg::frontend::t("Affichage"))));
     preview_toolbar.append(&view_mode);
     preview_toolbar.append(&gtk::Separator::new(gtk::Orientation::Vertical));
     preview_toolbar.append(&zoom_out);
@@ -1045,10 +1172,10 @@ pub(crate) fn build() -> (adw::ToastOverlay, Rc<Widgets>) {
     }
 
     empty_page.set_icon_name(Some("image-x-generic-symbolic"));
-    empty_page.set_title("Aucune image");
-    empty_page.set_description(Some(
+    empty_page.set_title(pointimg::frontend::t("Aucune image"));
+    empty_page.set_description(Some(pointimg::frontend::t(
         "Glissez-déposez un fichier dans la fenêtre, ou ouvrez-en un.",
-    ));
+    )));
     open_empty.add_css_class("pill");
     open_empty.add_css_class("suggested-action");
     sample_button.add_css_class("pill");
@@ -1107,6 +1234,7 @@ pub(crate) fn build() -> (adw::ToastOverlay, Rc<Widgets>) {
             export,
             shortcuts,
             toast_overlay,
+            locale_combo: locale_combo.clone(),
         },
         presets: PresetWidgets {
             preset_combo,

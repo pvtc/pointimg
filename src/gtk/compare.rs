@@ -88,14 +88,14 @@ fn rgba_checker_surface(img: &RgbaImage) -> Option<cairo::ImageSurface> {
 
 /// Builds the "comparaison" pane.
 pub(crate) fn build_pane() -> ComparePane {
-    let caption = gtk::Label::new(Some("Comparaison"));
+    let caption = gtk::Label::new(Some(pointimg::frontend::t("Comparaison")));
     caption.set_xalign(0.0);
     caption.add_css_class("dim-label");
     caption.set_margin_start(8);
     caption.set_margin_top(4);
-    caption.set_tooltip_text(Some(
+    caption.set_tooltip_text(Some(pointimg::frontend::t(
         "Source à gauche du curseur, résultat à droite — glissez pour le déplacer.",
-    ));
+    )));
 
     let area = gtk::DrawingArea::new();
     area.set_hexpand(true);
@@ -196,7 +196,7 @@ fn paint(cr: &cairo::Context, width: i32, height: i32, data: &CompareData) {
             // Image loaded but the render has not arrived yet: the message
             // of the comparator stays, the welcome state covers the
             // no-image case.
-            message(cr, width as f64, height as f64, frontend::msg::COMPUTING);
+            message(cr, width as f64, height as f64, frontend::msg::computing());
         }
         return;
     };
@@ -258,7 +258,7 @@ fn paint(cr: &cairo::Context, width: i32, height: i32, data: &CompareData) {
     cr.stroke().ok();
 
     if data.stale {
-        badge(cr, 12.0, 12.0, frontend::msg::STALE);
+        badge(cr, 12.0, 12.0, frontend::msg::stale());
     }
     let _ = (width, height);
 }

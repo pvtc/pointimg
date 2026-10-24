@@ -52,11 +52,11 @@ where
         return;
     };
     let dialogue = gtk::AlertDialog::builder()
-        .message("Remplacer le fichier ?")
-        .detail(format!(
-            "« {} » existe déjà, son contenu sera remplacé.",
-            path.display()
-        ))
+        .message(pointimg::frontend::t("Remplacer le fichier ?"))
+        .detail(
+            pointimg::frontend::t("« {} » existe déjà, son contenu sera remplacé.")
+                .replace("{}", &path.display().to_string()),
+        )
         .buttons(["Annuler", "Remplacer"])
         // "Annuler" is the default button: confirming by accident must never
         // destroy the file.

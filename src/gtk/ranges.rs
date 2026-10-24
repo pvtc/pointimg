@@ -59,7 +59,12 @@ fn base() -> FilterParams {
 fn accepte(applique: impl Fn(&mut FilterParams)) {
     let mut params = base();
     applique(&mut params);
-    validate_params(64, 64, &params).unwrap_or_else(|e| panic!("réglages refusés : {e}"));
+    validate_params(64, 64, &params).unwrap_or_else(|e| {
+        panic!(
+            "{}",
+            pointimg::frontend::t("réglages refusés : {e}").replace("{e}", &e.to_string())
+        )
+    });
 }
 
 fn refuse(applique: impl Fn(&mut FilterParams)) {
@@ -67,7 +72,10 @@ fn refuse(applique: impl Fn(&mut FilterParams)) {
     applique(&mut params);
     assert!(
         validate_params(64, 64, &params).is_err(),
-        "le moteur accepte une valeur que l'interface ne devrait pas proposer"
+        "{}",
+        pointimg::frontend::t(
+            "le moteur accepte une valeur que l'interface ne devrait pas proposer"
+        )
     );
 }
 

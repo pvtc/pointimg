@@ -45,17 +45,26 @@ fn clone_state_widgets(state: &St, widgets: &Wi) -> (St, Wi) {
 /// Items specific to the "Exporter" button.
 pub(crate) fn export_menu_model() -> gtk::gio::Menu {
     let menu = gtk::gio::Menu::new();
-    menu.append(Some("Exporter l'image…"), Some("win.export"));
-    menu.append(Some("Exporter en SVG…"), Some("win.export-svg"));
     menu.append(
-        Some("Exporter à côté de la source"),
+        Some(pointimg::frontend::t("Exporter l'image…")),
+        Some("win.export"),
+    );
+    menu.append(
+        Some(pointimg::frontend::t("Exporter en SVG…")),
+        Some("win.export-svg"),
+    );
+    menu.append(
+        Some(pointimg::frontend::t("Exporter à côté de la source")),
         Some("win.quick-export"),
     );
     menu.append(
-        Some("Exporter le SVG à côté de la source"),
+        Some(pointimg::frontend::t("Exporter le SVG à côté de la source")),
         Some("win.quick-export-svg"),
     );
-    menu.append(Some("Copier dans le presse-papiers"), Some("win.copy"));
+    menu.append(
+        Some(pointimg::frontend::t("Copier dans le presse-papiers")),
+        Some("win.copy"),
+    );
     menu
 }
 
@@ -67,32 +76,65 @@ pub(crate) fn export_menu_model() -> gtk::gio::Menu {
 pub(crate) fn menu_model() -> gtk::gio::Menu {
     let menu = gtk::gio::Menu::new();
 
-    menu.append(Some("_Ouvrir une image…"), Some("win.open"));
     menu.append(
-        Some("Ouvrir un _dossier d'images…"),
+        Some(pointimg::frontend::t("_Ouvrir une image…")),
+        Some("win.open"),
+    );
+    menu.append(
+        Some(pointimg::frontend::t("Ouvrir un _dossier d'images…")),
         Some("win.open-folder"),
     );
     let images = gtk::gio::Menu::new();
-    images.append(Some("_Image précédente"), Some("win.prev-image"));
-    images.append(Some("Image _suivante"), Some("win.next-image"));
+    images.append(
+        Some(pointimg::frontend::t("_Image précédente")),
+        Some("win.prev-image"),
+    );
+    images.append(
+        Some(pointimg::frontend::t("Image _suivante")),
+        Some("win.next-image"),
+    );
     menu.append_section(None, &images);
 
     let presets = gtk::gio::Menu::new();
-    presets.append(Some("_Charger un preset…"), Some("win.load-preset"));
-    presets.append(Some("_Sauver le preset…"), Some("win.save-preset"));
+    presets.append(
+        Some(pointimg::frontend::t("_Charger un preset…")),
+        Some("win.load-preset"),
+    );
+    presets.append(
+        Some(pointimg::frontend::t("_Sauver le preset…")),
+        Some("win.save-preset"),
+    );
     menu.append_section(None, &presets);
 
     let view = gtk::gio::Menu::new();
-    view.append(Some("_Aperçu suivant"), Some("win.view-next"));
-    view.append(Some("Aperçu _précédent"), Some("win.view-prev"));
+    view.append(
+        Some(pointimg::frontend::t("_Aperçu suivant")),
+        Some("win.view-next"),
+    );
+    view.append(
+        Some(pointimg::frontend::t("Aperçu _précédent")),
+        Some("win.view-prev"),
+    );
     view.append(Some("Zoom _100 %"), Some("win.zoom-one"));
-    view.append(Some("_Ajuster à la fenêtre"), Some("win.zoom-fit"));
-    view.append(Some("Plein _écran"), Some("win.fullscreen"));
-    view.append(Some("Raccourcis _clavier"), Some("win.shortcuts"));
+    view.append(
+        Some(pointimg::frontend::t("_Ajuster à la fenêtre")),
+        Some("win.zoom-fit"),
+    );
+    view.append(
+        Some(pointimg::frontend::t("Plein _écran")),
+        Some("win.fullscreen"),
+    );
+    view.append(
+        Some(pointimg::frontend::t("Raccourcis _clavier")),
+        Some("win.shortcuts"),
+    );
     menu.append_section(None, &view);
 
     let reset = gtk::gio::Menu::new();
-    reset.append(Some("Réinitialiser les _réglages"), Some("win.reset"));
+    reset.append(
+        Some(pointimg::frontend::t("Réinitialiser les _réglages")),
+        Some("win.reset"),
+    );
     menu.append_section(None, &reset);
     menu
 }
@@ -437,6 +479,27 @@ where
 /// a comment, but the 500 lines formed a single block where finding a wiring
 /// required scrolling through all of it.
 pub(crate) fn wire(state: &St, widgets: &Wi, window: &adw::ApplicationWindow) {
+    // Language selector: persisted immediately, applied on the next launch
+    // (GTK rebuilds its labels at build time).
+    let widgets_for_locale = Rc::clone(widgets);
+    widgets
+        .window
+        .locale_combo
+        .connect_selected_notify(move |combo| {
+            let locale = if combo.selected() == 1 {
+                pointimg::frontend::Locale::Fr
+            } else {
+                pointimg::frontend::Locale::En
+            };
+            pointimg::frontend::set_locale(locale);
+            crate::prefs::save_locale(locale);
+            let toast = adw::Toast::new(pointimg::frontend::t(
+                "Langue modifiée. Redémarrez l'application pour l'appliquer.",
+            ));
+            toast.set_timeout(4);
+            widgets_for_locale.window.toast_overlay.add_toast(toast);
+        });
+
     wire_header_buttons(state, widgets, window);
     wire_presets(state, widgets);
     wire_algorithm(state, widgets);

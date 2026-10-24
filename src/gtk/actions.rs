@@ -85,7 +85,7 @@ pub(crate) fn cancel_compute(state: &Rc<RefCell<State>>, widgets: &Rc<Widgets>) 
     }
     let mut st = state.borrow_mut();
     st.user_cancelled = true;
-    st.status = "Annulation…".to_string();
+    st.status = pointimg::frontend::t("Annulation…").to_string();
     drop(st);
     state.borrow().cancel.store(true, Ordering::SeqCst);
     preview::update_status_labels(state, widgets);
@@ -120,9 +120,9 @@ pub(crate) fn start_compute(state: &Rc<RefCell<State>>, widgets: &Rc<Widgets>) {
         }
         st.compute_start = Some(Instant::now());
         st.status = if full {
-            frontend::msg::COMPUTING.to_string()
+            frontend::msg::computing().to_string()
         } else {
-            "Aperçu rapide en cours…".to_string()
+            pointimg::frontend::t("Aperçu rapide en cours…").to_string()
         };
         st.last_dots = None;
         (
@@ -246,14 +246,22 @@ pub(crate) fn load_image(path: PathBuf, state: &Rc<RefCell<State>>, widgets: &Rc
                 st.last_committed = Some(st.params.clone());
                 st.source_was_resized = was_resized;
                 st.status = if was_resized {
-                    format!(
-                        "Image réduite de {orig_w}x{orig_h} à {}x{} pour respecter la mémoire.",
-                        dims.0, dims.1
-                    )
+                    {
+                        let mut s = pointimg::frontend::t(
+                            "Image réduite de {orig_w}x{orig_h} à {}x{} pour respecter la mémoire.",
+                        )
+                        .to_string();
+                        s = s.replace("{orig_w}", &orig_w.to_string());
+                        s = s.replace("{orig_h}", &orig_h.to_string());
+                        s = s.replacen("{}", &dims.0.to_string(), 1);
+                        s = s.replacen("{}", &dims.1.to_string(), 1);
+                        s
+                    }
                 } else if profile_converted {
-                    "Profil ICC converti vers sRGB.".to_string()
+                    pointimg::frontend::t("Profil ICC converti vers sRGB.").to_string()
                 } else {
-                    format!("Image chargée : {}", path.display())
+                    pointimg::frontend::t("Image chargée : {}")
+                        .replace("{}", &path.display().to_string())
                 };
             }
             preview::refresh_preview(state, widgets);
@@ -263,7 +271,11 @@ pub(crate) fn load_image(path: PathBuf, state: &Rc<RefCell<State>>, widgets: &Rc
             start_compute(state, widgets);
         }
         Err(e) => {
-            preview::notify_error(state, widgets, &format!("Erreur de chargement : {e}"));
+            preview::notify_error(
+                state,
+                widgets,
+                &pointimg::frontend::t("Erreur de chargement : {e}").replace("{e}", &e.to_string()),
+            );
         }
     }
 }
@@ -352,7 +364,7 @@ pub(crate) fn undo(state: &Rc<RefCell<State>>, widgets: &Rc<Widgets>) {
     }
     let previous = state.borrow_mut().history.pop();
     let Some(previous) = previous else {
-        preview::notify(state, widgets, frontend::msg::NOTHING_TO_UNDO);
+        preview::notify(state, widgets, frontend::msg::nothing_to_undo());
         return;
     };
     {
@@ -367,13 +379,13 @@ pub(crate) fn undo(state: &Rc<RefCell<State>>, widgets: &Rc<Widgets>) {
     sections::update_sections(widgets, &state.borrow().params);
     refresh_src_rgb(state, widgets);
     request_compute(state, widgets);
-    preview::notify(state, widgets, frontend::msg::UNDONE);
+    preview::notify(state, widgets, frontend::msg::undone());
 }
 
 pub(crate) fn redo(state: &Rc<RefCell<State>>, widgets: &Rc<Widgets>) {
     let next = state.borrow_mut().future.pop();
     let Some(next) = next else {
-        preview::notify(state, widgets, frontend::msg::NOTHING_TO_REDO);
+        preview::notify(state, widgets, frontend::msg::nothing_to_redo());
         return;
     };
     {
@@ -388,7 +400,7 @@ pub(crate) fn redo(state: &Rc<RefCell<State>>, widgets: &Rc<Widgets>) {
     sections::update_sections(widgets, &state.borrow().params);
     refresh_src_rgb(state, widgets);
     request_compute(state, widgets);
-    preview::notify(state, widgets, frontend::msg::REDONE);
+    preview::notify(state, widgets, frontend::msg::redone());
 }
 
 /// Restores the default values of a section, **without touching the
@@ -434,7 +446,7 @@ fn with_section_defaults(current: &FilterParams, target: ResetTarget) -> FilterP
 /// (Ctrl+Z).
 pub(crate) fn reset_params(state: &Rc<RefCell<State>>, widgets: &Rc<Widgets>) {
     if state.borrow().params == FilterParams::default() {
-        preview::notify(state, widgets, frontend::msg::ALREADY_DEFAULT);
+        preview::notify(state, widgets, frontend::msg::already_default());
         return;
     }
     {
@@ -447,7 +459,11 @@ pub(crate) fn reset_params(state: &Rc<RefCell<State>>, widgets: &Rc<Widgets>) {
     sections::update_sections(widgets, &state.borrow().params);
     refresh_src_rgb(state, widgets);
     request_compute(state, widgets);
-    preview::notify(state, widgets, "Réglages réinitialisés.");
+    preview::notify(
+        state,
+        widgets,
+        pointimg::frontend::t("Réglages réinitialisés."),
+    );
 }
 
 /// Restores a single section (↺ button in the group header).
@@ -463,7 +479,11 @@ pub(crate) fn reset_section(
     let defaults = with_section_defaults(&state.borrow().params, target);
     let before = state.borrow().params.clone();
     if before == defaults {
-        preview::notify(state, widgets, "Section déjà par défaut.");
+        preview::notify(
+            state,
+            widgets,
+            pointimg::frontend::t("Section déjà par défaut."),
+        );
         return;
     }
     {
@@ -478,7 +498,11 @@ pub(crate) fn reset_section(
     sections::update_sections(widgets, &state.borrow().params);
     refresh_src_rgb(state, widgets);
     request_compute(state, widgets);
-    preview::notify(state, widgets, "Section réinitialisée.");
+    preview::notify(
+        state,
+        widgets,
+        pointimg::frontend::t("Section réinitialisée."),
+    );
 }
 
 /// Applies a built-in preset (undoable, like any other change).
@@ -508,7 +532,7 @@ pub(crate) fn apply_preset(index: usize, state: &Rc<RefCell<State>>, widgets: &R
     preview::notify(
         state,
         widgets,
-        &format!("Preset « {} » appliqué.", preset.name),
+        &pointimg::frontend::t("Preset « {} » appliqué.").replace("{}", preset.name),
     );
 }
 
@@ -548,7 +572,7 @@ pub(crate) fn vary_seed(state: &Rc<RefCell<State>>, widgets: &Rc<Widgets>) {
 /// Copies the current result to the clipboard.
 pub(crate) fn copy_to_clipboard(state: &Rc<RefCell<State>>, widgets: &Rc<Widgets>) {
     let Some(result) = state.borrow().result.clone() else {
-        preview::notify(state, widgets, frontend::msg::NOTHING_TO_COPY);
+        preview::notify(state, widgets, frontend::msg::nothing_to_copy());
         return;
     };
     let texture = crate::preview::rgba_to_texture(&result);
@@ -559,7 +583,7 @@ pub(crate) fn copy_to_clipboard(state: &Rc<RefCell<State>>, widgets: &Rc<Widgets
         .toast_overlay
         .clipboard()
         .set_texture(&texture);
-    preview::notify(state, widgets, frontend::msg::COPIED);
+    preview::notify(state, widgets, frontend::msg::copied());
 }
 
 // ─── Worker messages ─────────────────────────────────────────────────────────
@@ -617,9 +641,9 @@ pub(crate) fn handle_message(msg: Msg, state: &Rc<RefCell<State>>, widgets: &Rc<
                 st.last_compute_ms = Some(elapsed_ms);
                 st.result_revision += 1;
                 st.status = if full_resolution {
-                    "Calcul terminé.".to_string()
+                    pointimg::frontend::t("Calcul terminé.").to_string()
                 } else {
-                    "Aperçu calculé — finalisation en cours…".to_string()
+                    pointimg::frontend::t("Aperçu calculé — finalisation en cours…").to_string()
                 };
                 if st.pending_commit {
                     commit_history(&mut st);
@@ -655,7 +679,7 @@ pub(crate) fn handle_message(msg: Msg, state: &Rc<RefCell<State>>, widgets: &Rc<
                 st.compute_start = None;
                 st.final_pass = false;
                 if cancelled && st.user_cancelled {
-                    st.status = "Calcul annulé.".to_string();
+                    st.status = pointimg::frontend::t("Calcul annulé.").to_string();
                 } else if !cancelled {
                     st.status = message.clone();
                     error = Some(message);
@@ -745,7 +769,7 @@ fn run_worker(
                 let msg = if cancel.load(Ordering::SeqCst) {
                     Msg::Failed {
                         generation,
-                        message: "Annulé".to_string(),
+                        message: pointimg::frontend::t("Annulé").to_string(),
                         cancelled: true,
                     }
                 } else {
@@ -762,7 +786,7 @@ fn run_worker(
             Err(e) => {
                 let _ = tx.send_blocking(Msg::Failed {
                     generation,
-                    message: format!("Erreur : {e}"),
+                    message: pointimg::frontend::t("Erreur : {e}").replace("{e}", &e.to_string()),
                     cancelled: filter::is_cancelled(&e),
                 });
             }
@@ -805,7 +829,7 @@ fn run_worker(
         Err(e) => {
             let _ = tx.send_blocking(Msg::Failed {
                 generation,
-                message: format!("Erreur : {e}"),
+                message: pointimg::frontend::t("Erreur : {e}").replace("{e}", &e.to_string()),
                 cancelled: filter::is_cancelled(&e),
             });
         }
@@ -819,7 +843,7 @@ pub(crate) fn save_svg_quick(state: &Rc<RefCell<State>>, widgets: &Rc<Widgets>) 
             source.with_file_name(frontend::derived_export_name(Some(source), "svg"))
         })
     else {
-        preview::notify(state, widgets, frontend::msg::OPEN_FIRST);
+        preview::notify(state, widgets, frontend::msg::open_first());
         return;
     };
     // No file chooser: the confirmation happens here. Same reason for cloning

@@ -23,6 +23,7 @@ mod confirm;
 mod controls;
 mod exports;
 mod files;
+mod prefs;
 mod preview;
 #[cfg(test)]
 mod ranges;
@@ -191,7 +192,10 @@ impl State {
             zoom: 1.0,
             zoom_fit: true,
             effective_zoom: 1.0,
-            status: "Ouvrez une image pour commencer (ou glissez-déposez un fichier).".to_string(),
+            status: pointimg::frontend::t(
+                "Ouvrez une image pour commencer (ou glissez-déposez un fichier).",
+            )
+            .to_string(),
             last_compute_ms: None,
             compute_start: None,
             history: Vec::new(),
@@ -254,10 +258,18 @@ pub(crate) use pointimg::frontend::{format_duration, format_memory};
 /// `GApplication` has only one window: the `activate` signal builds it, the
 /// `open` signal (paths received as an argument or from another program) then
 /// loads the files into it. These handles connect the two.
-type WindowHandles = (Rc<RefCell<State>>, Rc<controls::Widgets>);
+type WindowHandles = (
+    Rc<RefCell<State>>,
+    Rc<RefCell<Option<Rc<controls::Widgets>>>>,
+);
 
 fn main() -> glib::ExitCode {
     env_logger::init();
+    if let Some(locale) = prefs::load_locale() {
+        pointimg::frontend::set_locale(locale);
+    } else {
+        pointimg::frontend::set_locale(pointimg::frontend::detect_system_locale());
+    }
 
     let app = adw::Application::builder()
         .application_id(APP_ID)
@@ -281,14 +293,19 @@ fn main() -> glib::ExitCode {
         }
         let state = Rc::new(RefCell::new(State::new(tx.clone())));
         let (window, widgets) = ui::build_ui(app, Rc::clone(&state));
-        *handles_for_activate.borrow_mut() = Some((Rc::clone(&state), Rc::clone(&widgets)));
+        let widgets_cell: Rc<RefCell<Option<Rc<controls::Widgets>>>> =
+            Rc::new(RefCell::new(Some(Rc::clone(&widgets))));
+        *handles_for_activate.borrow_mut() = Some((Rc::clone(&state), Rc::clone(&widgets_cell)));
 
         let rx = rx.clone();
         let state_rx = Rc::clone(&state);
-        let widgets_rx = Rc::clone(&widgets);
+        let widgets_rx = Rc::clone(&widgets_cell);
         glib::MainContext::default().spawn_local(async move {
             while let Ok(msg) = rx.recv().await {
-                actions::handle_message(msg, &state_rx, &widgets_rx);
+                let widgets = widgets_rx.borrow().clone();
+                if let Some(widgets) = widgets {
+                    actions::handle_message(msg, &state_rx, &widgets);
+                }
             }
         });
 
@@ -301,15 +318,18 @@ fn main() -> glib::ExitCode {
     app.connect_open(move |app, files, _hint| {
         app.activate();
         let borrowed = handles.borrow();
-        let Some((state, widgets)) = borrowed.as_ref() else {
+        let Some((state, widgets_cell)) = borrowed.as_ref() else {
+            return;
+        };
+        let Some(widgets) = widgets_cell.borrow().clone() else {
             return;
         };
         let paths: Vec<PathBuf> = files.iter().filter_map(|file| file.path()).collect();
         for path in paths {
             if path.is_dir() {
-                actions::open_folder(path, state, widgets);
+                actions::open_folder(path, state, &widgets);
             } else {
-                actions::load_image(path, state, widgets);
+                actions::load_image(path, state, &widgets);
             }
         }
     });

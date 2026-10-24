@@ -35,7 +35,7 @@ pub(crate) fn build_ui(
     widgets
         .window
         .shortcuts
-        .set_title(Some("Raccourcis clavier"));
+        .set_title(Some(pointimg::frontend::t("Raccourcis clavier")));
     widgets.window.shortcuts.set_default_size(520, 560);
     widgets
         .window

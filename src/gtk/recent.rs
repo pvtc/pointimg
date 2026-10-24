@@ -95,8 +95,8 @@ pub(crate) fn build_recent_widget(
         return None;
     }
     let group = adw::PreferencesGroup::new();
-    group.set_title("Images récentes");
-    group.set_description(Some("Reprendre où vous en étiez"));
+    group.set_title(pointimg::frontend::t("Images récentes"));
+    group.set_description(Some(pointimg::frontend::t("Reprendre où vous en étiez")));
     for path in images {
         let row = adw::ActionRow::new();
         // The file name, not its full path: the list must stay readable,
