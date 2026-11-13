@@ -10,10 +10,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 - **AppStream metadata** for both applications
-  (`packaging/pointimg-gtk.metainfo.xml`, `packaging/pointimg-gui.metainfo.xml`):
+  (`packaging/io.github.pvtc.pointimg-gtk.metainfo.xml`,
+  `packaging/io.github.pvtc.pointimg-gui.metainfo.xml`):
   summary, feature list and screenshot in English and French, validated with
   `appstreamcli`. Software centres now have something to display besides the
   desktop entry.
+- **Reverse-DNS identifiers**: the `.desktop` and metainfo files are now
+  `io.github.pvtc.pointimg-{gtk,gui}.*`, matching the developer id, so
+  `appstreamcli validate` passes without any warning.
 - **Dependabot**: weekly updates for the root Cargo workspace, the fuzz
   workspace and GitHub Actions, with the GTK stack grouped into a single pull
   request so `gtk4` and `libadwaita` move together. (`.github/dependabot.yml`)

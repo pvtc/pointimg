@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <component type="desktop-application">
-  <id>pointimg-gtk</id>
-  <launchable type="desktop-id">pointimg-gtk.desktop</launchable>
+  <id>io.github.pvtc.pointimg-gtk</id>
+  <launchable type="desktop-id">io.github.pvtc.pointimg-gtk.desktop</launchable>
   <name>pointimg</name>
   <summary>Pointillist filter for images</summary>
   <summary xml:lang="fr">Filtre pointilliste pour images</summary>

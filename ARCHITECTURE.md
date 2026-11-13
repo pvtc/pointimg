@@ -107,8 +107,9 @@ pointimg/
 ├── examples/
 │   └── preset_thumbnails.rs — renders the preset thumbnails
 ├── packaging/
-│   ├── pointimg-gui.desktop, pointimg-gtk.desktop — entries, `%F` so the
+│   ├── io.github.pvtc.pointimg-{gui,gtk}.desktop — entries, `%F` so the
 │   │                     file manager can open an image in either front-end
+│   ├── io.github.pvtc.pointimg-{gui,gtk}.metainfo.xml — AppStream metadata
 │   └── icons/          — `hicolor` icon tree, generated from the SVG by
 │                         `icons/regenerate.sh`
 ├── tests/              — integration tests (public API end-to-end)

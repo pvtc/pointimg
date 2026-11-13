@@ -10,10 +10,14 @@ et ce projet adhère au [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 ### Ajouté
 
 - **Métadonnées AppStream** pour les deux applications
-  (`packaging/pointimg-gtk.metainfo.xml`, `packaging/pointimg-gui.metainfo.xml`) :
+  (`packaging/io.github.pvtc.pointimg-gtk.metainfo.xml`,
+  `packaging/io.github.pvtc.pointimg-gui.metainfo.xml`) :
   résumé, liste de fonctionnalités et capture d'écran en anglais et en français,
   validés par `appstreamcli`. Les logithèques ont désormais autre chose à
   afficher que l'entrée de bureau.
+- **Identifiants reverse-DNS** : les fichiers `.desktop` et metainfo
+  deviennent `io.github.pvtc.pointimg-{gtk,gui}.*`, conformes à l'identifiant
+  de développeur ; `appstreamcli validate` passe désormais sans aucun warning.
 - **Dependabot** : mises à jour hebdomadaires du workspace Cargo racine, du
   workspace fuzz et des GitHub Actions, la pile GTK étant groupée dans une seule
   pull request pour que `gtk4` et `libadwaita` avancent ensemble.

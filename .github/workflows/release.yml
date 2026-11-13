@@ -127,8 +127,8 @@ jobs:
           sh packaging/icons/regenerate.sh
           staging=pointimg-gui-linux-x86_64
           install -Dm755 target/release/pointimg-gui "$staging/bin/pointimg-gui"
-          install -Dm644 packaging/pointimg-gui.desktop "$staging/share/applications/pointimg-gui.desktop"
-          install -Dm644 packaging/pointimg-gui.metainfo.xml "$staging/share/metainfo/pointimg-gui.metainfo.xml"
+          install -Dm644 packaging/io.github.pvtc.pointimg-gui.desktop "$staging/share/applications/io.github.pvtc.pointimg-gui.desktop"
+          install -Dm644 packaging/io.github.pvtc.pointimg-gui.metainfo.xml "$staging/share/metainfo/io.github.pvtc.pointimg-gui.metainfo.xml"
           install -d "$staging/share/icons"
           cp -r packaging/icons/hicolor "$staging/share/icons/hicolor"
           tar czf "$staging.tar.gz" "$staging"
@@ -225,8 +225,8 @@ jobs:
           sh packaging/icons/regenerate.sh
           staging=pointimg-gtk-linux-x86_64
           install -Dm755 target/release/pointimg-gtk "$staging/bin/pointimg-gtk"
-          install -Dm644 packaging/pointimg-gtk.desktop "$staging/share/applications/pointimg-gtk.desktop"
-          install -Dm644 packaging/pointimg-gtk.metainfo.xml "$staging/share/metainfo/pointimg-gtk.metainfo.xml"
+          install -Dm644 packaging/io.github.pvtc.pointimg-gtk.desktop "$staging/share/applications/io.github.pvtc.pointimg-gtk.desktop"
+          install -Dm644 packaging/io.github.pvtc.pointimg-gtk.metainfo.xml "$staging/share/metainfo/io.github.pvtc.pointimg-gtk.metainfo.xml"
           install -d "$staging/share/icons"
           cp -r packaging/icons/hicolor "$staging/share/icons/hicolor"
           tar czf "$staging.tar.gz" "$staging"

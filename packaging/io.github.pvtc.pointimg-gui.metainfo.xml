@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <component type="desktop-application">
-  <id>pointimg-gui</id>
-  <launchable type="desktop-id">pointimg-gui.desktop</launchable>
+  <id>io.github.pvtc.pointimg-gui</id>
+  <launchable type="desktop-id">io.github.pvtc.pointimg-gui.desktop</launchable>
   <name>pointimg (egui)</name>
   <summary>Pointillist filter for images</summary>
   <summary xml:lang="fr">Filtre pointilliste pour images</summary>
