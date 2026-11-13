@@ -38,7 +38,7 @@ jobs:
           cd ../../..
       
       - name: Upload artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: pointimg-cli-linux-${{ matrix.target }}
           path: pointimg-cli-linux-${{ matrix.target }}.tar.gz
@@ -69,7 +69,7 @@ jobs:
           cd ../../..
       
       - name: Upload artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: pointimg-cli-macos-${{ matrix.target }}
           path: pointimg-cli-macos-${{ matrix.target }}.tar.gz
@@ -93,7 +93,7 @@ jobs:
           cd ../..
       
       - name: Upload artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: pointimg-cli-windows-x86_64
           path: pointimg-cli-windows-x86_64.zip
@@ -135,7 +135,7 @@ jobs:
           rm -rf "$staging"
       
       - name: Upload artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: pointimg-gui-linux-x86_64
           path: pointimg-gui-linux-x86_64.tar.gz
@@ -172,7 +172,7 @@ jobs:
           cd ../..
       
       - name: Upload artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: pointimg-gui-macos-universal
           path: pointimg-gui-macos-universal.tar.gz
@@ -196,7 +196,7 @@ jobs:
           cd ../..
       
       - name: Upload artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: pointimg-gui-windows-x86_64
           path: pointimg-gui-windows-x86_64.zip
@@ -233,7 +233,7 @@ jobs:
           rm -rf "$staging"
 
       - name: Upload artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: pointimg-gtk-linux-x86_64
           path: pointimg-gtk-linux-x86_64.tar.gz
