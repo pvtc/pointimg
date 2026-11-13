@@ -36,7 +36,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Untranslated interface strings**: memory and file sizes, preset names and
   descriptions, dithering warnings, ICC and decoding errors, undo labels, egui
   notifications, GTK confirmation buttons and window labels now go through
-  `gettext`; the English catalogue covers every msgid.
+  `gettext`; the parameter validation messages and the density-map errors
+  complete the coverage.
 
 ## [0.2.0] - 2026-10-24
 

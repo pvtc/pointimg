@@ -443,12 +443,12 @@ where
 {
     let expected = (src.width() as usize)
         .checked_mul(src.height() as usize)
-        .ok_or_else(|| anyhow!("dimensions d'image trop grandes"))?;
+        .ok_or_else(|| anyhow!(crate::frontend::gettext("dimensions d'image trop grandes")))?;
     if density.len() != expected {
         return Err(anyhow!(
-            "density map invalide : {} valeurs, {} attendues",
-            density.len(),
-            expected
+            crate::frontend::gettext("density map invalide : {} valeurs, {} attendues")
+                .replacen("{}", &density.len().to_string(), 1)
+                .replacen("{}", &expected.to_string(), 1)
         ));
     }
     if params.gamma_correct

@@ -196,7 +196,10 @@ fn cached_density_rejects_wrong_length() {
     let cancel = AtomicBool::new(false);
     let error = filter::apply_with_progress_cached(&img, &params, &cancel, &[], |_, _, _| {})
         .expect_err("une density map de taille incorrecte doit être rejetée");
-    assert!(error.to_string().contains("density map invalide"));
+    let expected = pointimg::frontend::gettext("density map invalide : {} valeurs, {} attendues")
+        .replacen("{}", "0", 1)
+        .replacen("{}", &(img.width() * img.height()).to_string(), 1);
+    assert_eq!(error.to_string(), expected);
 }
 
 #[test]

@@ -38,8 +38,9 @@ et ce projet adhère au [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 - **Chaînes d'interface non traduites** : tailles mémoire et de fichier, noms et
   descriptions des presets, avertissements de dithering, erreurs ICC et de
   décodage, libellés d'annulation, notifications egui, boutons de confirmation
-  et libellés de fenêtre GTK passent désormais par `gettext` ; le catalogue
-  anglais couvre tous les msgids.
+  et libellés de fenêtre GTK passent désormais par `gettext` ; les messages de
+  validation des paramètres et les erreurs de carte de densité complètent la
+  couverture.
 
 ## [0.2.0] - 2026-10-24
 

@@ -279,20 +279,22 @@ pub struct Dot {
 /// Dot radii: ordered, positive, and at the scale of the image.
 fn validate_radii(p: &FilterParams) -> Result<()> {
     if p.min_radius_ratio <= 0.0 {
-        return Err(anyhow!("min_radius_ratio doit etre > 0"));
+        return Err(anyhow!(crate::frontend::gettext(
+            "min_radius_ratio doit etre > 0"
+        )));
     }
     if p.max_radius_ratio < p.min_radius_ratio {
         return Err(anyhow!(
-            "max_radius_ratio ({}) doit etre >= min_radius_ratio ({})",
-            p.max_radius_ratio,
-            p.min_radius_ratio
+            crate::frontend::gettext("max_radius_ratio ({}) doit etre >= min_radius_ratio ({})")
+                .replacen("{}", &p.max_radius_ratio.to_string(), 1)
+                .replacen("{}", &p.min_radius_ratio.to_string(), 1)
         ));
     }
     // A radius larger than the image scale is not meaningful.
     if p.max_radius_ratio > 1.0 {
         return Err(anyhow!(
-            "max_radius_ratio ({}) doit etre <= 1.0",
-            p.max_radius_ratio
+            crate::frontend::gettext("max_radius_ratio ({}) doit etre <= 1.0")
+                .replace("{}", &p.max_radius_ratio.to_string())
         ));
     }
     Ok(())
@@ -301,24 +303,30 @@ fn validate_radii(p: &FilterParams) -> Result<()> {
 /// Placement: number of dots, grid, iterations.
 fn validate_density(p: &FilterParams) -> Result<()> {
     if p.num_points == 0 {
-        return Err(anyhow!("num_points doit etre > 0"));
+        return Err(anyhow!(crate::frontend::gettext(
+            "num_points doit etre > 0"
+        )));
     }
     if p.num_points > 100_000 {
-        return Err(anyhow!("num_points doit etre <= 100000"));
+        return Err(anyhow!(crate::frontend::gettext(
+            "num_points doit etre <= 100000"
+        )));
     }
     if matches!(p.algorithm, Algorithm::Kmeans | Algorithm::Voronoi) && p.num_points > 50_000 {
-        return Err(anyhow!(
+        return Err(anyhow!(crate::frontend::gettext(
             "num_points doit etre <= 50000 pour K-means/Voronoi"
-        ));
+        )));
     }
     if p.cols == 0 {
-        return Err(anyhow!("cols doit etre > 0"));
+        return Err(anyhow!(crate::frontend::gettext("cols doit etre > 0")));
     }
     if p.cols > 8192 {
-        return Err(anyhow!("cols doit etre <= 8192"));
+        return Err(anyhow!(crate::frontend::gettext("cols doit etre <= 8192")));
     }
     if p.iterations > 100 {
-        return Err(anyhow!("iterations doit etre <= 100"));
+        return Err(anyhow!(crate::frontend::gettext(
+            "iterations doit etre <= 100"
+        )));
     }
     Ok(())
 }
@@ -328,19 +336,27 @@ fn validate_palette(p: &FilterParams) -> Result<()> {
     if let Some(n) = p.palette_size
         && n < 2
     {
-        return Err(anyhow!("palette_size doit etre >= 2, got {}", n));
+        return Err(anyhow!(
+            crate::frontend::gettext("palette_size doit etre >= 2, got {}")
+                .replace("{}", &n.to_string())
+        ));
     }
     if p.palette_size.is_some_and(|n| n > 256) {
-        return Err(anyhow!("palette_size doit etre <= 256"));
+        return Err(anyhow!(crate::frontend::gettext(
+            "palette_size doit etre <= 256"
+        )));
     }
     if !(0.0..=1.0).contains(&p.variance_sensitivity) {
         return Err(anyhow!(
-            "variance_sensitivity doit etre dans [0, 1], got {}",
-            p.variance_sensitivity
+            crate::frontend::gettext("variance_sensitivity doit etre dans [0, 1], got {}")
+                .replace("{}", &p.variance_sensitivity.to_string())
         ));
     }
     if p.max_boost < 1.0 {
-        return Err(anyhow!("max_boost doit etre >= 1.0, got {}", p.max_boost));
+        return Err(anyhow!(
+            crate::frontend::gettext("max_boost doit etre >= 1.0, got {}")
+                .replace("{}", &p.max_boost.to_string())
+        ));
     }
     Ok(())
 }
@@ -354,20 +370,20 @@ fn validate_halftone(p: &FilterParams) -> Result<()> {
     }
     if p.halftone_frequency <= 0.0 {
         return Err(anyhow!(
-            "halftone_frequency doit etre > 0, got {}",
-            p.halftone_frequency
+            crate::frontend::gettext("halftone_frequency doit etre > 0, got {}")
+                .replace("{}", &p.halftone_frequency.to_string())
         ));
     }
     if p.halftone_min_radius_ratio < 0.0 {
         return Err(anyhow!(
-            "halftone_min_radius_ratio doit etre >= 0, got {}",
-            p.halftone_min_radius_ratio
+            crate::frontend::gettext("halftone_min_radius_ratio doit etre >= 0, got {}")
+                .replace("{}", &p.halftone_min_radius_ratio.to_string())
         ));
     }
     if p.halftone_max_dot_ratio <= 0.0 {
         return Err(anyhow!(
-            "halftone_max_dot_ratio doit etre > 0, got {}",
-            p.halftone_max_dot_ratio
+            crate::frontend::gettext("halftone_max_dot_ratio doit etre > 0, got {}")
+                .replace("{}", &p.halftone_max_dot_ratio.to_string())
         ));
     }
     // Upper bounds: a halftone radius is not capped by the nearest-neighbor,
@@ -376,14 +392,14 @@ fn validate_halftone(p: &FilterParams) -> Result<()> {
     // a pathologically slow render.
     if p.halftone_min_radius_ratio > 1.0 {
         return Err(anyhow!(
-            "halftone_min_radius_ratio doit etre <= 1.0, got {}",
-            p.halftone_min_radius_ratio
+            crate::frontend::gettext("halftone_min_radius_ratio doit etre <= 1.0, got {}")
+                .replace("{}", &p.halftone_min_radius_ratio.to_string())
         ));
     }
     if p.halftone_max_dot_ratio > 10.0 {
         return Err(anyhow!(
-            "halftone_max_dot_ratio doit etre <= 10.0, got {}",
-            p.halftone_max_dot_ratio
+            crate::frontend::gettext("halftone_max_dot_ratio doit etre <= 10.0, got {}")
+                .replace("{}", &p.halftone_max_dot_ratio.to_string())
         ));
     }
     Ok(())
@@ -395,8 +411,8 @@ fn validate_shapes(p: &FilterParams) -> Result<()> {
         && !(3..=12).contains(&sides)
     {
         return Err(anyhow!(
-            "polygon_sides doit etre entre 3 et 12, got {}",
-            sides
+            crate::frontend::gettext("polygon_sides doit etre entre 3 et 12, got {}")
+                .replace("{}", &sides.to_string())
         ));
     }
     if let DotShape::Ellipse { aspect, .. } = p.dot_shape
@@ -424,7 +440,11 @@ fn validate_finite(p: &FilterParams) -> Result<()> {
         ("halftone_max_dot_ratio", p.halftone_max_dot_ratio),
     ] {
         if !value.is_finite() {
-            return Err(anyhow!("{} doit etre fini, got {}", name, value));
+            return Err(anyhow!(
+                crate::frontend::gettext("{} doit etre fini, got {}")
+                    .replacen("{}", name, 1)
+                    .replacen("{}", &value.to_string(), 1)
+            ));
         }
     }
     Ok(())
@@ -435,8 +455,6 @@ fn validate_finite(p: &FilterParams) -> Result<()> {
 /// Seven named checks instead of a series of 156 inline `if`s. The order of the
 /// checks and the messages are unchanged, character for character: only the
 /// grouping changes, and each check becomes testable on its own.
-/// the grouping changes, and each check becomes testable on its own.
-/// the grouping changes, and each check becomes testable on its own.
 pub fn validate_params(w: u32, h: u32, params: &FilterParams) -> Result<()> {
     validate_image_dimensions(w, h)?;
     validate_radii(params)?;
