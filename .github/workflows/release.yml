@@ -110,7 +110,7 @@ jobs:
       - name: Install dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y libxcb-render0-dev libxcb-shape0-dev libxcb-xfixes0-dev libxkbcommon-dev libssl-dev
+          sudo apt-get install -y libxcb-render0-dev libxcb-shape0-dev libxcb-xfixes0-dev libxkbcommon-dev libssl-dev librsvg2-bin
 
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
@@ -118,11 +118,21 @@ jobs:
       - name: Build GUI
         run: cargo build --release --locked --bin pointimg-gui
       
+      # Le binaire seul ne suffit pas pour être installable sur un bureau
+      # Linux : le tarball embarque le .desktop, les icônes hicolor (régénérées
+      # depuis le SVG source — les PNG ne sont pas commités) et le metainfo
+      # AppStream.
       - name: Package
         run: |
-          cd target/release
-          tar czf ../../pointimg-gui-linux-x86_64.tar.gz pointimg-gui
-          cd ../..
+          sh packaging/icons/regenerate.sh
+          staging=pointimg-gui-linux-x86_64
+          install -Dm755 target/release/pointimg-gui "$staging/bin/pointimg-gui"
+          install -Dm644 packaging/pointimg-gui.desktop "$staging/share/applications/pointimg-gui.desktop"
+          install -Dm644 packaging/pointimg-gui.metainfo.xml "$staging/share/metainfo/pointimg-gui.metainfo.xml"
+          install -d "$staging/share/icons"
+          cp -r packaging/icons/hicolor "$staging/share/icons/hicolor"
+          tar czf "$staging.tar.gz" "$staging"
+          rm -rf "$staging"
       
       - name: Upload artifact
         uses: actions/upload-artifact@v4
@@ -200,7 +210,7 @@ jobs:
       - name: Install GTK4 and libadwaita
         run: |
           sudo apt-get update
-          sudo apt-get install -y libgtk-4-dev libadwaita-1-dev
+          sudo apt-get install -y libgtk-4-dev libadwaita-1-dev librsvg2-bin
 
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
@@ -208,11 +218,19 @@ jobs:
       - name: Build GTK4 GUI
         run: cargo build --release --locked --no-default-features --features gtk --bin pointimg-gtk
 
+      # Même logique que le tarball egui : binaire + .desktop + icônes
+      # hicolor régénérées + metainfo AppStream.
       - name: Package
         run: |
-          cd target/release
-          tar czf ../../pointimg-gtk-linux-x86_64.tar.gz pointimg-gtk
-          cd ../..
+          sh packaging/icons/regenerate.sh
+          staging=pointimg-gtk-linux-x86_64
+          install -Dm755 target/release/pointimg-gtk "$staging/bin/pointimg-gtk"
+          install -Dm644 packaging/pointimg-gtk.desktop "$staging/share/applications/pointimg-gtk.desktop"
+          install -Dm644 packaging/pointimg-gtk.metainfo.xml "$staging/share/metainfo/pointimg-gtk.metainfo.xml"
+          install -d "$staging/share/icons"
+          cp -r packaging/icons/hicolor "$staging/share/icons/hicolor"
+          tar czf "$staging.tar.gz" "$staging"
+          rm -rf "$staging"
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4

@@ -1,0 +1,60 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<component type="desktop-application">
+  <id>pointimg-gtk</id>
+  <launchable type="desktop-id">pointimg-gtk.desktop</launchable>
+  <name>pointimg</name>
+  <summary>Pointillist filter for images</summary>
+  <summary xml:lang="fr">Filtre pointilliste pour images</summary>
+  <metadata_license>MIT</metadata_license>
+  <project_license>MIT</project_license>
+  <developer id="io.github.pvtc">
+    <name>pvtc</name>
+  </developer>
+  <description>
+    <p>
+      A pointillist filter: the image becomes a composition of colored dots of
+      varying sizes. Each dot takes the average color of its area and its
+      radius is modulated by the local luminance and variance.
+    </p>
+    <p xml:lang="fr">
+      Un filtre pointilliste : l'image devient une composition de points colorés
+      de tailles variables. Chaque point prend la couleur moyenne de sa zone et
+      son rayon est modulé par la luminance et la variance locale.
+    </p>
+    <p>Features:</p>
+    <p xml:lang="fr">Fonctionnalités :</p>
+    <ul>
+      <li>4 placement algorithms: grid, k-means, weighted Voronoi (Lloyd) and adaptive quadtree</li>
+      <li xml:lang="fr">4 algorithmes de placement : grille, k-means, Voronoï pondéré (Lloyd) et quadtree adaptatif</li>
+      <li>4 dot shapes: circle, square, ellipse and regular polygon (3-12 sides)</li>
+      <li xml:lang="fr">4 formes de points : cercle, carré, ellipse et polygone régulier (3-12 côtés)</li>
+      <li>Density map: automatic redistribution of dots according to local detail</li>
+      <li xml:lang="fr">Density map : redistribution automatique des points selon le détail local</li>
+      <li>CMYK rosette and dominant-colors halftone (AM or FM screening)</li>
+      <li xml:lang="fr">Rosette CMJN et halftone couleurs dominantes (screening AM ou FM)</li>
+      <li>Palette reduction with four dithering algorithms (Floyd-Steinberg, Riemersma, Bayer)</li>
+      <li xml:lang="fr">Palette réduite avec quatre algorithmes de dithering (Floyd-Steinberg, Riemersma, Bayer)</li>
+      <li>PNG and vector SVG export, before/after comparison view</li>
+      <li xml:lang="fr">Export PNG et SVG vectoriel, comparaison avant/après</li>
+      <li>Interactive preview at reduced resolution with full-resolution finalization</li>
+      <li xml:lang="fr">Aperçu interactif en résolution réduite avec finalisation pleine résolution</li>
+    </ul>
+  </description>
+  <url type="homepage">https://github.com/pvtc/pointimg</url>
+  <url type="bugtracker">https://github.com/pvtc/pointimg/issues</url>
+  <screenshots>
+    <screenshot type="default">
+      <image type="source">https://raw.githubusercontent.com/pvtc/pointimg/main/assets/screenshots/pointimg-gtk.png</image>
+      <caption>Before/after comparison of a Voronoi render</caption>
+      <caption xml:lang="fr">Comparaison avant/après d'un rendu Voronoï</caption>
+    </screenshot>
+  </screenshots>
+  <content_rating type="oars-1.1"/>
+  <supports>
+    <control>pointing</control>
+    <control>keyboard</control>
+  </supports>
+  <provides>
+    <binary>pointimg-gtk</binary>
+  </provides>
+</component>
