@@ -18,7 +18,8 @@ impl App {
     // ─── Images ──────────────────────────────────────────────────────────────
 
     pub(crate) fn choose_image(&mut self, ctx: &egui::Context) {
-        let mut dialog = rfd::FileDialog::new().add_filter("Images", &IMAGE_EXTENSIONS);
+        let mut dialog =
+            rfd::FileDialog::new().add_filter(frontend::gettext("Images"), &IMAGE_EXTENSIONS);
         if let Some(folder) = self.initial_folder() {
             dialog = dialog.set_directory(folder);
         }
@@ -101,17 +102,27 @@ impl App {
             Ok(reader) => match reader.into_dimensions() {
                 Ok(dimensions) => dimensions,
                 Err(e) => {
-                    self.notify_error(format!("Erreur lecture dimensions : {e}"));
+                    self.notify_error(
+                        frontend::gettext("Erreur lecture dimensions : {e}")
+                            .replace("{e}", &e.to_string()),
+                    );
                     return;
                 }
             },
             Err(e) => {
-                self.notify_error(format!("Erreur lecture dimensions : {e}"));
+                self.notify_error(
+                    frontend::gettext("Erreur lecture dimensions : {e}")
+                        .replace("{e}", &e.to_string()),
+                );
                 return;
             }
         };
         if dimensions.0 == 0 || dimensions.1 == 0 {
-            self.notify_error(format!("Image vide ({}x{})", dimensions.0, dimensions.1));
+            self.notify_error(
+                frontend::gettext("Image vide ({}x{})")
+                    .replacen("{}", &dimensions.0.to_string(), 1)
+                    .replacen("{}", &dimensions.1.to_string(), 1),
+            );
             return;
         }
         match pointimg::color::decode_to_srgb(&path, "auto") {
@@ -148,23 +159,42 @@ impl App {
                 self.future.clear();
                 self.last_committed = Some(self.params.clone());
                 self.status = if was_resized {
-                    format!(
+                    frontend::gettext(
                         "Image chargée et réduite de {}x{} à {}x{} pour respecter la mémoire.",
-                        original_dimensions.0,
-                        original_dimensions.1,
-                        self.src_rgb.as_ref().map_or(0, |image| image.width()),
-                        self.src_rgb.as_ref().map_or(0, |image| image.height())
+                    )
+                    .replacen("{}", &original_dimensions.0.to_string(), 1)
+                    .replacen("{}", &original_dimensions.1.to_string(), 1)
+                    .replacen(
+                        "{}",
+                        &self
+                            .src_rgb
+                            .as_ref()
+                            .map_or(0, |image| image.width())
+                            .to_string(),
+                        1,
+                    )
+                    .replacen(
+                        "{}",
+                        &self
+                            .src_rgb
+                            .as_ref()
+                            .map_or(0, |image| image.height())
+                            .to_string(),
+                        1,
                     )
                 } else if profile_converted {
-                    "Profil ICC converti vers sRGB.".to_string()
+                    frontend::gettext("Profil ICC converti vers sRGB.").to_string()
                 } else {
-                    format!("Image chargée : {}", path.display())
+                    frontend::gettext("Image chargée : {}")
+                        .replace("{}", &path.display().to_string())
                 };
                 self.start_density_compute(ctx);
                 self.start_compute(ctx);
             }
             Err(e) => {
-                self.notify_error(format!("Erreur chargement : {e}"));
+                self.notify_error(
+                    frontend::gettext("Erreur chargement : {e}").replace("{e}", &e.to_string()),
+                );
             }
         }
     }
@@ -196,7 +226,7 @@ impl App {
         self.commit_history();
         self.refresh_src_rgb(ctx);
         self.on_params_changed(ctx);
-        self.notify(format!("Preset « {} » appliqué.", preset.name));
+        self.notify(frontend::gettext("Preset « {} » appliqué.").replace("{}", preset.name));
     }
 
     /// Index of the preset matching the current settings exactly.
@@ -229,9 +259,14 @@ impl App {
                 self.params = params;
                 self.refresh_src_rgb(ctx);
                 self.on_params_changed(ctx);
-                self.notify(format!("Preset chargé : {}", path.display()));
+                self.notify(
+                    frontend::gettext("Preset chargé : {}")
+                        .replace("{}", &path.display().to_string()),
+                );
             }
-            Err(e) => self.notify_error(format!("Erreur chargement preset : {e}")),
+            Err(e) => self.notify_error(
+                frontend::gettext("Erreur chargement preset : {e}").replace("{e}", &e.to_string()),
+            ),
         }
     }
 
@@ -242,8 +277,13 @@ impl App {
             return;
         }
         match frontend::save_preset(&path, &self.params) {
-            Ok(()) => self.notify(format!("Preset sauvegardé : {}", path.display())),
-            Err(e) => self.notify_error(format!("Erreur sauvegarde preset : {e}")),
+            Ok(()) => self.notify(
+                frontend::gettext("Preset sauvegardé : {}")
+                    .replace("{}", &path.display().to_string()),
+            ),
+            Err(e) => self.notify_error(
+                frontend::gettext("Erreur sauvegarde preset : {e}").replace("{e}", &e.to_string()),
+            ),
         }
     }
 
@@ -284,7 +324,7 @@ impl App {
         if let Some(prev_committed) = self.last_committed.take() {
             self.future.push(HistoryEntry {
                 params: prev_committed,
-                label: "État annulé".to_string(),
+                label: frontend::gettext("État annulé").to_string(),
             });
         }
         self.last_committed = Some(prev.params.clone());
@@ -306,7 +346,7 @@ impl App {
         if let Some(prev_committed) = self.last_committed.take() {
             self.history.push(HistoryEntry {
                 params: prev_committed,
-                label: "État rétabli".to_string(),
+                label: frontend::gettext("État rétabli").to_string(),
             });
         }
         self.last_committed = Some(next.params.clone());
@@ -331,7 +371,7 @@ impl App {
         // `bg_color` changed: the flattened source must be rebuilt.
         self.refresh_src_rgb(ctx);
         self.on_params_changed(ctx);
-        self.notify("Réglages réinitialisés.");
+        self.notify(frontend::gettext("Réglages réinitialisés."));
     }
 
     // ─── Zoom ────────────────────────────────────────────────────────────────

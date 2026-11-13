@@ -199,7 +199,12 @@ impl FilterParams {
             preset_version: PRESET_FORMAT_VERSION,
             params: self.clone(),
         })
-        .map_err(|e| anyhow!("erreur de sérialisation presets : {e}"))
+        .map_err(|e| {
+            anyhow!(
+                crate::frontend::gettext("erreur de sérialisation presets : {e}")
+                    .replace("{e}", &e.to_string())
+            )
+        })
     }
 
     /// Rebuilds the parameters from a TOML string.
@@ -207,9 +212,11 @@ impl FilterParams {
         if let Ok(document) = toml::from_str::<PresetDocument>(s) {
             if document.preset_version != PRESET_FORMAT_VERSION {
                 return Err(anyhow!(
-                    "version de preset {} non supportée (version actuelle : {})",
-                    document.preset_version,
-                    PRESET_FORMAT_VERSION
+                    crate::frontend::gettext(
+                        "version de preset {} non supportée (version actuelle : {})"
+                    )
+                    .replacen("{}", &document.preset_version.to_string(), 1)
+                    .replacen("{}", &PRESET_FORMAT_VERSION.to_string(), 1)
                 ));
             }
             return Ok(document.params);
@@ -341,9 +348,9 @@ fn validate_palette(p: &FilterParams) -> Result<()> {
 /// Settings specific to halftone.
 fn validate_halftone(p: &FilterParams) -> Result<()> {
     if p.algorithm == Algorithm::Halftone && p.halftone == HalftoneMode::Off {
-        return Err(anyhow!(
+        return Err(anyhow!(crate::frontend::gettext(
             "l'algorithme Halftone nécessite un mode cmyk ou dominant"
-        ));
+        )));
     }
     if p.halftone_frequency <= 0.0 {
         return Err(anyhow!(
@@ -396,8 +403,8 @@ fn validate_shapes(p: &FilterParams) -> Result<()> {
         && (aspect <= 0.0 || aspect > 10.0)
     {
         return Err(anyhow!(
-            "ellipse_aspect doit etre dans (0, 10], got {}",
-            aspect
+            crate::frontend::gettext("ellipse_aspect doit etre dans (0, 10], got {}")
+                .replace("{}", &aspect.to_string())
         ));
     }
     Ok(())
@@ -443,23 +450,27 @@ pub fn validate_params(w: u32, h: u32, params: &FilterParams) -> Result<()> {
 /// Validates the dimensions before decoding the image into memory.
 pub fn validate_image_dimensions(w: u32, h: u32) -> Result<()> {
     if w == 0 || h == 0 {
-        return Err(anyhow!("Image vide ({}x{})", w, h));
+        return Err(anyhow!(
+            crate::frontend::gettext("Image vide ({}x{})")
+                .replacen("{}", &w.to_string(), 1)
+                .replacen("{}", &h.to_string(), 1)
+        ));
     }
     if w > MAX_IMAGE_DIMENSION || h > MAX_IMAGE_DIMENSION {
         return Err(anyhow!(
-            "Image trop grande ({}x{}), maximum autorise: {}x{}",
-            w,
-            h,
-            MAX_IMAGE_DIMENSION,
-            MAX_IMAGE_DIMENSION
+            crate::frontend::gettext("Image trop grande ({}x{}), maximum autorise: {}x{}")
+                .replacen("{}", &w.to_string(), 1)
+                .replacen("{}", &h.to_string(), 1)
+                .replacen("{}", &MAX_IMAGE_DIMENSION.to_string(), 1)
+                .replacen("{}", &MAX_IMAGE_DIMENSION.to_string(), 1)
         ));
     }
     let pixels = (w as u64) * (h as u64);
     if pixels > MAX_IMAGE_PIXELS {
         return Err(anyhow!(
-            "Image trop grande ({} pixels), maximum: {} pixels",
-            pixels,
-            MAX_IMAGE_PIXELS
+            crate::frontend::gettext("Image trop grande ({} pixels), maximum: {} pixels")
+                .replacen("{}", &pixels.to_string(), 1)
+                .replacen("{}", &MAX_IMAGE_PIXELS.to_string(), 1)
         ));
     }
     Ok(())

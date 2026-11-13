@@ -117,7 +117,10 @@ pub(crate) fn menu_model() -> gtk::gio::Menu {
         Some(pointimg::frontend::gettext("Aperçu _précédent")),
         Some("win.view-prev"),
     );
-    view.append(Some("Zoom _100 %"), Some("win.zoom-one"));
+    view.append(
+        Some(pointimg::frontend::gettext("Zoom _100 %")),
+        Some("win.zoom-one"),
+    );
     view.append(
         Some(pointimg::frontend::gettext("_Ajuster à la fenêtre")),
         Some("win.zoom-fit"),

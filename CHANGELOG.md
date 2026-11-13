@@ -7,6 +7,37 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **AppStream metadata** for both applications
+  (`packaging/pointimg-gtk.metainfo.xml`, `packaging/pointimg-gui.metainfo.xml`):
+  summary, feature list and screenshot in English and French, validated with
+  `appstreamcli`. Software centres now have something to display besides the
+  desktop entry.
+- **Dependabot**: weekly updates for the root Cargo workspace, the fuzz
+  workspace and GitHub Actions, with the GTK stack grouped into a single pull
+  request so `gtk4` and `libadwaita` move together. (`.github/dependabot.yml`)
+- **Linux release tarball**: the release workflow stages the two GUI binaries in
+  an FHS layout (`bin/`, `share/applications`, `share/metainfo`,
+  `share/icons`) and regenerates the `hicolor` icons from the SVG before
+  packaging. (`.github/workflows/release.yml`)
+- **Translation tooling** (`scripts/sync-i18n.py`, wrapped by
+  `scripts/update-i18n.sh`): extracts the `gettext("…")` msgids from the Rust
+  sources, keeps existing translations, drops obsolete entries, recompiles the
+  `.mo` and exits non-zero when a translation is missing. The CI runs it and
+  fails when `locales/` is not up to date.
+
+### Fixed
+
+- **Documentation drift**: `ARCHITECTURE.md` and `ARCHITECTURE.fr.md` described a
+  single dithering algorithm (there are four), omitted `halftone` from
+  `--algorithm` and the ICC profile flags; `CONTRIBUTING` now lists the fuzz
+  targets, and the i18n workflow it referenced actually exists.
+- **Untranslated interface strings**: memory and file sizes, preset names and
+  descriptions, dithering warnings, ICC and decoding errors, undo labels, egui
+  notifications, GTK confirmation buttons and window labels now go through
+  `gettext`; the English catalogue covers every msgid.
+
 ## [0.2.0] - 2026-10-24
 
 ### Added

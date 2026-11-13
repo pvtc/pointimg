@@ -19,9 +19,15 @@ use std::path::Path;
 /// resized.
 pub fn decode_to_srgb(path: &Path, profile_spec: &str) -> Result<(DynamicImage, bool, bool)> {
     let mut reader = ImageReader::open(path)
-        .with_context(|| format!("Impossible de lire '{}'", path.display()))?
+        .with_context(|| {
+            crate::frontend::gettext("Impossible de lire '{}'")
+                .replace("{}", &path.display().to_string())
+        })?
         .with_guessed_format()
-        .with_context(|| format!("Format inconnu pour '{}'", path.display()))?;
+        .with_context(|| {
+            crate::frontend::gettext("Format inconnu pour '{}'")
+                .replace("{}", &path.display().to_string())
+        })?;
     let mut limits = Limits::default();
     limits.max_image_width = Some(131_072);
     limits.max_image_height = Some(131_072);
@@ -29,10 +35,14 @@ pub fn decode_to_srgb(path: &Path, profile_spec: &str) -> Result<(DynamicImage, 
     reader.limits(limits);
     let mut decoder = reader
         .into_decoder()
-        .context("Impossible de créer le décodeur")?;
-    let embedded = decoder.icc_profile().context("Profil ICC invalide")?;
-    let image = DynamicImage::from_decoder(decoder)
-        .with_context(|| format!("Impossible de décoder '{}'", path.display()))?;
+        .context(crate::frontend::gettext("Impossible de créer le décodeur"))?;
+    let embedded = decoder
+        .icc_profile()
+        .context(crate::frontend::gettext("Profil ICC invalide"))?;
+    let image = DynamicImage::from_decoder(decoder).with_context(|| {
+        crate::frontend::gettext("Impossible de décoder '{}'")
+            .replace("{}", &path.display().to_string())
+    })?;
 
     // Resize before the f32 ICC transform so oversized inputs cannot create
     // several full-size working buffers at once.
@@ -53,10 +63,17 @@ pub fn output_profile_from_spec(spec: &str) -> Result<Option<(ColorProfile, Vec<
     if spec.eq_ignore_ascii_case("srgb") || spec.eq_ignore_ascii_case("auto") {
         return Ok(None);
     }
-    let bytes = std::fs::read(spec)
-        .with_context(|| format!("Impossible de lire le profil ICC de sortie '{spec}'"))?;
-    let profile = ColorProfile::new_from_slice(&bytes)
-        .map_err(|e| anyhow!("Profil ICC de sortie invalide '{spec}' : {e:?}"))?;
+    let bytes = std::fs::read(spec).with_context(|| {
+        crate::frontend::gettext("Impossible de lire le profil ICC de sortie '{}'")
+            .replace("{}", spec)
+    })?;
+    let profile = ColorProfile::new_from_slice(&bytes).map_err(|e| {
+        anyhow!(
+            crate::frontend::gettext("Profil ICC de sortie invalide '{}' : {e:?}")
+                .replace("{}", spec)
+                .replace("{e:?}", &format!("{e:?}"))
+        )
+    })?;
     Ok(Some((profile, bytes)))
 }
 
@@ -65,17 +82,28 @@ pub fn output_profile_from_spec(spec: &str) -> Result<Option<(ColorProfile, Vec<
 pub fn profile_from_spec(spec: &str, embedded: Option<&[u8]>) -> Result<ColorProfile> {
     match spec.to_ascii_lowercase().as_str() {
         "auto" => match embedded {
-            Some(bytes) => ColorProfile::new_from_slice(bytes)
-                .map_err(|e| anyhow!("Profil ICC embarqué invalide : {e:?}")),
+            Some(bytes) => ColorProfile::new_from_slice(bytes).map_err(|e| {
+                anyhow!(
+                    crate::frontend::gettext("Profil ICC embarqué invalide : {e:?}")
+                        .replace("{e:?}", &format!("{e:?}"))
+                )
+            }),
             None => Ok(ColorProfile::new_srgb()),
         },
         "srgb" => Ok(ColorProfile::new_srgb()),
         "display-p3" | "display_p3" | "p3" => Ok(ColorProfile::new_display_p3()),
         path => {
-            let bytes = std::fs::read(path)
-                .with_context(|| format!("Impossible de lire le profil ICC '{path}'"))?;
-            ColorProfile::new_from_slice(&bytes)
-                .map_err(|e| anyhow!("Profil ICC invalide '{path}' : {e:?}"))
+            let bytes = std::fs::read(path).with_context(|| {
+                crate::frontend::gettext("Impossible de lire le profil ICC '{}'")
+                    .replace("{}", path)
+            })?;
+            ColorProfile::new_from_slice(&bytes).map_err(|e| {
+                anyhow!(
+                    crate::frontend::gettext("Profil ICC invalide '{}' : {e:?}")
+                        .replace("{}", path)
+                        .replace("{e:?}", &format!("{e:?}"))
+                )
+            })
         }
     }
 }
@@ -133,7 +161,14 @@ fn transform_rgb_chunked(
             Layout::Rgb,
             TransformOptions::default(),
         )
-        .map_err(|e| anyhow!("Impossible de créer la transformation colorimétrique : {e:?}"))?;
+        .map_err(|e| {
+            anyhow!(
+                crate::frontend::gettext(
+                    "Impossible de créer la transformation colorimétrique : {e:?}"
+                )
+                .replace("{e:?}", &format!("{e:?}"))
+            )
+        })?;
     // `saturating_mul`: lets the tests use `usize::MAX` as "all at once"
     // without overflowing; the cap by `source.len()` avoids an absurd vector
     // capacity.
@@ -150,17 +185,23 @@ fn transform_rgb_chunked(
         input.clear();
         input.extend(chunk.iter().map(|&value| value as f32 / 255.0));
         output.resize(len, 0.0);
-        transform
-            .transform(&input, &mut output)
-            .map_err(|e| anyhow!("Transformation colorimétrique échouée : {e:?}"))?;
+        transform.transform(&input, &mut output).map_err(|e| {
+            anyhow!(
+                crate::frontend::gettext("Transformation colorimétrique échouée : {e:?}")
+                    .replace("{e:?}", &format!("{e:?}"))
+            )
+        })?;
         bytes.extend(
             output[..len]
                 .iter()
                 .map(|value| (value.clamp(0.0, 1.0) * 255.0).round() as u8),
         );
     }
-    RgbImage::from_raw(source.width(), source.height(), bytes)
-        .ok_or_else(|| anyhow!("Taille d'image invalide après conversion colorimétrique"))
+    RgbImage::from_raw(source.width(), source.height(), bytes).ok_or_else(|| {
+        anyhow!(crate::frontend::gettext(
+            "Taille d'image invalide après conversion colorimétrique"
+        ))
+    })
 }
 
 fn transform_rgba(
@@ -184,7 +225,14 @@ fn transform_rgba_chunked(
             Layout::Rgba,
             TransformOptions::default(),
         )
-        .map_err(|e| anyhow!("Impossible de créer la transformation colorimétrique : {e:?}"))?;
+        .map_err(|e| {
+            anyhow!(
+                crate::frontend::gettext(
+                    "Impossible de créer la transformation colorimétrique : {e:?}"
+                )
+                .replace("{e:?}", &format!("{e:?}"))
+            )
+        })?;
     let chunk_len = chunk_pixels
         .max(1)
         .saturating_mul(4)
@@ -198,17 +246,23 @@ fn transform_rgba_chunked(
         input.clear();
         input.extend(chunk.iter().map(|&value| value as f32 / 255.0));
         output.resize(len, 0.0);
-        transform
-            .transform(&input, &mut output)
-            .map_err(|e| anyhow!("Transformation colorimétrique échouée : {e:?}"))?;
+        transform.transform(&input, &mut output).map_err(|e| {
+            anyhow!(
+                crate::frontend::gettext("Transformation colorimétrique échouée : {e:?}")
+                    .replace("{e:?}", &format!("{e:?}"))
+            )
+        })?;
         bytes.extend(
             output[..len]
                 .iter()
                 .map(|value| (value.clamp(0.0, 1.0) * 255.0).round() as u8),
         );
     }
-    RgbaImage::from_raw(source.width(), source.height(), bytes)
-        .ok_or_else(|| anyhow!("Taille d'image invalide après conversion colorimétrique"))
+    RgbaImage::from_raw(source.width(), source.height(), bytes).ok_or_else(|| {
+        anyhow!(crate::frontend::gettext(
+            "Taille d'image invalide après conversion colorimétrique"
+        ))
+    })
 }
 
 #[cfg(test)]

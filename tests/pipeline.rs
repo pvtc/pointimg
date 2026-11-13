@@ -445,7 +445,11 @@ fn presets_reject_unknown_format_versions() {
     let current = params.to_toml_string().expect("sérialisation versionnée");
     let future = current.replacen("preset_version = 1", "preset_version = 999", 1);
     let error = FilterParams::from_toml_str(&future).expect_err("version future rejetée");
-    assert!(error.to_string().contains("non supportée"));
+    let expected =
+        pointimg::frontend::gettext("version de preset {} non supportée (version actuelle : {})")
+            .replacen("{}", "999", 1)
+            .replacen("{}", "1", 1);
+    assert_eq!(error.to_string(), expected);
 }
 
 #[test]

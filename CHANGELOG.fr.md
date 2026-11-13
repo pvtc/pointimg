@@ -7,6 +7,40 @@ et ce projet adhère au [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+### Ajouté
+
+- **Métadonnées AppStream** pour les deux applications
+  (`packaging/pointimg-gtk.metainfo.xml`, `packaging/pointimg-gui.metainfo.xml`) :
+  résumé, liste de fonctionnalités et capture d'écran en anglais et en français,
+  validés par `appstreamcli`. Les logithèques ont désormais autre chose à
+  afficher que l'entrée de bureau.
+- **Dependabot** : mises à jour hebdomadaires du workspace Cargo racine, du
+  workspace fuzz et des GitHub Actions, la pile GTK étant groupée dans une seule
+  pull request pour que `gtk4` et `libadwaita` avancent ensemble.
+  (`.github/dependabot.yml`)
+- **Archive de release Linux** : le workflow de release range les deux
+  exécutables GUI dans une arborescence FHS (`bin/`, `share/applications`,
+  `share/metainfo`, `share/icons`) et régénère les icônes `hicolor` depuis le
+  SVG avant l'empaquetage. (`.github/workflows/release.yml`)
+- **Outillage de traduction** (`scripts/sync-i18n.py`, enveloppé par
+  `scripts/update-i18n.sh`) : extrait les msgids `gettext("…")` des sources
+  Rust, conserve les traductions existantes, purge les entrées obsolètes,
+  recompile le `.mo` et sort en erreur si une traduction manque. La CI
+  l'exécute et échoue quand `locales/` n'est pas à jour.
+
+### Corrigé
+
+- **Dérive de la documentation** : `ARCHITECTURE.md` et `ARCHITECTURE.fr.md`
+  décrivaient un seul algorithme de dithering (il y en a quatre), omettaient
+  `halftone` dans `--algorithm` et les options de profil ICC ; `CONTRIBUTING`
+  liste maintenant les cibles fuzz, et le workflow i18n qu'il citait existe
+  réellement.
+- **Chaînes d'interface non traduites** : tailles mémoire et de fichier, noms et
+  descriptions des presets, avertissements de dithering, erreurs ICC et de
+  décodage, libellés d'annulation, notifications egui, boutons de confirmation
+  et libellés de fenêtre GTK passent désormais par `gettext` ; le catalogue
+  anglais couvre tous les msgids.
+
 ## [0.2.0] - 2026-10-24
 
 ### Ajouté

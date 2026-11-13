@@ -117,6 +117,24 @@ jobs:
       - name: Build (release)
         run: cargo build --release --no-default-features --features gtk --bin pointimg-gtk
 
+  i18n:
+    name: Translations
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      # `msgfmt` est utilisé quand il est présent : le .mo commité doit être
+      # reproduit à l'identique, sinon le diff échoue à tort.
+      - name: Install gettext
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y gettext
+      # Le catalogue est dérivé des `gettext("…")` du code. Le script échoue
+      # (exit 1) dès qu'un msgid n'a pas de traduction anglaise.
+      - name: Regenerate the catalogue
+        run: python3 scripts/sync-i18n.py
+      - name: Check the committed catalogue is up to date
+        run: git diff --exit-code -- locales/
+
   docs:
     name: Docs
     runs-on: ubuntu-latest

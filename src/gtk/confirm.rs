@@ -57,7 +57,10 @@ where
             pointimg::frontend::gettext("« {} » existe déjà, son contenu sera remplacé.")
                 .replace("{}", &path.display().to_string()),
         )
-        .buttons(["Annuler", "Remplacer"])
+        .buttons([
+            pointimg::frontend::gettext("Annuler"),
+            pointimg::frontend::gettext("Remplacer"),
+        ])
         // "Annuler" is the default button: confirming by accident must never
         // destroy the file.
         .cancel_button(ANNULER)

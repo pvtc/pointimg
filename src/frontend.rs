@@ -494,8 +494,16 @@ pub enum FolderError {
 impl std::fmt::Display for FolderError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            FolderError::Unreadable(dir) => write!(f, "Dossier illisible : {}", dir.display()),
-            FolderError::Empty(dir) => write!(f, "Aucune image dans {}", dir.display()),
+            FolderError::Unreadable(dir) => write!(
+                f,
+                "{}",
+                gettext("Dossier illisible : {}").replace("{}", &dir.display().to_string())
+            ),
+            FolderError::Empty(dir) => write!(
+                f,
+                "{}",
+                gettext("Aucune image dans {}").replace("{}", &dir.display().to_string())
+            ),
         }
     }
 }
@@ -557,9 +565,13 @@ pub fn format_duration(ms: u64) -> String {
 /// Formats a memory size in bytes in a readable way.
 pub fn format_memory(bytes: u64) -> String {
     if bytes >= 1024 * 1024 * 1024 {
-        format!("{:.1} Go", bytes as f64 / (1024.0 * 1024.0 * 1024.0))
+        gettext("{:.1} Go").replacen(
+            "{:.1}",
+            &format!("{:.1}", bytes as f64 / (1024.0 * 1024.0 * 1024.0)),
+            1,
+        )
     } else {
-        format!("{} Mo", bytes / (1024 * 1024))
+        gettext("{} Mo").replacen("{}", &(bytes / (1024 * 1024)).to_string(), 1)
     }
 }
 
@@ -572,13 +584,13 @@ pub fn format_bytes(bytes: u64) -> String {
     const GO: f64 = 1024.0 * 1024.0 * 1024.0;
     let value = bytes as f64;
     if value >= GO {
-        format!("{:.1} Go", value / GO)
+        gettext("{:.1} Go").replacen("{:.1}", &format!("{:.1}", value / GO), 1)
     } else if value >= MO {
-        format!("{:.1} Mo", value / MO)
+        gettext("{:.1} Mo").replacen("{:.1}", &format!("{:.1}", value / MO), 1)
     } else if value >= KO {
-        format!("{:.0} Ko", value / KO)
+        gettext("{:.0} Ko").replacen("{:.0}", &format!("{:.0}", value / KO), 1)
     } else {
-        format!("{bytes} o")
+        gettext("{} o").replacen("{}", &bytes.to_string(), 1)
     }
 }
 
@@ -591,22 +603,24 @@ pub fn generation_is_current(generation: &AtomicU64, expected: u64) -> bool {
 /// undo/redo labels.
 pub fn describe_parameter_change(before: &FilterParams, after: &FilterParams) -> String {
     if before.algorithm != after.algorithm {
-        return format!(
-            "Algorithme : {:?} → {:?}",
-            before.algorithm, after.algorithm
-        );
+        return gettext("Algorithme : {} → {}")
+            .replacen("{}", &format!("{:?}", before.algorithm), 1)
+            .replacen("{}", &format!("{:?}", after.algorithm), 1);
     }
     if before.num_points != after.num_points {
-        return format!(
-            "Nombre de points : {} → {}",
-            before.num_points, after.num_points
-        );
+        return gettext("Nombre de points : {} → {}")
+            .replacen("{}", &before.num_points.to_string(), 1)
+            .replacen("{}", &after.num_points.to_string(), 1);
     }
     if before.cols != after.cols {
-        return format!("Colonnes : {} → {}", before.cols, after.cols);
+        return gettext("Colonnes : {} → {}")
+            .replacen("{}", &before.cols.to_string(), 1)
+            .replacen("{}", &after.cols.to_string(), 1);
     }
     if before.iterations != after.iterations {
-        return format!("Itérations : {} → {}", before.iterations, after.iterations);
+        return gettext("Itérations : {} → {}")
+            .replacen("{}", &before.iterations.to_string(), 1)
+            .replacen("{}", &after.iterations.to_string(), 1);
     }
     if before.dot_shape != after.dot_shape {
         return gettext("Forme des points modifiée").to_string();
@@ -855,7 +869,7 @@ fn image_format(extension: &str) -> image::ImageResult<image::ImageFormat> {
         "tif" | "tiff" => Ok(image::ImageFormat::Tiff),
         _ => Err(image::ImageError::IoError(std::io::Error::new(
             std::io::ErrorKind::InvalidInput,
-            format!("format d'export non pris en charge : {extension}"),
+            gettext("format d'export non pris en charge : {}").replace("{}", extension),
         ))),
     }
 }
@@ -927,12 +941,15 @@ mod tests {
             algorithm: Algorithm::Grid,
             ..before.clone()
         };
-        assert!(describe_parameter_change(&before, &after).contains("Algorithme"));
+        let change = describe_parameter_change(&before, &after);
+        assert!(change.contains("Grid"), "{change}");
+        assert!(change.contains('→'), "{change}");
     }
 
     #[test]
     fn memory_format_is_human_readable() {
-        assert_eq!(format_memory(8 * 1024 * 1024), "8 Mo");
+        let expected = gettext("{} Mo").replace("{}", "8");
+        assert_eq!(format_memory(8 * 1024 * 1024), expected);
     }
 
     #[test]
@@ -1184,9 +1201,11 @@ mod tests {
             FolderError::Empty(dir.clone()),
             "du texte n'est pas une image"
         );
-        assert!(
-            e.to_string().contains("Aucune image"),
-            "le message doit expliquer le vide, pas l'illisibilité : {e}"
+        let expected = gettext("Aucune image dans {}").replace("{}", &dir.display().to_string());
+        assert_eq!(
+            e.to_string(),
+            expected,
+            "le message doit expliquer le vide, pas l'illisibilité"
         );
 
         assert!(collect_folder_images(&dir.join("inexistant")).is_err());

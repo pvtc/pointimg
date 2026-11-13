@@ -619,7 +619,7 @@ pub(crate) fn build() -> (adw::ToastOverlay, Rc<Widgets>) {
     );
     let max_boost = spin_row(
         pointimg::frontend::gettext("Boost zones uniformes"),
-        Some("× maximum"),
+        Some(pointimg::frontend::gettext("× maximum")),
         pointimg::frontend::gettext(
             "Agrandit les points dans les zones sans détail. 1 = aucun agrandissement, 2.5 = réglage par défaut.",
         ),
@@ -1009,8 +1009,9 @@ pub(crate) fn build() -> (adw::ToastOverlay, Rc<Widgets>) {
     algo_group.add(&pair_row(
         &mut min_radius_slider,
         &mut max_radius_slider,
-        "Curseurs des bornes min et max. Échelle logarithmique ; le repère \
-         marque la position de l'autre borne.",
+        pointimg::frontend::gettext(
+            "Curseurs des bornes min et max. Échelle logarithmique ; le repère marque la position de l'autre borne.",
+        ),
     ));
     algo_group.add(&max_boost);
     algo_group.add(&max_boost_slider.row(pointimg::frontend::gettext(

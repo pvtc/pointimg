@@ -4,3 +4,6 @@
 !assets/
 !assets/**
 .idea
+
+# Python bytecode (scripts/sync-i18n.py)
+__pycache__/

@@ -238,7 +238,7 @@ pub(crate) fn choose_load_preset(
     state: &Rc<RefCell<State>>,
     widgets: &Rc<Widgets>,
 ) {
-    let toml = make_filter("Preset TOML", &["toml"]);
+    let toml = make_filter(pointimg::frontend::gettext("Preset TOML"), &["toml"]);
     pick_file(
         window,
         &Ask::new(pointimg::frontend::gettext("Charger un preset"), Pick::Open)
@@ -255,7 +255,7 @@ pub(crate) fn choose_save_preset(
     state: &Rc<RefCell<State>>,
     widgets: &Rc<Widgets>,
 ) {
-    let toml = make_filter("Preset TOML", &["toml"]);
+    let toml = make_filter(pointimg::frontend::gettext("Preset TOML"), &["toml"]);
     pick_file(
         window,
         &Ask::new(

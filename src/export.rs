@@ -136,15 +136,17 @@ impl ExportSizes {
     /// widget: it is the explanation of a datum produced here, so it shares
     /// its logic with it.
     pub fn explanation() -> &'static str {
-        "Tailles obtenues en encodant réellement le rendu dans chaque format.\n\
-         « — » : format non mesuré (image trop grande pour un WebP sans perte)."
+        crate::frontend::gettext(
+            "Tailles obtenues en encodant réellement le rendu dans chaque format.\n\
+             « — » : format non mesuré (image trop grande pour un WebP sans perte).",
+        )
     }
 
     /// Rendering of the comparison with the source, for the tooltip of the
     /// export button: "source 8.4 MB · PNG −75 %".
     pub fn comparison(&self, format: ExportFormat) -> Option<String> {
         let source = self.source?;
-        let mut text = format!("source {}", format_bytes(source));
+        let mut text = crate::frontend::gettext("source {}").replace("{}", &format_bytes(source));
         if let Some(gain) = self.gain_percent(format) {
             // `gain` is positive when the export is lighter.
             let rounded = gain.round() as i64;
@@ -290,8 +292,10 @@ mod tests {
             source: Some(4_000_000),
         };
         let summary = sizes.summary();
-        assert!(summary.contains("PNG 2.0 Mo"), "{summary}");
+        let png = format_bytes(2_100_000);
+        assert!(summary.contains(&format!("PNG {png}")), "{summary}");
         assert!(summary.contains("WebP —"), "{summary}");
-        assert!(summary.contains("JPEG 381 Ko"), "{summary}");
+        let jpeg = format_bytes(390_000);
+        assert!(summary.contains(&format!("JPEG {jpeg}")), "{summary}");
     }
 }

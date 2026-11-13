@@ -42,8 +42,8 @@ fn preset(name: &'static str, description: &'static str, params: FilterParams) -
 pub fn builtin_presets() -> Vec<BuiltinPreset> {
     vec![
         preset(
-            "Pointillisme classique",
-            "Stippling de Lloyd, 1 500 points — le rendu de référence",
+            crate::frontend::gettext("Pointillisme classique"),
+            crate::frontend::gettext("Stippling de Lloyd, 1 500 points — le rendu de référence"),
             FilterParams {
                 algorithm: Algorithm::Voronoi,
                 num_points: 1500,
@@ -54,8 +54,8 @@ pub fn builtin_presets() -> Vec<BuiltinPreset> {
             },
         ),
         preset(
-            "Stippling fin",
-            "Beaucoup de petits points : textures, portraits, détails",
+            crate::frontend::gettext("Stippling fin"),
+            crate::frontend::gettext("Beaucoup de petits points : textures, portraits, détails"),
             FilterParams {
                 algorithm: Algorithm::Voronoi,
                 num_points: 6000,
@@ -67,8 +67,8 @@ pub fn builtin_presets() -> Vec<BuiltinPreset> {
             },
         ),
         preset(
-            "Aplats graphiques",
-            "Palette réduite et dithering : effet sérigraphie / offset",
+            crate::frontend::gettext("Aplats graphiques"),
+            crate::frontend::gettext("Palette réduite et dithering : effet sérigraphie / offset"),
             FilterParams {
                 algorithm: Algorithm::Quadtree,
                 num_points: 2500,
@@ -80,8 +80,8 @@ pub fn builtin_presets() -> Vec<BuiltinPreset> {
             },
         ),
         preset(
-            "Rosette CMJN",
-            "Trame AM classique 15°/75°/0°/45°",
+            crate::frontend::gettext("Rosette CMJN"),
+            crate::frontend::gettext("Trame AM classique 15°/75°/0°/45°"),
             FilterParams {
                 algorithm: Algorithm::Halftone,
                 halftone: HalftoneMode::Cmyk {
@@ -94,8 +94,8 @@ pub fn builtin_presets() -> Vec<BuiltinPreset> {
             },
         ),
         preset(
-            "Trame FM (blue noise)",
-            "Trame stochastique : c'est la densité qui code l'encre",
+            crate::frontend::gettext("Trame FM (blue noise)"),
+            crate::frontend::gettext("Trame stochastique : c'est la densité qui code l'encre"),
             FilterParams {
                 algorithm: Algorithm::Halftone,
                 halftone: HalftoneMode::Cmyk {
@@ -107,8 +107,8 @@ pub fn builtin_presets() -> Vec<BuiltinPreset> {
             },
         ),
         preset(
-            "Moiré",
-            "Grille pivotée : le motif est le rendu, pas la photo",
+            crate::frontend::gettext("Moiré"),
+            crate::frontend::gettext("Grille pivotée : le motif est le rendu, pas la photo"),
             FilterParams {
                 algorithm: Algorithm::Grid,
                 cols: 160,
@@ -121,8 +121,8 @@ pub fn builtin_presets() -> Vec<BuiltinPreset> {
             },
         ),
         preset(
-            "Mosaïque",
-            "Grille serrée de carrés, contraste poussé",
+            crate::frontend::gettext("Mosaïque"),
+            crate::frontend::gettext("Grille serrée de carrés, contraste poussé"),
             FilterParams {
                 algorithm: Algorithm::Grid,
                 cols: 60,
@@ -134,8 +134,8 @@ pub fn builtin_presets() -> Vec<BuiltinPreset> {
             },
         ),
         preset(
-            "Pastilles",
-            "Quadtree contrasté, points regularisés en hexagones",
+            crate::frontend::gettext("Pastilles"),
+            crate::frontend::gettext("Quadtree contrasté, points regularisés en hexagones"),
             FilterParams {
                 algorithm: Algorithm::Quadtree,
                 num_points: 1800,
@@ -148,8 +148,8 @@ pub fn builtin_presets() -> Vec<BuiltinPreset> {
             },
         ),
         preset(
-            "Calques transparents",
-            "Rendu RGBA sur fond transparent, pour superposition",
+            crate::frontend::gettext("Calques transparents"),
+            crate::frontend::gettext("Rendu RGBA sur fond transparent, pour superposition"),
             FilterParams {
                 algorithm: Algorithm::Voronoi,
                 num_points: 2000,

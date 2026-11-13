@@ -18,13 +18,15 @@ fn write_str(out: &mut String, args: Arguments<'_>) {
 /// Accepts precomputed dots to avoid running the filter twice.
 pub fn render_svg_from_dots(w: u32, h: u32, dots: &[Dot], params: &FilterParams) -> Result<String> {
     if w == 0 || h == 0 {
-        return Err(anyhow!("Image vide"));
+        return Err(anyhow!(crate::frontend::gettext("Image vide")));
     }
     validate_params(w, h, params)?;
     if dots.iter().any(|dot| {
         !dot.x.is_finite() || !dot.y.is_finite() || !dot.radius.is_finite() || dot.radius <= 0.0
     }) {
-        return Err(anyhow!("Le rendu SVG contient un point invalide"));
+        return Err(anyhow!(crate::frontend::gettext(
+            "Le rendu SVG contient un point invalide"
+        )));
     }
 
     // Avoid cloning dots when no quantization is needed.
@@ -129,7 +131,7 @@ pub fn render_svg_from_dots(w: u32, h: u32, dots: &[Dot], params: &FilterParams)
 pub fn render_svg(src: &RgbImage, params: &FilterParams) -> Result<String> {
     let (w, h) = src.dimensions();
     if w == 0 || h == 0 {
-        return Err(anyhow!("Image vide"));
+        return Err(anyhow!(crate::frontend::gettext("Image vide")));
     }
     let dots = crate::filter::compute_dots(src, params)?;
     render_svg_from_dots(w, h, &dots, params)

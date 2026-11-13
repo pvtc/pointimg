@@ -77,11 +77,9 @@ impl Dithering {
     /// diverge from one front-end to another.
     pub fn size_caveat(self) -> Option<&'static str> {
         match self {
-            Dithering::Bayer4 | Dithering::Bayer8 => Some(
-                "Motif à haute fréquence : la compression ne peut pas le réduire. \
-                 L'export pèsera nettement plus qu'avec une diffusion d'erreur, \
-                 à palette égale (mesuré : 3,0 Mo contre 162 Ko avec 2 couleurs).",
-            ),
+            Dithering::Bayer4 | Dithering::Bayer8 => Some(crate::frontend::gettext(
+                "Motif à haute fréquence : la compression ne peut pas le réduire. L'export pèsera nettement plus qu'avec une diffusion d'erreur, à palette égale (mesuré : 3,0 Mo contre 162 Ko avec 2 couleurs).",
+            )),
             Dithering::Off | Dithering::FloydSteinberg | Dithering::Riemersma => None,
         }
     }
@@ -90,9 +88,9 @@ impl Dithering {
     /// details and the figures staying in the tooltip.
     pub fn size_caveat_short(self) -> Option<&'static str> {
         match self {
-            Dithering::Bayer4 | Dithering::Bayer8 => {
-                Some("Export nettement plus lourd : motif que la compression ne réduit pas.")
-            }
+            Dithering::Bayer4 | Dithering::Bayer8 => Some(crate::frontend::gettext(
+                "Export nettement plus lourd : motif que la compression ne réduit pas.",
+            )),
             Dithering::Off | Dithering::FloydSteinberg | Dithering::Riemersma => None,
         }
     }
