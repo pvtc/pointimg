@@ -24,6 +24,7 @@ Open an issue with the "Feature Request" template.
 - [ ] Tests pass (`cargo test`)
 - [ ] Clippy is happy (`cargo clippy -- -D warnings`)
 - [ ] Code is formatted (`cargo fmt`)
+- [ ] Fuzz targets compile (`cargo check --manifest-path fuzz/Cargo.toml`)
 
 ## Development
 
@@ -39,7 +40,32 @@ cargo clippy -- -D warnings
 
 # Formatting
 cargo fmt
+
+# Fuzzing (install cargo-fuzz first)
+cargo fuzz run preset --fuzz-dir fuzz
+cargo fuzz run image --fuzz-dir fuzz
 ```
+
+The fuzz targets cover TOML parsing and untrusted image decoding. They apply
+dimension and allocation limits so a malicious corpus cannot turn fuzzing into
+a denial-of-service test.
+
+If you touch user-facing strings, see the i18n workflow below.
+
+## Translations (i18n)
+
+User-facing strings are French msgids passed through `pointimg::frontend::gettext`.
+The English catalogue lives in `locales/en/LC_MESSAGES/pointimg.po` and is
+regenerated with:
+
+```bash
+sh scripts/update-i18n.sh
+```
+
+The script extracts every `gettext("...")` call site, merges new msgids into the
+`.po`, drops obsolete ones and rebuilds the embedded `.mo`. Fill in the new
+`msgstr` entries between two runs. The CI fails if the committed catalogue is
+not in sync with the code.
 
 ## Questions?
 

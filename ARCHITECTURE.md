@@ -52,7 +52,8 @@ pointimg/
 │   │   ├── render.rs   — render, draw_dot, anti-aliasing (4×4 supersampling),
 │   │   │               point_in_regular_polygon, quantize_dots/quantize_palette_centers,
 │   │   │               radius_for_dot, render_halftone (ink multiply compositing)
-│   │   ├── dither.rs   — floyd_steinberg (post-render palette quantization)
+│   │   ├── dither.rs   — Dithering: Floyd-Steinberg, Riemersma, Bayer 4×4/8×8
+│   │   │               (post-render palette quantization)
 │   │   ├── halftone.rs — HalftoneMode (Cmyk/Dominant), Screening (Am/Fm),
 │   │   │               separate_cmyk / separate_dominant / screen_am / screen_fm
 │   │   ├── gamma.rs    — sRGB ⇄ linéaire LUTs, image wrappers (gamma_correct)
@@ -239,7 +240,7 @@ pointimg -i photo.jpg -o stochastic.png --halftone cmyk --screening fm
 | ------------------------ | ----- | ------------ | --------------------------------------------------------------------------------------------------- |
 | `--input`                | `-i`  | required     | Source image, glob, or directory. Optional if `--save-preset` alone.                                |
 | `--output`               | `-o`  | `output.png` | Output file. Patterns: `{n}` (index), `{stem}` (source name sans ext), `{name}` (source full name). |
-| `--algorithm`            | `-a`  | `voronoi`    | `grid` \| `kmeans` \| `voronoi` \| `quadtree`                                                       |
+| `--algorithm`            | `-a`  | `voronoi`    | `grid` \| `kmeans` \| `voronoi` \| `quadtree` \| `halftone`                                          |
 | `--num-points`           | `-n`  | `800`        | Number of points (kmeans/voronoi/quadtree)                                                          |
 | `--cols`                 | `-c`  | `80`         | Grid columns (grid only)                                                                            |
 | `--min-radius`           |       | `0.003`      | Min radius = fraction of `min(W,H)`                                                                 |
@@ -256,12 +257,14 @@ pointimg -i photo.jpg -o stochastic.png --halftone cmyk --screening fm
 | `--palette`              |       | *(disabled)* | Number of colors in reduced palette                                                                 |
 | `--svg`                  |       | *(disabled)* | Also export SVG (same path, `.svg` extension)                                                       |
 | `--gamma`                |       | *(disabled)* | Gamma-correct perceptual averages (linear space)                                                    |
-| `--dithering`            |       | *(disabled)* | Floyd-Steinberg dithering on rendered image                                                         |
+| `--dithering [MODE]`     |       | *(disabled)* | `floyd-steinberg` (default when no value) \| `riemersma` \| `bayer4` \| `bayer8` — on the rendered image |
 | `--preset`               |       | *(disabled)* | Load `FilterParams` from a TOML preset file                                                         |
 | `--save-preset`          |       | *(disabled)* | Save current params to a TOML preset file and exit (if `--input` absent)                            |
 | `--verbose`              | `-v`  | *(0)*        | `-v` = info, `-vv` = debug. Overridable via `RUST_LOG`.                                             |
 | `--quiet`                | `-q`  | *(disabled)* | Suppress info messages (warnings only)                                                              |
 | `--preview`              |       | *(disabled)* | Downscale source to `WxH` (max, preserves aspect) before pipeline                                   |
+| `--input-profile`        |       | `auto`       | `auto` (embedded ICC) \| `srgb` \| `display-p3` \| path to an `.icc` file                           |
+| `--output-profile`       |       | `srgb`       | Convert and embed an ICC profile: `srgb` \| path to an `.icc` file                                  |
 | `--grid-angle`           |       | `0.0`        | Rotation of grid placement in degrees (Grid only, halftone screen effect)                           |
 | `--halftone`             |       | `off`        | `off` \| `cmyk` (4-channel rosette) \| `dominant-N` (N colors via k-means)                          |
 | `--screening`            |       | `am`         | `am` (rotated-grid rosette) \| `fm` (stochastic blue noise)                                         |
@@ -328,7 +331,8 @@ pub struct FilterParams {
     pub dot_shape: DotShape,           // Circle by default
     pub transparent: bool,             // RGBA transparent background output
     pub gamma_correct: bool,           // averages in linear space
-    pub dithering: bool,               // Floyd-Steinberg on rendered image
+    pub dithering: Dithering,          // Off | FloydSteinberg | Riemersma | Bayer4 | Bayer8
+                                       // (old `dithering = true` presets read as FloydSteinberg)
     pub grid_angle_deg: f32,           // Rotation angle of Grid placement (halftone screen)
     pub halftone: HalftoneMode,        // Off | Cmyk{angles} | Dominant{n, base_angle_deg}
     pub screening: Screening,          // Am (grid rotation) | Fm (stochastic blue noise)

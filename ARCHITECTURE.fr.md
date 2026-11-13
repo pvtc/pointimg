@@ -39,7 +39,7 @@ pointimg/
 │   │   ├── params.rs   — Algorithm, DotShape, FilterParams, validation, presets
 │   │   ├── density.rs  — carte de densité (tables intégrales)
 │   │   ├── render.rs   — rendu RGB/RGBA, anti-aliasing, quantization, halftone
-│   │   ├── dither.rs   — Floyd-Steinberg
+│   │   ├── dither.rs   — Dithering : Floyd-Steinberg, Riemersma, Bayer 4×4/8×8
 │   │   ├── halftone.rs — HalftoneMode (Cmyk/Dominant), Screening (Am/Fm)
 │   │   ├── gamma.rs    — LUTs sRGB ⇄ linéaire
 │   │   ├── svg.rs      — export SVG
@@ -112,12 +112,12 @@ pointimg -i photo.jpg -o result.png --shape ellipse --ellipse-aspect 2.0 --ellip
 | ------------------------ | ----- | ------------- | ----------------------------------------------------- |
 | `--input`                | `-i`  | requis        | Image source (JPEG, PNG, RGBA supporté)               |
 | `--output`               | `-o`  | `output.png`  | Image de sortie PNG                                   |
-| `--algorithm`            | `-a`  | `voronoi`     | `grid` \| `kmeans` \| `voronoi` \| `quadtree`         |
+| `--algorithm`            | `-a`  | `voronoi`     | `grid` \| `kmeans` \| `voronoi` \| `quadtree` \| `halftone`         |
 | `--num-points`           | `-n`  | `800`         | Nombre de points (kmeans/voronoi/quadtree)            |
 | `--cols`                 | `-c`  | `80`          | Colonnes de grille (grid uniquement)                  |
 | `--min-radius`           |       | `0.003`       | Rayon min = fraction de `min(W,H)`                    |
 | `--max-radius`           |       | `0.06`        | Rayon max = fraction de `min(W,H)`                    |
-| `--bg`                   | `-b`  | `white`       | `white`, `black`, ou `#rrggbb`                        |
+| `--bg`                   | `-b`  | `white`       | `white`, `black`, `transparent`/`none`, ou `#rrggbb`  |
 | `--shape`                |       | `circle`      | `circle` \| `square` \| `ellipse` \| `polygon`        |
 | `--ellipse-aspect`       |       | `1.5`         | Ratio largeur/hauteur (ellipse)                       |
 | `--ellipse-angle`        |       | `0.0`         | Angle de rotation en degrés (ellipse)                 |
@@ -128,6 +128,21 @@ pointimg -i photo.jpg -o result.png --shape ellipse --ellipse-aspect 2.0 --ellip
 | `--seed`                 |       | *(aléatoire)* | Seed RNG pour reproduction exacte                     |
 | `--palette`              |       | *(désactivé)* | Nombre de couleurs dans la palette réduite            |
 | `--svg`                  |       | *(désactivé)* | Exporter aussi en SVG (même chemin, extension `.svg`) |
+| `--gamma`                |       | *(désactivé)* | Moyennes perceptuelles corrigées (espace linéaire)    |
+| `--dithering [MODE]`     |       | *(désactivé)* | `floyd-steinberg` (défaut sans valeur) \| `riemersma` \| `bayer4` \| `bayer8` — sur l'image rendue |
+| `--preset`               |       | *(désactivé)* | Charge les `FilterParams` depuis un preset TOML       |
+| `--save-preset`          |       | *(désactivé)* | Sauvegarde les paramètres en TOML et quitte (sans `--input`) |
+| `--verbose`              | `-v`  | *(0)*         | `-v` = info, `-vv` = debug. Surchargeable via `RUST_LOG`. |
+| `--quiet`                | `-q`  | *(désactivé)* | Supprime les messages d'information (avertissements seuls) |
+| `--preview`              |       | *(désactivé)* | Réduit la source à `WxH` (max, ratio conservé) avant le pipeline |
+| `--grid-angle`           |       | `0.0`         | Rotation du placement en degrés (Grid seul, effet trame halftone) |
+| `--halftone`             |       | `off`         | `off` \| `cmyk` (rosette 4 canaux) \| `dominant-N` (N couleurs via k-means) |
+| `--screening`            |       | `am`          | `am` (rosette grille rotationnée) \| `fm` (blue noise stochastique) |
+| `--halftone-freq`        |       | `60.0`        | Cellules AM par `min(W,H)` (≈ fréquence de points en lpp à 1 dpi) |
+| `--halftone-min-radius`  |       | `0.002`       | Rayon min par point d'encre (fraction de `min(W,H)`)  |
+| `--halftone-max-dot`     |       | `0.85`        | Rayon max par point d'encre (fraction du pas de trame) |
+| `--input-profile`        |       | `auto`        | `auto` (ICC embarqué) \| `srgb` \| `display-p3` \| chemin `.icc` |
+| `--output-profile`       |       | `srgb`        | Convertit et embarque un profil ICC : `srgb` \| chemin `.icc` |
 
 ### Profils colorimétriques
 
@@ -172,7 +187,8 @@ pub struct FilterParams {
     pub dot_shape: DotShape,           // Circle par défaut
     pub transparent: bool,             // fond RGBA transparent
     pub gamma_correct: bool,           // moyennes en espace linéaire
-    pub dithering: bool,               // Floyd-Steinberg
+    pub dithering: Dithering,          // Off | FloydSteinberg | Riemersma | Bayer4 | Bayer8
+                                       // (les anciens presets `dithering = true` lus comme FloydSteinberg)
     pub halftone: HalftoneMode,        // Off | Cmyk | Dominant
     pub screening: Screening,          // Am | Fm
 }

@@ -50,6 +50,24 @@ Les fuzz targets couvrent le parsing TOML et le décodage d'images non fiables.
 Ils appliquent des limites de dimensions et d'allocation pour éviter qu'un corpus
 malveillant ne transforme le fuzzing en test de déni de service.
 
+Si vous touchez des chaînes visibles par l'utilisateur, voir le flux i18n
+ci-dessous.
+
+## Traductions (i18n)
+
+Les chaînes visibles par l'utilisateur sont des msgids français passés par
+`pointimg::frontend::gettext`. Le catalogue anglais vit dans
+`locales/en/LC_MESSAGES/pointimg.po` et se régénère avec :
+
+```bash
+sh scripts/update-i18n.sh
+```
+
+Le script extrait chaque site d'appel `gettext("...")`, fusionne les nouveaux
+msgids dans le `.po`, supprime les obsolètes et recompile le `.mo` embarqué.
+Remplissez les nouveaux `msgstr` entre deux exécutions. La CI échoue si le
+catalogue commité n'est pas synchronisé avec le code.
+
 ## Questions ?
 
 Ouvrez une discussion GitHub ou contactez les mainteneurs.
