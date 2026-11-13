@@ -58,7 +58,7 @@ clap = { version = "4", features = ["derive"] }
 rayon = "1"
 log = "0.4"
 env_logger = "0.11"
-egui = { version = "0.36", optional = true }
+egui = { version = "0.37", optional = true }
 wgpu = { version = "30", default-features = false, features = ["wgsl"], optional = true }
 pollster = { version = "1", optional = true }
 bytemuck = { version = "1", features = ["derive"], optional = true }
