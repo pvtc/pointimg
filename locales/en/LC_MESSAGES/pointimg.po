@@ -533,7 +533,7 @@ msgstr "Sides"
 msgid "De 10 à 100 000 points, en échelle logarithmique"
 msgstr "From 10 to 100,000 points, on a logarithmic scale"
 
-#: src/filter/mod.rs:451
+#: src/filter/mod.rs:449
 msgid "density map invalide : {} valeurs, {} attendues"
 msgstr "invalid density map: {} values, {} expected"
 
@@ -562,7 +562,7 @@ msgstr "Error diffusion: gradients preserved, slightly 'glassy' pattern"
 msgid "Diffusion à queue longue : moins de vers, motif plus lisse"
 msgstr "Long-tail diffusion: fewer worms, smoother pattern"
 
-#: src/filter/mod.rs:447
+#: src/filter/mod.rs:446
 msgid "dimensions d'image trop grandes"
 msgstr "image dimensions too large"
 
@@ -604,7 +604,7 @@ msgstr "Zoom out (−)"
 msgid "Ellipse"
 msgstr "Ellipse"
 
-#: src/filter/params.rs:424
+#: src/filter/params.rs:422
 msgid "ellipse_aspect doit etre dans (0, 10], got {}"
 msgstr "ellipse_aspect must be within (0, 10], got {}"
 
@@ -893,23 +893,23 @@ msgstr "invalid halftone '{s}'. Valid values: off, cmyk, dominant-N (e.g. domina
 msgid "Halftone sans mode doit être refusé"
 msgstr "Halftone without mode must be rejected"
 
-#: src/filter/params.rs:375
+#: src/filter/params.rs:373
 msgid "halftone_frequency doit etre > 0, got {}"
 msgstr "halftone_frequency must be > 0, got {}"
 
-#: src/filter/params.rs:403
+#: src/filter/params.rs:401
 msgid "halftone_max_dot_ratio doit etre <= 10.0, got {}"
 msgstr "halftone_max_dot_ratio must be <= 10.0, got {}"
 
-#: src/filter/params.rs:387
+#: src/filter/params.rs:385
 msgid "halftone_max_dot_ratio doit etre > 0, got {}"
 msgstr "halftone_max_dot_ratio must be > 0, got {}"
 
-#: src/filter/params.rs:397
+#: src/filter/params.rs:395
 msgid "halftone_min_radius_ratio doit etre <= 1.0, got {}"
 msgstr "halftone_min_radius_ratio must be <= 1.0, got {}"
 
-#: src/filter/params.rs:381
+#: src/filter/params.rs:379
 msgid "halftone_min_radius_ratio doit etre >= 0, got {}"
 msgstr "halftone_min_radius_ratio must be >= 0, got {}"
 
@@ -958,11 +958,11 @@ msgstr "Image reduced from {orig_w}x{orig_h} to {}x{} to fit memory."
 msgid "Image suivante"
 msgstr "Next image"
 
-#: src/filter/params.rs:491
+#: src/filter/params.rs:489
 msgid "Image trop grande ({} pixels), maximum: {} pixels"
 msgstr "Image too large ({} pixels), maximum: {} pixels"
 
-#: src/filter/params.rs:481
+#: src/filter/params.rs:479
 msgid "Image trop grande ({}x{}), maximum autorise: {}x{}"
 msgstr "Image too large ({}x{}), maximum allowed: {}x{}"
 
@@ -971,7 +971,7 @@ msgstr "Image too large ({}x{}), maximum allowed: {}x{}"
 msgid "Image vide"
 msgstr "Empty image"
 
-#: src/filter/params.rs:474
+#: src/filter/params.rs:472
 #: src/gui/app.rs:122
 #: src/main.rs:708
 msgid "Image vide ({}x{})"
@@ -1058,7 +1058,7 @@ msgstr "Unknown"
 msgid "Interface"
 msgstr "Interface"
 
-#: src/filter/params.rs:329
+#: src/filter/params.rs:327
 msgid "iterations doit etre <= 100"
 msgstr "iterations must be <= 100"
 
@@ -1080,7 +1080,7 @@ msgstr "Lloyd relaxation iterations (K-means, Voronoi). More = smoother, slower.
 msgid "k-means spatial : les points se répartissent selon la couleur et la position."
 msgstr "spatial k-means: points distribute by color and position."
 
-#: src/filter/params.rs:369
+#: src/filter/params.rs:367
 msgid "l'algorithme Halftone nécessite un mode cmyk ou dominant"
 msgstr "the Halftone algorithm requires a cmyk or dominant mode"
 
@@ -1139,7 +1139,7 @@ msgstr "Weighted Lloyd: even distribution guided by detail. Most 'natural' rende
 msgid "Maj+Tab"
 msgstr "Shift+Tab"
 
-#: src/filter/params.rs:359
+#: src/filter/params.rs:357
 msgid "max_boost doit etre >= 1.0, got {}"
 msgstr "max_boost must be >= 1.0, got {}"
 
@@ -1334,11 +1334,11 @@ msgstr "Reduced palette"
 msgid "Palette réduite et dithering : effet sérigraphie / offset"
 msgstr "Reduced palette and dithering: screen-print / offset effect"
 
-#: src/filter/params.rs:347
+#: src/filter/params.rs:345
 msgid "palette_size doit etre <= 256"
 msgstr "palette_size must be <= 256"
 
-#: src/filter/params.rs:342
+#: src/filter/params.rs:340
 msgid "palette_size doit etre >= 2, got {}"
 msgstr "palette_size must be >= 2, got {}"
 
@@ -1417,7 +1417,7 @@ msgstr "More points where the image is detailed."
 msgid "Pointillisme classique"
 msgstr "Classic pointillism"
 
-#: src/filter/params.rs:416
+#: src/filter/params.rs:414
 msgid "polygon_sides doit etre entre 3 et 12, got {}"
 msgstr "polygon_sides must be between 3 and 12, got {}"
 
@@ -1962,7 +1962,7 @@ msgstr "One cell = one point. Fast and predictable."
 msgid "Utiliser un exemple"
 msgstr "Use an example"
 
-#: src/filter/params.rs:353
+#: src/filter/params.rs:351
 msgid "variance_sensitivity doit etre dans [0, 1], got {}"
 msgstr "variance_sensitivity must be within [0, 1], got {}"
 
@@ -2032,7 +2032,7 @@ msgstr ""
 msgid "{subtitle} (modifié)"
 msgstr "{subtitle} (modified)"
 
-#: src/filter/params.rs:446
+#: src/filter/params.rs:444
 msgid "{} doit etre fini, got {}"
 msgstr "{} must be finite, got {}"
 

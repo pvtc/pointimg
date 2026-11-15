@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- **egui/eframe 0.37**: the GUI stack moves from 0.36 to 0.37. The only
+  adjustment needed here is `egui::Id::new` → `egui::Id::unique`, renamed
+  upstream. Dependabot now groups the two crates: split, each bump left the
+  lockfile inconsistent and every `--locked` check failed.
+
 ### Added
 
 - **AppStream metadata** for both applications

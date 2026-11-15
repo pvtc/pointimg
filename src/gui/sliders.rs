@@ -99,7 +99,7 @@ pub(crate) fn range_slider(
         |value: f32| curve.position(f64::from(value), f64::from(start), f64::from(end)) as f32;
     let to_value = |t: f32| curve.value(f64::from(t), f64::from(start), f64::from(end)) as f32;
 
-    let id = egui::Id::new(id);
+    let id = egui::Id::unique(id);
     let height = 18.0;
     let (rect, _) = ui.allocate_exact_size(
         egui::vec2(ui.available_width(), height),

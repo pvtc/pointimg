@@ -12,6 +12,13 @@ updates:
         patterns:
           - gtk4
           - libadwaita
+      # egui and eframe must move together: eframe requires the matching egui
+      # minor, so two separate PRs each leave the lockfile inconsistent and
+      # every `--locked` check fails.
+      egui-stack:
+        patterns:
+          - egui
+          - eframe
 
   - package-ecosystem: cargo
     directory: /fuzz

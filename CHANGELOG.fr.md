@@ -7,6 +7,13 @@ et ce projet adhère au [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+### Modifié
+
+- **egui/eframe 0.37** : la pile GUI passe de 0.36 à 0.37. Seul ajustement
+  nécessaire ici : `egui::Id::new` → `egui::Id::unique`, renommé en amont.
+  Dependabot groupe désormais les deux crates : séparées, chaque mise à jour
+  laissait le lockfile incohérent et tous les contrôles `--locked` échouaient.
+
 ### Ajouté
 
 - **Métadonnées AppStream** pour les deux applications
