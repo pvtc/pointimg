@@ -30,4 +30,6 @@ updates:
     directory: /
     schedule:
       interval: weekly
-    open-pull-requests-limit: 2
+    # Enough slots for checkout, upload-artifact, download-artifact and the
+    # rest: a lower limit silently hides bumps (download-artifact was missed).
+    open-pull-requests-limit: 5

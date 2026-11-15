@@ -21,7 +21,7 @@ jobs:
             os: ubuntu-24.04-arm
     runs-on: ${{ matrix.os }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
@@ -38,7 +38,7 @@ jobs:
           cd ../../..
       
       - name: Upload artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: pointimg-cli-linux-${{ matrix.target }}
           path: pointimg-cli-linux-${{ matrix.target }}.tar.gz
@@ -52,7 +52,7 @@ jobs:
           - x86_64-apple-darwin
           - aarch64-apple-darwin
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
@@ -69,7 +69,7 @@ jobs:
           cd ../../..
       
       - name: Upload artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: pointimg-cli-macos-${{ matrix.target }}
           path: pointimg-cli-macos-${{ matrix.target }}.tar.gz
@@ -78,7 +78,7 @@ jobs:
     name: Build CLI - Windows
     runs-on: windows-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
@@ -93,7 +93,7 @@ jobs:
           cd ../..
       
       - name: Upload artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: pointimg-cli-windows-x86_64
           path: pointimg-cli-windows-x86_64.zip
@@ -102,7 +102,7 @@ jobs:
     name: Build GUI - Linux x86_64
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       
       # `pointimg-gui` est la GUI egui/eframe+wgpu : elle ne dépend pas de GTK
       # (rfd 0.17 utilise le portail XDG sur Linux). Le front GTK4 est un
@@ -135,7 +135,7 @@ jobs:
           rm -rf "$staging"
       
       - name: Upload artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: pointimg-gui-linux-x86_64
           path: pointimg-gui-linux-x86_64.tar.gz
@@ -144,7 +144,7 @@ jobs:
     name: Build GUI - macOS Universal
     runs-on: macos-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
@@ -172,7 +172,7 @@ jobs:
           cd ../..
       
       - name: Upload artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: pointimg-gui-macos-universal
           path: pointimg-gui-macos-universal.tar.gz
@@ -181,7 +181,7 @@ jobs:
     name: Build GUI - Windows x86_64
     runs-on: windows-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
@@ -196,7 +196,7 @@ jobs:
           cd ../..
       
       - name: Upload artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: pointimg-gui-windows-x86_64
           path: pointimg-gui-windows-x86_64.zip
@@ -205,7 +205,7 @@ jobs:
     name: Build GTK4 GUI - Linux x86_64
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Install GTK4 and libadwaita
         run: |
@@ -233,7 +233,7 @@ jobs:
           rm -rf "$staging"
 
       - name: Upload artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: pointimg-gtk-linux-x86_64
           path: pointimg-gtk-linux-x86_64.tar.gz
@@ -256,7 +256,7 @@ jobs:
     if: startsWith(github.ref, 'refs/tags/v')
     steps:
       - name: Download all artifacts
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           path: artifacts
 

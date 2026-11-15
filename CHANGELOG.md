@@ -13,6 +13,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   adjustment needed here is `egui::Id::new` → `egui::Id::unique`, renamed
   upstream. Dependabot now groups the two crates: split, each bump left the
   lockfile inconsistent and every `--locked` check failed.
+- **Dependencies**: `log` 0.4.35, `moxcms` 0.9.2 and `toml` 1.2; GitHub Actions
+  `checkout` v7, `upload-artifact` v7 and `download-artifact` v8 (their
+  `name`/`path` inputs are unchanged). The `github-actions` Dependabot limit
+  goes from 2 to 5, which had silently hidden the `download-artifact` bump.
 
 ### Added
 
