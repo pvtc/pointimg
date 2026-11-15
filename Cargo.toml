@@ -62,7 +62,7 @@ egui = { version = "0.37", optional = true }
 wgpu = { version = "30", default-features = false, features = ["wgsl"], optional = true }
 pollster = { version = "1", optional = true }
 bytemuck = { version = "1", features = ["derive"], optional = true }
-rfd = { version = "0.17", optional = true }
+rfd = { version = "0.18", optional = true }
 gtk = { package = "gtk4", version = "0.11", features = ["v4_14"], optional = true }
 adw = { package = "libadwaita", version = "0.9", features = ["v1_5"], optional = true }
 async-channel = { version = "2", optional = true }
