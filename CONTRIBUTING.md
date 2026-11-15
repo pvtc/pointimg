@@ -97,7 +97,8 @@ sh scripts/update-i18n.sh
 The script extracts every `gettext("...")` call site, merges new msgids into the
 `.po`, drops obsolete ones and rebuilds the embedded `.mo`. Fill in the new
 `msgstr` entries between two runs. The CI fails if the committed catalogue is
-not in sync with the code.
+not in sync with the code; the `#: file:line` source references are ignored
+there, since a refactor moves them without changing any string.
 
 ## Questions?
 

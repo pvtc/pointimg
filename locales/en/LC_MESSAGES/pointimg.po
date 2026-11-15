@@ -10,23 +10,23 @@ msgstr ""
 "Language: en\n"
 "Plural-Forms: nplurals=2; plural=(n != 1);\n"
 
-#: src/gui/ui.rs:1332
+#: src/gui/ui.rs:1265
 msgid "(sélectionnez CMJN ou Dominant)"
 msgstr "(select CMYK or Dominant)"
 
-#: src/main.rs:393
+#: src/main.rs:401
 msgid "--input est requis sauf si --save-preset seul est fourni (utilise --help)"
 msgstr "--input is required unless only --save-preset is provided (use --help)"
 
-#: src/main.rs:740
+#: src/main.rs:727
 msgid "--output-profile ne s'applique pas à l'export SVG"
 msgstr "--output-profile does not apply to SVG export"
 
-#: src/main.rs:419
+#: src/main.rs:424
 msgid "--preview invalide"
 msgstr "--preview invalid"
 
-#: src/gui/ui.rs:972
+#: src/gui/ui.rs:927
 msgid "0 = répartition uniforme · 1 = détail maximal"
 msgstr "0 = uniform distribution · 1 = maximum detail"
 
@@ -58,17 +58,17 @@ msgstr "_Open an image…"
 msgid "_Sauver le preset…"
 msgstr "_Save preset…"
 
-#: src/main.rs:185
+#: src/main.rs:193
 msgid "`dominant-N` : N doit être un entier ≥ 2, got '{}'"
 msgstr "`dominant-N`: N must be an integer ≥ 2, got '{}'"
 
-#: src/main.rs:192
+#: src/main.rs:200
 msgid "`dominant-N` : N doit être ≥ 2, got {n}"
 msgstr "`dominant-N`: N must be ≥ 2, got {n}"
 
 #: src/gtk/controls.rs:1172
 #: src/gtk/shortcuts.rs:73
-#: src/gui/ui.rs:1477
+#: src/gui/ui.rs:1408
 msgid "Affichage"
 msgstr "Display"
 
@@ -80,16 +80,16 @@ msgstr "Show settings"
 msgid "Agrandit les points dans les zones sans détail. 1 = aucun agrandissement, 2.5 = réglage par défaut."
 msgstr "Enlarges points in areas without detail. 1 = no enlargement, 2.5 = default setting."
 
-#: src/gui/ui.rs:1023
+#: src/gui/ui.rs:978
 msgid "Agrandit les points dans les zones sans détail. 1 = aucun agrandissement."
 msgstr "Enlarges points in areas without detail. 1 = no enlargement."
 
-#: src/gui/ui.rs:741
+#: src/gui/ui.rs:706
 msgid "Agrandit les textes, les espacements et la hauteur des widgets. 100 % = confortable."
 msgstr "Enlarges texts, spacing and widget height. 100% = comfortable."
 
 #: src/gtk/controls.rs:894
-#: src/gui/ui.rs:1490
+#: src/gui/ui.rs:1421
 msgid "Ajuster"
 msgstr "Fit"
 
@@ -99,7 +99,7 @@ msgstr "Adjust point enlargement in areas without detail"
 
 #: src/gtk/controls.rs:895
 #: src/gtk/preview.rs:283
-#: src/gui/ui.rs:1491
+#: src/gui/ui.rs:1422
 msgid "Ajuster l'aperçu à la fenêtre (0)"
 msgstr "Fit preview to window (0)"
 
@@ -115,21 +115,21 @@ msgstr "Fit to window"
 #: src/gtk/controls.rs:1001
 #: src/gtk/controls.rs:1121
 #: src/gtk/controls.rs:581
-#: src/gui/ui.rs:675
+#: src/gui/ui.rs:652
 msgid "Algorithme"
 msgstr "Algorithm"
 
-#: src/frontend.rs:606
+#: src/frontend.rs:612
 msgid "Algorithme : {} → {}"
 msgstr "Algorithm: {} → {}"
 
 #: src/gtk/controls.rs:838
-#: src/gui/ui.rs:1163
+#: src/gui/ui.rs:1104
 msgid "Alpha conservé à l'export PNG/WebP/TIFF"
 msgstr "Alpha preserved on PNG/WebP/TIFF export"
 
 #: src/gtk/controls.rs:717
-#: src/gui/ui.rs:1342
+#: src/gui/ui.rs:1273
 msgid "AM (grille)"
 msgstr "AM (grid)"
 
@@ -137,12 +137,12 @@ msgstr "AM (grid)"
 msgid "AM : la taille du dot code l'encre. FM : c'est la densité qui la code."
 msgstr "AM: dot size encodes ink. FM: density encodes it."
 
-#: src/gui/ui.rs:2320
+#: src/gui/ui.rs:2234
 msgid "Angle"
 msgstr "Angle"
 
 #: src/gtk/controls.rs:703
-#: src/gui/ui.rs:1314
+#: src/gui/ui.rs:1249
 msgid "Angle de base"
 msgstr "Base angle"
 
@@ -154,24 +154,24 @@ msgstr "Grid angle"
 msgid "Angle de la première trame ; les suivantes sont réparties régulièrement pour éviter le moiré."
 msgstr "Angle of the first screen; subsequent ones are evenly distributed to avoid moiré."
 
-#: src/gui/ui.rs:1044
+#: src/gui/ui.rs:999
 msgid "Angle grille"
 msgstr "Grid angle"
 
-#: src/gui/ui.rs:1322
+#: src/gui/ui.rs:1257
 msgid "Angles C/M/Y/K : {:.0}° / {:.0}° / {:.0}° / {:.0}°"
 msgstr "C/M/Y/K angles: {:.0}° / {:.0}° / {:.0}° / {:.0}°"
 
 #: src/gtk/actions.rs:88
 #: src/gui/palette.rs:95
-#: src/gui/ui.rs:549
+#: src/gui/ui.rs:537
 msgid "Annulation…"
 msgstr "Canceling…"
 
 #: src/gtk/confirm.rs:61
 #: src/gtk/controls.rs:461
 #: src/gtk/controls.rs:554
-#: src/gui/ui.rs:570
+#: src/gui/ui.rs:554
 msgid "Annuler"
 msgstr "Cancel"
 
@@ -179,7 +179,7 @@ msgstr "Cancel"
 msgid "Annuler / Rétablir"
 msgstr "Undo / Redo"
 
-#: src/gui/ui.rs:563
+#: src/gui/ui.rs:548
 msgid "Annuler : {} (Ctrl+Z)"
 msgstr "Undo: {} (Ctrl+Z)"
 
@@ -200,7 +200,7 @@ msgstr "Cancel computation"
 msgid "Annuler le calcul en cours"
 msgstr "Cancel current computation"
 
-#: src/gtk/actions.rs:853
+#: src/gtk/actions.rs:840
 msgid "Annulé"
 msgstr "Canceled"
 
@@ -208,7 +208,7 @@ msgstr "Canceled"
 msgid "Annulé."
 msgstr "Canceled."
 
-#: src/gui/ui.rs:1223
+#: src/gui/ui.rs:1162
 msgid "Aperçu"
 msgstr "Preview"
 
@@ -216,8 +216,8 @@ msgstr "Preview"
 msgid "Aperçu _précédent"
 msgstr "Preview _previous"
 
-#: src/gtk/actions.rs:703
-#: src/gui/ui.rs:226
+#: src/gtk/actions.rs:691
+#: src/gui/ui.rs:216
 msgid "Aperçu calculé — finalisation en cours…"
 msgstr "Preview computed — finalizing…"
 
@@ -230,7 +230,7 @@ msgid "Aperçu précédent"
 msgstr "Previous preview"
 
 #: src/gtk/preview.rs:416
-#: src/gui/ui.rs:1924
+#: src/gui/ui.rs:1847
 msgid "aperçu rapide"
 msgstr "quick preview"
 
@@ -256,11 +256,11 @@ msgid "Appliquée au rendu et aux zones transparentes de la source"
 msgstr "Applied to rendering and transparent areas of the source"
 
 #: src/gtk/controls.rs:817
-#: src/gui/ui.rs:2197
+#: src/gui/ui.rs:2120
 msgid "Aucun"
 msgstr "None"
 
-#: src/main.rs:404
+#: src/main.rs:411
 msgid "Aucun fichier d'entrée trouvé pour '{}'"
 msgstr "No input file found for '{}'"
 
@@ -268,7 +268,7 @@ msgstr "No input file found for '{}'"
 msgid "Aucun résultat à copier."
 msgstr "No result to copy."
 
-#: src/gtk/files.rs:351
+#: src/gtk/files.rs:337
 msgid "Aucun résultat à sauvegarder."
 msgstr "No result to save."
 
@@ -280,23 +280,23 @@ msgstr "No command matches."
 #: src/gtk/controls.rs:552
 #: src/gtk/preview.rs:437
 #: src/gtk/preview.rs:461
-#: src/gui/ui.rs:1775
-#: src/gui/ui.rs:2000
-#: src/gui/ui.rs:285
-#: src/gui/ui.rs:656
+#: src/gui/ui.rs:1704
+#: src/gui/ui.rs:1923
+#: src/gui/ui.rs:275
+#: src/gui/ui.rs:635
 msgid "Aucune image"
 msgstr "No image"
 
-#: src/frontend.rs:1241
-#: src/frontend.rs:505
+#: src/frontend.rs:1247
+#: src/frontend.rs:511
 msgid "Aucune image dans {}"
 msgstr "No image in {}"
 
-#: src/gui/ui.rs:745
+#: src/gui/ui.rs:710
 msgid "Auto"
 msgstr "Auto"
 
-#: src/main.rs:440
+#: src/main.rs:445
 msgid "batch parallèle : {} worker(s)"
 msgstr "parallel batch: {} worker(s)"
 
@@ -304,22 +304,22 @@ msgstr "parallel batch: {} worker(s)"
 msgid "Beaucoup de petits points : textures, portraits, détails"
 msgstr "Many small dots: textures, portraits, details"
 
-#: src/gui/ui.rs:1139
+#: src/gui/ui.rs:1086
 msgid "Blanc"
 msgstr "White"
 
 #: src/gtk/controls.rs:621
-#: src/gui/ui.rs:1016
+#: src/gui/ui.rs:971
 msgid "Boost zones uniformes"
 msgstr "Boost uniform areas"
 
 #: src/gtk/controls.rs:1096
 #: src/gtk/shortcuts.rs:93
-#: src/gui/ui.rs:702
+#: src/gui/ui.rs:671
 msgid "Calcul"
 msgstr "Computation"
 
-#: src/gtk/actions.rs:740
+#: src/gtk/actions.rs:727
 msgid "Calcul annulé."
 msgstr "Computation canceled."
 
@@ -327,7 +327,7 @@ msgstr "Computation canceled."
 msgid "Calcul en cours…"
 msgstr "Computation in progress…"
 
-#: src/gui/ui.rs:1925
+#: src/gui/ui.rs:1848
 msgid "Calcul sur une image réduite ; la pleine résolution est obtenue automatiquement dès que vous arrêtez."
 msgstr "Computing on a reduced image; full resolution is computed automatically as soon as you stop."
 
@@ -335,19 +335,19 @@ msgstr "Computing on a reduced image; full resolution is computed automatically 
 msgid "Calcul sur une image réduite. La pleine résolution est calculée automatiquement dès que vous arrêtez de manipuler les réglages."
 msgstr "Computing on a reduced image. Full resolution is calculated automatically once you stop adjusting the settings."
 
-#: src/gui/ui.rs:1242
+#: src/gui/ui.rs:1179
 msgid "Calcul sur une image à 25 % : le plus réactif"
 msgstr "Computation on a 25% image: most responsive"
 
-#: src/gui/ui.rs:1234
+#: src/gui/ui.rs:1172
 msgid "Calcul sur une image à 50 % : très réactif"
 msgstr "Computation on a 50% image: very responsive"
 
-#: src/gui/ui.rs:223
+#: src/gui/ui.rs:214
 msgid "Calcul terminé en {}."
 msgstr "Computation finished in {}."
 
-#: src/gtk/actions.rs:701
+#: src/gtk/actions.rs:689
 msgid "Calcul terminé."
 msgstr "Computation finished."
 
@@ -360,31 +360,31 @@ msgid "Calques transparents"
 msgstr "Transparent layers"
 
 #: src/gtk/controls.rs:694
-#: src/gui/ui.rs:1303
+#: src/gui/ui.rs:1240
 msgid "Canaux"
 msgstr "Channels"
 
 #: src/gtk/controls.rs:383
-#: src/gui/ui.rs:2273
-#: src/gui/ui.rs:2281
+#: src/gui/ui.rs:2192
+#: src/gui/ui.rs:2200
 msgid "Carré"
 msgstr "Square"
 
 #: src/gtk/controls.rs:394
 #: src/gtk/controls.rs:907
 #: src/gui/palette.rs:135
-#: src/gui/ui.rs:1612
-#: src/gui/ui.rs:74
+#: src/gui/ui.rs:1541
+#: src/gui/ui.rs:67
 msgid "Carte de densité"
 msgstr "Density map"
 
-#: src/gui/ui.rs:1363
+#: src/gui/ui.rs:1294
 msgid "Cellules de la trame par unité de longueur"
 msgstr "Screen cells per unit length"
 
 #: src/gtk/controls.rs:382
-#: src/gui/ui.rs:2272
-#: src/gui/ui.rs:2280
+#: src/gui/ui.rs:2191
+#: src/gui/ui.rs:2199
 msgid "Cercle"
 msgstr "Circle"
 
@@ -393,20 +393,20 @@ msgstr "Circle"
 msgid "Chargement de l'image…"
 msgstr "Loading image…"
 
-#: src/gtk/files.rs:246
+#: src/gtk/files.rs:240
 msgid "Charger un preset"
 msgstr "Load a preset"
 
 #: src/gtk/controls.rs:575
-#: src/gui/ui.rs:797
+#: src/gui/ui.rs:761
 msgid "Charger un preset…"
 msgstr "Load a preset…"
 
-#: src/gui/ui.rs:747
+#: src/gui/ui.rs:712
 msgid "Clair"
 msgstr "Light"
 
-#: src/gui/ui.rs:1268
+#: src/gui/ui.rs:1205
 msgid "CMJN"
 msgstr "CMYK"
 
@@ -419,11 +419,11 @@ msgid "CMJN est valide"
 msgstr "CMYK is valid"
 
 #: src/gtk/controls.rs:639
-#: src/gui/ui.rs:1035
+#: src/gui/ui.rs:990
 msgid "Colonnes"
 msgstr "Columns"
 
-#: src/frontend.rs:616
+#: src/frontend.rs:622
 msgid "Colonnes : {} → {}"
 msgstr "Columns: {} → {}"
 
@@ -441,12 +441,12 @@ msgstr "Commands"
 
 #: src/gtk/compare.rs:91
 #: src/gtk/controls.rs:390
-#: src/gui/ui.rs:1657
-#: src/gui/ui.rs:64
+#: src/gui/ui.rs:1586
+#: src/gui/ui.rs:63
 msgid "Comparaison"
 msgstr "Comparison"
 
-#: src/gui/ui.rs:630
+#: src/gui/ui.rs:609
 msgid "Copier"
 msgstr "Copy"
 
@@ -459,22 +459,22 @@ msgstr "Copy to clipboard"
 msgid "Copier l'image"
 msgstr "Copy image"
 
-#: src/gui/ui.rs:632
+#: src/gui/ui.rs:610
 msgid "Copier l'image dans le presse-papiers (Ctrl+C)"
 msgstr "Copy image to clipboard (Ctrl+C)"
 
 #: src/gtk/controls.rs:841
-#: src/gui/ui.rs:1173
+#: src/gui/ui.rs:1112
 msgid "Correction gamma"
 msgstr "Gamma correction"
 
-#: src/frontend.rs:635
+#: src/frontend.rs:641
 msgid "Correction gamma modifiée"
 msgstr "Gamma correction modified"
 
 #: src/gtk/controls.rs:1077
 #: src/gtk/controls.rs:830
-#: src/gui/ui.rs:1125
+#: src/gui/ui.rs:1073
 msgid "Couleur de fond"
 msgstr "Background color"
 
@@ -482,17 +482,17 @@ msgstr "Background color"
 msgid "Couleur de fond du rendu"
 msgstr "Rendering background color"
 
-#: src/main.rs:240
-#: src/main.rs:246
-#: src/main.rs:252
+#: src/main.rs:248
+#: src/main.rs:254
+#: src/main.rs:260
 msgid "Couleur invalide '{}'"
 msgstr "Invalid color '{}'"
 
-#: src/main.rs:234
+#: src/main.rs:242
 msgid "Couleur invalide '{}'. Valeurs valides : white, black, transparent, #rrggbb"
 msgstr "Invalid color '{}'. Valid values: white, black, transparent, #rrggbb"
 
-#: src/gui/ui.rs:1106
+#: src/gui/ui.rs:1059
 msgid "Couleurs"
 msgstr "Colors"
 
@@ -525,16 +525,16 @@ msgid "Curseurs des bornes min et max. Échelle logarithmique ; le repère marqu
 msgstr "Min and max bound sliders. Logarithmic scale; the marker shows the position of the other bound."
 
 #: src/gtk/controls.rs:391
-#: src/gui/ui.rs:67
+#: src/gui/ui.rs:64
 msgid "Côte à côte"
 msgstr "Side by side"
 
 #: src/gtk/controls.rs:789
-#: src/gui/ui.rs:2330
+#: src/gui/ui.rs:2242
 msgid "Côtés"
 msgstr "Sides"
 
-#: src/gui/ui.rs:1058
+#: src/gui/ui.rs:1013
 msgid "De 10 à 100 000 points, en échelle logarithmique"
 msgstr "From 10 to 100,000 points, on a logarithmic scale"
 
@@ -547,11 +547,11 @@ msgid "Densité de points"
 msgstr "Point density"
 
 #: src/gtk/preview.rs:518
-#: src/gui/ui.rs:1931
+#: src/gui/ui.rs:1854
 msgid "Dernier calcul : {}"
 msgstr "Last computation: {}"
 
-#: src/gui/ui.rs:1189
+#: src/gui/ui.rs:1128
 msgid "Deux exécutions avec les mêmes réglages donnent le même résultat"
 msgstr "Two runs with the same settings give the same result"
 
@@ -559,11 +559,11 @@ msgstr "Two runs with the same settings give the same result"
 msgid "Deux exécutions identiques donnent le même résultat"
 msgstr "Two identical runs give the same result"
 
-#: src/gui/ui.rs:2203
+#: src/gui/ui.rs:2126
 msgid "Diffusion de l'erreur : dégradés préservés, motif légèrement « verreux »"
 msgstr "Error diffusion: gradients preserved, slightly 'glassy' pattern"
 
-#: src/gui/ui.rs:2210
+#: src/gui/ui.rs:2133
 msgid "Diffusion à queue longue : moins de vers, motif plus lisse"
 msgstr "Long-tail diffusion: fewer worms, smoother pattern"
 
@@ -571,28 +571,28 @@ msgstr "Long-tail diffusion: fewer worms, smoother pattern"
 msgid "dimensions d'image trop grandes"
 msgstr "image dimensions too large"
 
-#: src/gui/ui.rs:658
+#: src/gui/ui.rs:637
 msgid "Dimensions de l'image chargée"
 msgstr "Loaded image dimensions"
 
-#: src/main.rs:702
+#: src/main.rs:694
 msgid "Dimensions invalides pour '{}'"
 msgstr "Invalid dimensions for '{}'"
 
-#: src/gui/ui.rs:2233
+#: src/gui/ui.rs:2152
 msgid "Dithering"
 msgstr "Dithering"
 
-#: src/gui/ui.rs:1282
+#: src/gui/ui.rs:1219
 msgid "Dominant"
 msgstr "Dominant"
 
-#: src/frontend.rs:500
+#: src/frontend.rs:506
 msgid "Dossier illisible : {}"
 msgstr "Unreadable folder: {}"
 
 #: src/gtk/controls.rs:449
-#: src/gui/ui.rs:542
+#: src/gui/ui.rs:530
 msgid "Dossier…"
 msgstr "Folder…"
 
@@ -604,8 +604,8 @@ msgstr "Zoom out"
 msgid "Dézoomer (−)"
 msgstr "Zoom out (−)"
 
-#: src/gui/ui.rs:2274
-#: src/gui/ui.rs:2288
+#: src/gui/ui.rs:2193
+#: src/gui/ui.rs:2207
 msgid "Ellipse"
 msgstr "Ellipse"
 
@@ -613,7 +613,7 @@ msgstr "Ellipse"
 msgid "ellipse_aspect doit etre dans (0, 10], got {}"
 msgstr "ellipse_aspect must be within (0, 10], got {}"
 
-#: src/gui/ui.rs:1253
+#: src/gui/ui.rs:1190
 msgid "En mode rapide, la pleine résolution est calculée dès que vous arrêtez de manipuler les réglages."
 msgstr "In quick mode, full resolution is computed as soon as you stop adjusting the settings."
 
@@ -621,14 +621,13 @@ msgstr "In quick mode, full resolution is computed as soon as you stop adjusting
 msgid "Entrée : première commande · Échap : fermer"
 msgstr "Enter: first command · Esc: close"
 
-#: src/gtk/actions.rs:870
-#: src/gtk/actions.rs:914
-#: src/gui/compute.rs:169
-#: src/gui/compute.rs:252
+#: src/gtk/actions.rs:857
+#: src/gtk/actions.rs:900
+#: src/gui/compute.rs:155
 msgid "Erreur : {e}"
 msgstr "Error: {e}"
 
-#: src/gui/app.rs:434
+#: src/gui/app.rs:432
 msgid "Erreur chargement : {e}"
 msgstr "Loading error: {e}"
 
@@ -636,19 +635,19 @@ msgstr "Loading error: {e}"
 msgid "Erreur chargement preset : {e}"
 msgstr "Preset loading error: {e}"
 
-#: src/gtk/actions.rs:805
+#: src/gtk/actions.rs:792
 msgid "Erreur d'écriture SVG : {e}"
 msgstr "SVG writing error: {e}"
 
-#: src/gtk/actions.rs:240
+#: src/gtk/actions.rs:237
 msgid "Erreur de chargement : {e}"
 msgstr "Loading error: {e}"
 
-#: src/gtk/files.rs:336
+#: src/gtk/files.rs:322
 msgid "Erreur de chargement du preset : {e}"
 msgstr "Preset loading error: {e}"
 
-#: src/gtk/actions.rs:807
+#: src/gtk/actions.rs:794
 msgid "Erreur de sauvegarde : {e}"
 msgstr "Save error: {e}"
 
@@ -656,36 +655,35 @@ msgstr "Save error: {e}"
 msgid "erreur de sérialisation presets : {e}"
 msgstr "preset serialization error: {e}"
 
-#: src/gtk/actions.rs:225
-#: src/gtk/actions.rs:230
+#: src/gtk/actions.rs:223
 #: src/gui/app.rs:422
 #: src/gui/app.rs:426
 msgid "Erreur lecture dimensions : {e}"
 msgstr "Dimension reading error: {e}"
 
-#: src/main.rs:773
-#: src/main.rs:836
+#: src/main.rs:761
+#: src/main.rs:818
 msgid "Erreur lors du calcul du filtre"
 msgstr "Error computing the filter"
 
-#: src/main.rs:791
+#: src/main.rs:778
 msgid "Erreur lors du calcul du filtre (RGBA)"
 msgstr "Error computing the filter (RGBA)"
 
-#: src/main.rs:779
+#: src/main.rs:767
 msgid "Erreur lors du rendu SVG"
 msgstr "Error rendering SVG"
 
-#: src/gui/save.rs:231
+#: src/gui/save.rs:242
 msgid "Erreur sauvegarde : {e}"
 msgstr "Save error: {e}"
 
-#: src/gtk/files.rs:314
+#: src/gtk/files.rs:301
 #: src/gui/app.rs:291
 msgid "Erreur sauvegarde preset : {e}"
 msgstr "Preset save error: {e}"
 
-#: src/gui/save.rs:229
+#: src/gui/save.rs:240
 msgid "Erreur écriture SVG : {e}"
 msgstr "SVG writing error: {e}"
 
@@ -696,11 +694,11 @@ msgid "Espace"
 msgstr "Space"
 
 #: src/gtk/exports.rs:92
-#: src/gui/ui.rs:1919
+#: src/gui/ui.rs:1842
 msgid "Export : mesure…"
 msgstr "Export: measuring…"
 
-#: src/gui/ui.rs:1909
+#: src/gui/ui.rs:1832
 msgid "Export : {sizes_label}"
 msgstr "Export: {sizes_label}"
 
@@ -712,8 +710,8 @@ msgstr "Export: {}"
 msgid "Export en attente du rendu en pleine résolution…"
 msgstr "Export waiting for full-resolution render…"
 
-#: src/gtk/files.rs:373
-#: src/gui/save.rs:146
+#: src/gtk/files.rs:359
+#: src/gui/save.rs:159
 msgid "Export en cours…"
 msgstr "Exporting…"
 
@@ -721,8 +719,8 @@ msgstr "Exporting…"
 msgid "Export nettement plus lourd : motif que la compression ne réduit pas."
 msgstr "Noticeably heavier export: a pattern that compression cannot reduce."
 
-#: src/gtk/files.rs:413
-#: src/gui/save.rs:190
+#: src/gtk/files.rs:399
+#: src/gui/save.rs:202
 msgid "Export SVG en cours…"
 msgstr "Exporting SVG…"
 
@@ -738,11 +736,11 @@ msgstr "Export as SVG…"
 
 #: src/gtk/controls.rs:482
 #: src/gtk/preview.rs:497
-#: src/gui/ui.rs:533
+#: src/gui/ui.rs:521
 msgid "Exporter l'image (Ctrl+S)"
 msgstr "Export image (Ctrl+S)"
 
-#: src/gui/ui.rs:530
+#: src/gui/ui.rs:519
 msgid ""
 "Exporter l'image (Ctrl+S)\n"
 "{comparison}"
@@ -753,11 +751,11 @@ msgstr ""
 #: src/gtk/shortcuts.rs:30
 #: src/gtk/wire.rs:49
 #: src/gui/palette.rs:60
-#: src/gui/ui.rs:608
+#: src/gui/ui.rs:591
 msgid "Exporter l'image…"
 msgstr "Export image…"
 
-#: src/gui/ui.rs:620
+#: src/gui/ui.rs:603
 msgid "Exporter le rendu en SVG (Ctrl+Shift+S)"
 msgstr "Export render as SVG (Ctrl+Shift+S)"
 
@@ -777,7 +775,7 @@ msgstr "Export SVG next to source"
 msgid "Exporter sans dialogue"
 msgstr "Export without dialog"
 
-#: src/gui/ui.rs:618
+#: src/gui/ui.rs:601
 msgid "Exporter SVG…"
 msgstr "Export SVG…"
 
@@ -794,47 +792,47 @@ msgstr "File"
 msgid "Filtre pointilliste — CLI"
 msgstr "Pointillist filter — CLI"
 
-#: src/gui/ui.rs:1350
+#: src/gui/ui.rs:1281
 msgid "FM (blue noise)"
 msgstr "FM (blue noise)"
 
-#: src/gui/ui.rs:693
+#: src/gui/ui.rs:668
 msgid "Fond et rendu"
 msgstr "Background and rendering"
 
-#: src/frontend.rs:632
+#: src/frontend.rs:638
 msgid "Fond modifié"
 msgstr "Background modified"
 
 #: src/gtk/controls.rs:837
-#: src/gui/ui.rs:1160
+#: src/gui/ui.rs:1102
 msgid "Fond transparent (RGBA)"
 msgstr "Transparent background (RGBA)"
 
-#: src/main.rs:529
+#: src/main.rs:522
 msgid "format attendu : WxH (ex. 200x150), got '{}'"
 msgstr "expected format: WxH (e.g. 200x150), got '{}'"
 
-#: src/frontend.rs:876
+#: src/frontend.rs:882
 msgid "format d'export non pris en charge : {}"
 msgstr "unsupported export format: {}"
 
-#: src/color.rs:28
+#: src/color.rs:31
 msgid "Format inconnu pour '{}'"
 msgstr "Unknown format for '{}'"
 
 #: src/gtk/controls.rs:769
-#: src/gui/ui.rs:2278
+#: src/gui/ui.rs:2197
 msgid "Forme"
 msgstr "Shape"
 
 #: src/gtk/controls.rs:1065
 #: src/gtk/controls.rs:1131
-#: src/gui/ui.rs:684
+#: src/gui/ui.rs:661
 msgid "Forme des points"
 msgstr "Point shape"
 
-#: src/frontend.rs:626
+#: src/frontend.rs:632
 msgid "Forme des points modifiée"
 msgstr "Point shape modified"
 
@@ -845,7 +843,7 @@ msgid "fraction du petit côté"
 msgstr "fraction of the short side"
 
 #: src/gtk/controls.rs:725
-#: src/gui/ui.rs:1359
+#: src/gui/ui.rs:1290
 msgid "Fréquence de trame"
 msgstr "Screen frequency"
 
@@ -853,16 +851,16 @@ msgstr "Screen frequency"
 msgid "Fréquence de trame, de 4 à 400 cellules, en échelle logarithmique"
 msgstr "Screen frequency, from 4 to 400 cells, on a logarithmic scale"
 
-#: src/gui/ui.rs:1662
+#: src/gui/ui.rs:1591
 msgid "glissez le curseur (double-clic : centré)"
 msgstr "drag the slider (double-click: centered)"
 
 #: src/gtk/controls.rs:1206
-#: src/gui/ui.rs:1776
+#: src/gui/ui.rs:1705
 msgid "Glissez-déposez un fichier dans la fenêtre, ou ouvrez-en un."
 msgstr "Drag and drop a file into the window, or open one."
 
-#: src/main.rs:589
+#: src/main.rs:581
 msgid "glob invalide '{}'"
 msgstr "invalid glob '{}'"
 
@@ -875,7 +873,7 @@ msgid "Graine du générateur aléatoire"
 msgstr "Random generator seed"
 
 #: src/gtk/controls.rs:845
-#: src/gui/ui.rs:1187
+#: src/gui/ui.rs:1126
 msgid "Graine fixée"
 msgstr "Fixed seed"
 
@@ -890,7 +888,7 @@ msgid "Grille pivotée : le motif est le rendu, pas la photo"
 msgstr "Rotated grid: the pattern is the render, not the photo"
 
 #: src/gtk/controls.rs:363
-#: src/gui/ui.rs:42
+#: src/gui/ui.rs:43
 msgid "Grille régulière : une cellule = un point. Rapide et prévisible."
 msgstr "Regular grid: one cell = one point. Fast and predictable."
 
@@ -898,7 +896,7 @@ msgstr "Regular grid: one cell = one point. Fast and predictable."
 msgid "Grille serrée de carrés, contraste poussé"
 msgstr "Tight grid of squares, boosted contrast"
 
-#: src/main.rs:202
+#: src/main.rs:210
 msgid "halftone invalide '{s}'. Valeurs valides : off, cmyk, dominant-N (ex: dominant-6)"
 msgstr "invalid halftone '{s}'. Valid values: off, cmyk, dominant-N (e.g. dominant-6)"
 
@@ -926,7 +924,7 @@ msgstr "halftone_min_radius_ratio must be <= 1.0, got {}"
 msgid "halftone_min_radius_ratio doit etre >= 0, got {}"
 msgstr "halftone_min_radius_ratio must be >= 0, got {}"
 
-#: src/main.rs:542
+#: src/main.rs:534
 msgid "hauteur invalide dans '{}'"
 msgstr "invalid height in '{}'"
 
@@ -934,7 +932,7 @@ msgstr "invalid height in '{}'"
 msgid "icône de fenêtre illisible : {e}"
 msgstr "unreadable window icon: {e}"
 
-#: src/main.rs:724
+#: src/main.rs:711
 msgid "image '{}' réduite automatiquement à {:?} pour respecter les limites mémoire"
 msgstr "image '{}' automatically reduced to {:?} to fit memory limits"
 
@@ -942,7 +940,7 @@ msgstr "image '{}' automatically reduced to {:?} to fit memory limits"
 msgid "Image _suivante"
 msgstr "Image _next"
 
-#: src/gtk/actions.rs:315
+#: src/gtk/actions.rs:312
 #: src/gui/app.rs:202
 msgid "Image chargée : {}"
 msgstr "Image loaded: {}"
@@ -963,7 +961,7 @@ msgstr "Previous image"
 msgid "Image précédente / suivante"
 msgstr "Previous / next image"
 
-#: src/gtk/actions.rs:302
+#: src/gtk/actions.rs:299
 msgid "Image réduite de {orig_w}x{orig_h} à {}x{} pour respecter la mémoire."
 msgstr "Image reduced from {orig_w}x{orig_h} to {}x{} to fit memory."
 
@@ -971,25 +969,22 @@ msgstr "Image reduced from {orig_w}x{orig_h} to {}x{} to fit memory."
 msgid "Image suivante"
 msgstr "Next image"
 
-#: src/filter/params.rs:489
+#: src/filter/params.rs:485
 msgid "Image trop grande ({} pixels), maximum: {} pixels"
 msgstr "Image too large ({} pixels), maximum: {} pixels"
 
-#: src/filter/params.rs:479
+#: src/filter/params.rs:475
 msgid "Image trop grande ({}x{}), maximum autorise: {}x{}"
 msgstr "Image too large ({}x{}), maximum allowed: {}x{}"
 
 #: src/filter/svg.rs:149
 #: src/filter/svg.rs:22
-#: src/gtk/files.rs:421
-#: src/gui/save.rs:196
+#: src/gtk/files.rs:407
+#: src/gui/save.rs:208
 msgid "Image vide"
 msgstr "Empty image"
 
-#: src/filter/params.rs:472
-#: src/gtk/actions.rs:234
-#: src/gui/app.rs:429
-#: src/main.rs:708
+#: src/frontend.rs:414
 msgid "Image vide ({}x{})"
 msgstr "Empty image ({}x{})"
 
@@ -1002,75 +997,74 @@ msgid "Images du dossier"
 msgstr "Folder images"
 
 #: src/gtk/recent.rs:98
-#: src/gui/ui.rs:1820
+#: src/gui/ui.rs:1743
 msgid "Images récentes"
 msgstr "Recent images"
 
-#: src/main.rs:781
+#: src/main.rs:769
 msgid "Impossible d'ecrire '{}'"
 msgstr "Cannot write '{}'"
 
-#: src/main.rs:376
+#: src/main.rs:384
 msgid "Impossible d'écrire '{}'"
 msgstr "Cannot write '{}'"
 
-#: src/main.rs:398
+#: src/main.rs:406
 msgid "Impossible d'énumérer les entrées '{}'"
 msgstr "Cannot enumerate entries '{}'"
 
-#: src/color.rs:166
-#: src/color.rs:230
+#: src/color.rs:179
 msgid "Impossible de créer la transformation colorimétrique : {e:?}"
 msgstr "Could not create the colorimetric transform: {e:?}"
 
-#: src/color.rs:38
+#: src/color.rs:41
 msgid "Impossible de créer le décodeur"
 msgstr "Could not create the decoder"
 
-#: src/main.rs:452
+#: src/main.rs:456
 msgid "impossible de créer le pool de threads du batch"
 msgstr "could not create batch thread pool"
 
-#: src/color.rs:43
+#: src/color.rs:46
 msgid "Impossible de décoder '{}'"
 msgstr "Could not decode '{}'"
 
-#: src/color.rs:23
+#: src/color.rs:26
 msgid "Impossible de lire '{}'"
 msgstr "Could not read '{}'"
 
-#: src/main.rs:357
+#: src/main.rs:365
 msgid "Impossible de lire le preset '{}'"
 msgstr "Cannot read preset '{}'"
 
-#: src/color.rs:97
+#: src/color.rs:100
 msgid "Impossible de lire le profil ICC '{}'"
 msgstr "Could not read ICC profile '{}'"
 
-#: src/color.rs:67
+#: src/color.rs:70
 msgid "Impossible de lire le profil ICC de sortie '{}'"
 msgstr "Could not read output ICC profile '{}'"
 
-#: src/main.rs:697
+#: src/main.rs:689
 msgid "Impossible de lire les dimensions de '{}'"
 msgstr "Cannot read dimensions of '{}'"
 
-#: src/main.rs:812
-#: src/main.rs:820
-#: src/main.rs:849
+#: src/main.rs:798
+#: src/main.rs:806
+#: src/main.rs:831
 msgid "Impossible de sauvegarder '{}'"
 msgstr "Cannot save '{}'"
 
-#: src/main.rs:373
+#: src/main.rs:382
 msgid "Impossible de sérialiser les paramètres"
 msgstr "Cannot serialize parameters"
 
-#: src/gui/ui.rs:2231
+#: src/gui/ui.rs:2150
 msgid "Inconnu"
 msgstr "Unknown"
 
 #: src/gtk/controls.rs:922
-#: src/gui/ui.rs:728
+#: src/gui/ui.rs:693
 msgid "Interface"
 msgstr "Interface"
 
@@ -1079,11 +1073,11 @@ msgid "iterations doit etre <= 100"
 msgstr "iterations must be <= 100"
 
 #: src/gtk/controls.rs:670
-#: src/gui/ui.rs:1068
+#: src/gui/ui.rs:1023
 msgid "Itérations"
 msgstr "Iterations"
 
-#: src/frontend.rs:621
+#: src/frontend.rs:627
 msgid "Itérations : {} → {}"
 msgstr "Iterations: {} → {}"
 
@@ -1101,7 +1095,7 @@ msgid "l'algorithme Halftone nécessite un mode cmyk ou dominant"
 msgstr "the Halftone algorithm requires a cmyk or dominant mode"
 
 #: src/gtk/controls.rs:924
-#: src/gui/ui.rs:758
+#: src/gui/ui.rs:723
 msgid "Langue"
 msgstr "Language"
 
@@ -1109,17 +1103,17 @@ msgstr "Language"
 msgid "Langue modifiée. Redémarrez l'application pour l'appliquer."
 msgstr "Language changed. Restart the application to apply it."
 
-#: src/main.rs:536
+#: src/main.rs:528
 msgid "largeur invalide dans '{}'"
 msgstr "invalid width in '{}'"
 
-#: src/gui/ui.rs:2099
+#: src/gui/ui.rs:2022
 msgid "le curseur vient d'être dessiné"
 msgstr "the cursor has just been drawn"
 
-#: src/gtk/files.rs:410
-#: src/gui/save.rs:182
-#: src/main.rs:747
+#: src/gtk/files.rs:396
+#: src/gui/save.rs:194
+#: src/main.rs:734
 msgid "Le dithering n'est pas reproduit dans l'export SVG."
 msgstr "Dithering is not reproduced in the SVG export."
 
@@ -1140,7 +1134,7 @@ msgstr "the engine accepts a value the UI should not offer"
 msgid "Le rendu SVG contient un point invalide"
 msgstr "The SVG render contains an invalid dot"
 
-#: src/gui/ui.rs:1284
+#: src/gui/ui.rs:1221
 msgid "Les N couleurs dominantes de l'image deviennent chacune une encre"
 msgstr "The N dominant colors of the image each become an ink"
 
@@ -1148,7 +1142,7 @@ msgstr "The N dominant colors of the image each become an ink"
 msgid "Les réglages se recalculent automatiquement (Espace)"
 msgstr "Settings recompute automatically (Space)"
 
-#: src/gtk/sections.rs:95
+#: src/gtk/sections.rs:87
 msgid "Lloyd pondéré : le rendu le plus « naturel »."
 msgstr "Weighted Lloyd: the most 'natural' rendering."
 
@@ -1181,11 +1175,11 @@ msgstr "Main menu"
 msgid "min_radius_ratio doit etre > 0"
 msgstr "min_radius_ratio must be > 0"
 
-#: src/gui/ui.rs:1264
+#: src/gui/ui.rs:1201
 msgid "Mode"
 msgstr "Mode"
 
-#: src/main.rs:422
+#: src/main.rs:427
 msgid "Mode preview : {:?}x{:?} max"
 msgstr "Preview mode: {:?}x{:?} max"
 
@@ -1205,7 +1199,7 @@ msgstr "Mosaic"
 msgid "Motif à haute fréquence : la compression ne peut pas le réduire. L'export pèsera nettement plus qu'avec une diffusion d'erreur, à palette égale (mesuré : 3,0 Mo contre 162 Ko avec 2 couleurs)."
 msgstr "High-frequency pattern: compression cannot reduce it. The export will be noticeably heavier than with error diffusion, at equal palette (measured: 3.0 MB versus 162 kB with 2 colors)."
 
-#: src/gui/ui.rs:1175
+#: src/gui/ui.rs:1114
 msgid "Moyennes de couleur en espace linéaire : évite les mi-tons trop sombres"
 msgstr "Color averages in linear space: avoids overly dark midtones"
 
@@ -1213,19 +1207,19 @@ msgstr "Color averages in linear space: avoids overly dark midtones"
 msgid "Moyennes en espace linéaire : évite les mi-tons trop sombres"
 msgstr "Averages in linear space: avoids overly dark midtones"
 
-#: src/main.rs:752
+#: src/main.rs:739
 msgid "mémoire de travail estimée : {} Mo"
 msgstr "estimated working memory: {} MB"
 
-#: src/gui/ui.rs:1148
+#: src/gui/ui.rs:1092
 msgid "Noir"
 msgstr "Black"
 
-#: src/gui/ui.rs:1307
+#: src/gui/ui.rs:1244
 msgid "Nombre d'encres retenues parmi les couleurs dominantes"
 msgstr "Number of inks retained among dominant colors"
 
-#: src/gui/ui.rs:1039
+#: src/gui/ui.rs:994
 msgid "Nombre de cellules de la grille"
 msgstr "Number of grid cells"
 
@@ -1254,11 +1248,11 @@ msgid "Nombre de côtés du polygone régulier."
 msgstr "Number of sides of the regular polygon."
 
 #: src/gtk/controls.rs:659
-#: src/gui/ui.rs:1054
+#: src/gui/ui.rs:1009
 msgid "Nombre de points"
 msgstr "Number of points"
 
-#: src/frontend.rs:611
+#: src/frontend.rs:617
 msgid "Nombre de points : {} → {}"
 msgstr "Number of points: {} → {}"
 
@@ -1314,7 +1308,7 @@ msgstr "Open a folder of images…"
 msgid "Ouvrir un dossier et passer d'une image à l'autre avec ← et → (Ctrl+Maj+O)"
 msgstr "Open a folder and navigate images with ← and → (Ctrl+Shift+O)"
 
-#: src/gui/ui.rs:1788
+#: src/gui/ui.rs:1713
 msgid "Ouvrir un dossier…"
 msgstr "Open a folder…"
 
@@ -1329,26 +1323,26 @@ msgstr "Open an image (Ctrl+O)"
 
 #: src/gtk/controls.rs:549
 #: src/gui/palette.rs:36
-#: src/gui/ui.rs:1782
+#: src/gui/ui.rs:1710
 msgid "Ouvrir une image…"
 msgstr "Open an image…"
 
 #: src/gtk/controls.rs:441
 #: src/gtk/controls.rs:548
-#: src/gui/ui.rs:539
+#: src/gui/ui.rs:527
 msgid "Ouvrir…"
 msgstr "Open…"
 
-#: src/gui/ui.rs:2198
+#: src/gui/ui.rs:2121
 msgid "Palette franche, sans motif"
 msgstr "Solid palette, no pattern"
 
-#: src/frontend.rs:629
+#: src/frontend.rs:635
 msgid "Palette modifiée"
 msgstr "Palette modified"
 
 #: src/gtk/controls.rs:800
-#: src/gui/ui.rs:1089
+#: src/gui/ui.rs:1044
 msgid "Palette réduite"
 msgstr "Reduced palette"
 
@@ -1364,11 +1358,11 @@ msgstr "palette_size must be <= 256"
 msgid "palette_size doit etre >= 2, got {}"
 msgstr "palette_size must be >= 2, got {}"
 
-#: src/frontend.rs:638
+#: src/frontend.rs:644
 msgid "Paramètres halftone modifiés"
 msgstr "Halftone settings modified"
 
-#: src/frontend.rs:640
+#: src/frontend.rs:646
 msgid "Paramètres modifiés"
 msgstr "Settings modified"
 
@@ -1376,7 +1370,7 @@ msgstr "Settings modified"
 msgid "Passes de Lloyd ; au-delà d'une trentaine, le gain devient marginal"
 msgstr "Lloyd passes; beyond about thirty, gains become marginal"
 
-#: src/gui/ui.rs:1072
+#: src/gui/ui.rs:1027
 msgid "Passes de Lloyd. Au-delà de ~30, le gain devient marginal."
 msgstr "Lloyd passes. Beyond ~30, gains become marginal."
 
@@ -1386,12 +1380,12 @@ msgstr "Dots"
 
 #: src/gtk/controls.rs:572
 #: src/gtk/controls.rs:942
-#: src/gui/ui.rs:905
-#: src/gui/ui.rs:912
+#: src/gui/ui.rs:864
+#: src/gui/ui.rs:868
 msgid "Personnalisé"
 msgstr "Custom"
 
-#: src/gui/ui.rs:849
+#: src/gui/ui.rs:809
 msgid "Personnalisé — les réglages ne correspondent à aucun preset"
 msgstr "Custom — settings match no preset"
 
@@ -1399,15 +1393,15 @@ msgstr "Custom — settings match no preset"
 msgid "Pic mémoire estimé pour le calcul en cours."
 msgstr "Estimated peak memory for the current computation."
 
-#: src/gui/ui.rs:941
+#: src/gui/ui.rs:896
 msgid "Placement"
 msgstr "Placement"
 
-#: src/gui/ui.rs:2156
+#: src/gui/ui.rs:2079
 msgid "Plage autorisée : {range_label}"
 msgstr "Allowed range: {range_label}"
 
-#: src/gui/ui.rs:1245
+#: src/gui/ui.rs:1182
 msgid "Plein"
 msgstr "Full"
 
@@ -1431,7 +1425,7 @@ msgstr "Full resolution: ~{}"
 msgid "pleine résolution…"
 msgstr "full resolution…"
 
-#: src/gtk/sections.rs:98
+#: src/gtk/sections.rs:88
 msgid "Plus de points là où l'image est détaillée."
 msgstr "More points where the image is detailed."
 
@@ -1444,22 +1438,22 @@ msgid "polygon_sides doit etre entre 3 et 12, got {}"
 msgstr "polygon_sides must be between 3 and 12, got {}"
 
 #: src/gtk/controls.rs:385
-#: src/gui/ui.rs:2275
-#: src/gui/ui.rs:2301
+#: src/gui/ui.rs:2194
+#: src/gui/ui.rs:2220
 msgid "Polygone"
 msgstr "Polygon"
 
-#: src/gui/ui.rs:902
+#: src/gui/ui.rs:861
 msgid "Preset"
 msgstr "Preset"
 
-#: src/gtk/files.rs:326
+#: src/gtk/files.rs:313
 #: src/gui/app.rs:269
-#: src/main.rs:367
+#: src/main.rs:375
 msgid "Preset chargé : {}"
 msgstr "Preset loaded: {}"
 
-#: src/main.rs:361
+#: src/main.rs:369
 msgid "Preset invalide : '{}'"
 msgstr "Invalid preset: '{}'"
 
@@ -1467,9 +1461,9 @@ msgstr "Invalid preset: '{}'"
 msgid "Preset précédent / suivant"
 msgstr "Previous / next preset"
 
-#: src/gtk/files.rs:311
+#: src/gtk/files.rs:300
 #: src/gui/app.rs:287
-#: src/main.rs:381
+#: src/main.rs:389
 msgid "Preset sauvegardé : {}"
 msgstr "Preset saved: {}"
 
@@ -1478,46 +1472,46 @@ msgstr "Preset saved: {}"
 msgid "Preset suivant"
 msgstr "Next preset"
 
-#: src/gui/ui.rs:921
+#: src/gui/ui.rs:876
 msgid "Preset suivant (Ctrl+P)"
 msgstr "Next preset (Ctrl+P)"
 
-#: src/gtk/files.rs:243
-#: src/gtk/files.rs:260
+#: src/gtk/files.rs:237
+#: src/gtk/files.rs:253
 msgid "Preset TOML"
 msgstr "TOML preset"
 
-#: src/gtk/actions.rs:583
+#: src/gtk/actions.rs:571
 #: src/gui/app.rs:235
 msgid "Preset « {} » appliqué."
 msgstr "Preset \"{}\" applied."
 
-#: src/main.rs:548
+#: src/main.rs:540
 msgid "preview WxH doit être > 0, got '{}'"
 msgstr "preview WxH must be > 0, got '{}'"
 
-#: src/main.rs:718
+#: src/main.rs:705
 msgid "profil colorimétrique converti vers sRGB"
 msgstr "color profile converted to sRGB"
 
-#: src/gtk/actions.rs:313
+#: src/gtk/actions.rs:310
 #: src/gui/app.rs:200
 msgid "Profil ICC converti vers sRGB."
 msgstr "ICC profile converted to sRGB."
 
-#: src/color.rs:72
+#: src/color.rs:75
 msgid "Profil ICC de sortie invalide '{}' : {e:?}"
 msgstr "Invalid output ICC profile '{}': {e:?}"
 
-#: src/color.rs:87
+#: src/color.rs:90
 msgid "Profil ICC embarqué invalide : {e:?}"
 msgstr "Invalid embedded ICC profile: {e:?}"
 
-#: src/color.rs:41
+#: src/color.rs:44
 msgid "Profil ICC invalide"
 msgstr "Invalid ICC profile"
 
-#: src/color.rs:102
+#: src/color.rs:105
 msgid "Profil ICC invalide '{}' : {e:?}"
 msgstr "Invalid ICC profile '{}': {e:?}"
 
@@ -1538,7 +1532,7 @@ msgid "Qualité de l'aperçu"
 msgstr "Preview quality"
 
 #: src/gtk/controls.rs:801
-#: src/gui/ui.rs:1091
+#: src/gui/ui.rs:1046
 msgid "Quantifie l'image vers quelques couleurs (effet sérigraphie)"
 msgstr "Quantizes the image to a few colors (screen printing effect)"
 
@@ -1562,15 +1556,15 @@ msgstr "Fast (1/2)"
 msgid "Rapide (1/4)"
 msgstr "Fast (1/4)"
 
-#: src/gui/ui.rs:1238
+#: src/gui/ui.rs:1175
 msgid "Rapide ¼"
 msgstr "Quick ¼"
 
-#: src/gui/ui.rs:1230
+#: src/gui/ui.rs:1168
 msgid "Rapide ½"
 msgstr "Quick ½"
 
-#: src/gui/ui.rs:2314
+#: src/gui/ui.rs:2231
 msgid "Rapport l/h"
 msgstr "W/H ratio"
 
@@ -1584,8 +1578,8 @@ msgstr "Ellipse aspect ratio."
 
 #: src/gtk/controls.rs:610
 #: src/gtk/controls.rs:747
-#: src/gui/ui.rs:1374
-#: src/gui/ui.rs:991
+#: src/gui/ui.rs:1305
+#: src/gui/ui.rs:946
 msgid "Rayon max"
 msgstr "Max radius"
 
@@ -1599,16 +1593,16 @@ msgstr "Maximum radius, as a fraction of the screen pitch. Above 1, dots touch."
 
 #: src/gtk/controls.rs:599
 #: src/gtk/controls.rs:736
-#: src/gui/ui.rs:1367
-#: src/gui/ui.rs:984
+#: src/gui/ui.rs:1298
+#: src/gui/ui.rs:939
 msgid "Rayon min"
 msgstr "Min radius"
 
-#: src/gui/ui.rs:1391
+#: src/gui/ui.rs:1322
 msgid "Rayon min et max des dots d'encre"
 msgstr "Min and max ink dot radii"
 
-#: src/gui/ui.rs:1005
+#: src/gui/ui.rs:960
 msgid "Rayon min et max, en fraction du plus petit côté"
 msgstr "Min and max radii, as a fraction of the shorter side"
 
@@ -1624,7 +1618,7 @@ msgstr "Minimum point radius, as a fraction of the image's shorter side."
 #: src/gtk/controls.rs:872
 #: src/gtk/shortcuts.rs:51
 #: src/gui/palette.rs:84
-#: src/gui/ui.rs:553
+#: src/gui/ui.rs:540
 msgid "Recalculer"
 msgstr "Recompute"
 
@@ -1658,8 +1652,8 @@ msgstr "Replace file?"
 msgid "Rendu"
 msgstr "Rendering"
 
-#: src/gtk/files.rs:360
-#: src/gui/save.rs:120
+#: src/gtk/files.rs:346
+#: src/gui/save.rs:133
 msgid "Rendu en pleine résolution en cours — réessayez dans un instant."
 msgstr "Full-resolution rendering in progress — try again in a moment."
 
@@ -1668,16 +1662,16 @@ msgid "Rendu RGBA sur fond transparent, pour superposition"
 msgstr "RGBA render on a transparent background, for compositing"
 
 #: src/gtk/recent.rs:99
-#: src/gui/ui.rs:1825
+#: src/gui/ui.rs:1748
 msgid "Reprendre où vous en étiez"
 msgstr "Resume where you left off"
 
 #: src/gtk/controls.rs:893
-#: src/gui/ui.rs:1484
+#: src/gui/ui.rs:1415
 msgid "Revenir à 100 % (1)"
 msgstr "Back to 100% (1)"
 
-#: src/gui/ui.rs:566
+#: src/gui/ui.rs:550
 msgid "Rien à annuler"
 msgstr "Nothing to undo"
 
@@ -1685,7 +1679,7 @@ msgstr "Nothing to undo"
 msgid "Rien à annuler."
 msgstr "Nothing to undo."
 
-#: src/gui/ui.rs:584
+#: src/gui/ui.rs:567
 msgid "Rien à rétablir"
 msgstr "Nothing to redo"
 
@@ -1693,7 +1687,7 @@ msgstr "Nothing to redo"
 msgid "Rien à rétablir."
 msgstr "Nothing to redo."
 
-#: src/gui/ui.rs:1270
+#: src/gui/ui.rs:1207
 msgid "Rosette classique Cyan / Magenta / Jaune / Noir, à 15°/75°/0°/45°"
 msgstr "Classic rosette Cyan / Magenta / Yellow / Black, at 15°/75°/0°/45°"
 
@@ -1701,7 +1695,7 @@ msgstr "Classic rosette Cyan / Magenta / Yellow / Black, at 15°/75°/0°/45°"
 msgid "Rosette CMJN"
 msgstr "CMYK rosette"
 
-#: src/gtk/sections.rs:101
+#: src/gtk/sections.rs:90
 msgid "Rosette CMJN ou couleurs dominantes (offset print)."
 msgstr "CMYK rosette or dominant colors (offset print)."
 
@@ -1721,13 +1715,13 @@ msgstr "Settings"
 msgid "Réglages déjà par défaut."
 msgstr "Settings already default."
 
-#: src/gtk/files.rs:486
+#: src/gtk/files.rs:472
 msgid "Réglages personnalisés"
 msgstr "Custom settings"
 
 #: src/gtk/controls.rs:1116
 #: src/gtk/controls.rs:937
-#: src/gui/ui.rs:775
+#: src/gui/ui.rs:740
 msgid "Réglages rapides"
 msgstr "Quick settings"
 
@@ -1736,7 +1730,7 @@ msgstr "Quick settings"
 msgid "réglages refusés : {e}"
 msgstr "settings rejected: {e}"
 
-#: src/gtk/actions.rs:513
+#: src/gtk/actions.rs:506
 #: src/gui/app.rs:380
 msgid "Réglages réinitialisés."
 msgstr "Settings reset."
@@ -1748,20 +1742,20 @@ msgstr "Reset _settings"
 #: src/gtk/controls.rs:877
 #: src/gtk/shortcuts.rs:67
 #: src/gui/palette.rs:111
-#: src/gui/ui.rs:714
+#: src/gui/ui.rs:679
 msgid "Réinitialiser les réglages"
 msgstr "Reset settings"
 
-#: src/gtk/sections.rs:93
+#: src/gtk/sections.rs:86
 msgid "Répartition par couleur et position."
 msgstr "Distribution by color and position."
 
 #: src/gtk/controls.rs:392
 #: src/gtk/controls.rs:906
-#: src/gui/ui.rs:1554
-#: src/gui/ui.rs:1573
-#: src/gui/ui.rs:1590
-#: src/gui/ui.rs:69
+#: src/gui/ui.rs:1483
+#: src/gui/ui.rs:1502
+#: src/gui/ui.rs:1519
+#: src/gui/ui.rs:65
 msgid "Résultat"
 msgstr "Result"
 
@@ -1770,11 +1764,11 @@ msgid "Rétabli."
 msgstr "Restored."
 
 #: src/gui/palette.rs:105
-#: src/gui/ui.rs:588
+#: src/gui/ui.rs:571
 msgid "Rétablir"
 msgstr "Redo"
 
-#: src/gui/ui.rs:581
+#: src/gui/ui.rs:565
 msgid "Rétablir : {} (Ctrl+Y)"
 msgstr "Redo: {} (Ctrl+Y)"
 
@@ -1786,15 +1780,15 @@ msgstr "Redo canceled change (Ctrl+Y)"
 msgid "Rétablir les valeurs par défaut de « {title} »"
 msgstr "Restore default values of \"{title}\""
 
-#: src/gui/ui.rs:597
+#: src/gui/ui.rs:580
 msgid "Rétablir tous les réglages par défaut (Ctrl+R)"
 msgstr "Restore all settings to default (Ctrl+R)"
 
-#: src/main.rs:826
+#: src/main.rs:812
 msgid "Sauvegarde (RGBA) : {}"
 msgstr "Save (RGBA): {}"
 
-#: src/main.rs:854
+#: src/main.rs:836
 msgid "Sauvegarde : {}"
 msgstr "Save: {}"
 
@@ -1802,57 +1796,57 @@ msgstr "Save: {}"
 msgid "Sauvegarde annulée."
 msgstr "Save canceled."
 
-#: src/gtk/files.rs:205
+#: src/gtk/files.rs:204
 msgid "Sauvegarder l'image"
 msgstr "Save image"
 
-#: src/gtk/files.rs:264
+#: src/gtk/files.rs:256
 msgid "Sauvegarder le preset"
 msgstr "Save preset"
 
-#: src/gtk/files.rs:226
+#: src/gtk/files.rs:222
 msgid "Sauvegarder le SVG"
 msgstr "Save SVG"
 
-#: src/gtk/actions.rs:795
-#: src/gui/save.rs:223
+#: src/gtk/actions.rs:782
+#: src/gui/save.rs:234
 msgid "Sauvegardé : {}"
 msgstr "Saved: {}"
 
 #: src/gtk/controls.rs:576
-#: src/gui/ui.rs:803
+#: src/gui/ui.rs:764
 msgid "Sauver le preset…"
 msgstr "Save preset…"
 
-#: src/gui/ui.rs:1338
+#: src/gui/ui.rs:1269
 msgid "Screening"
 msgstr "Screening"
 
-#: src/main.rs:216
+#: src/main.rs:224
 msgid "screening invalide '{other}'. Valeurs valides : am, fm"
 msgstr "invalid screening '{other}'. Valid values: am, fm"
 
-#: src/gtk/actions.rs:533
+#: src/gtk/actions.rs:525
 msgid "Section déjà par défaut."
 msgstr "Section already default."
 
-#: src/gtk/actions.rs:552
+#: src/gtk/actions.rs:541
 msgid "Section réinitialisée."
 msgstr "Section reset."
 
 #: src/gtk/controls.rs:586
-#: src/gui/ui.rs:968
+#: src/gui/ui.rs:923
 msgid "Sensibilité variance"
 msgstr "Variance sensitivity"
 
-#: src/gui/ui.rs:746
+#: src/gui/ui.rs:711
 msgid "Sombre"
 msgstr "Dark"
 
-#: src/gui/ui.rs:1543
-#: src/gui/ui.rs:1565
-#: src/gui/ui.rs:1601
-#: src/gui/ui.rs:72
+#: src/gui/ui.rs:1472
+#: src/gui/ui.rs:1494
+#: src/gui/ui.rs:1530
+#: src/gui/ui.rs:66
 msgid "Source"
 msgstr "Source"
 
@@ -1872,7 +1866,7 @@ msgstr "Lloyd stippling, 1,500 points — the reference render"
 msgid "Stippling fin"
 msgstr "Fine stippling"
 
-#: src/gui/ui.rs:547
+#: src/gui/ui.rs:535
 msgid "Stop"
 msgstr "Stop"
 
@@ -1881,16 +1875,16 @@ msgstr "Stop"
 msgid "Subdivision par contraste : davantage de points là où l'image est détaillée."
 msgstr "Subdivision by contrast: more points where the image is detailed."
 
-#: src/gui/ui.rs:920
+#: src/gui/ui.rs:875
 msgid "Suivant"
 msgstr "Next"
 
-#: src/main.rs:786
+#: src/main.rs:774
 msgid "SVG sauvegarde : {}"
 msgstr "SVG save: {}"
 
-#: src/gtk/actions.rs:793
-#: src/gui/save.rs:221
+#: src/gtk/actions.rs:780
+#: src/gui/save.rs:232
 msgid "SVG sauvegardé : {}"
 msgstr "SVG saved: {}"
 
@@ -1898,8 +1892,7 @@ msgstr "SVG saved: {}"
 msgid "Séparation de l'image en canaux d'encre, une trame par canal."
 msgstr "Separation of the image into ink channels, one screen per channel."
 
-#: src/color.rs:201
-#: src/color.rs:262
+#: src/color.rs:214
 msgid "Taille d'image invalide après conversion colorimétrique"
 msgstr "Invalid image size after colorimetric conversion"
 
@@ -1911,7 +1904,7 @@ msgstr ""
 "Sizes obtained by actually encoding the render in each format.\n"
 "“—” : format not measured (image too large for a lossless WebP)."
 
-#: src/gui/ui.rs:1212
+#: src/gui/ui.rs:1151
 msgid "Tirer une nouvelle graine"
 msgstr "Draw a new seed"
 
@@ -1919,24 +1912,24 @@ msgstr "Draw a new seed"
 msgid "Tirer une nouvelle graine et recalculer"
 msgstr "Draw a new seed and recompute"
 
-#: src/gui/ui.rs:1249
+#: src/gui/ui.rs:1186
 msgid "Toujours en pleine résolution"
 msgstr "Always at full resolution"
 
-#: src/gui/ui.rs:1080
+#: src/gui/ui.rs:1035
 msgid "traité plus haut"
 msgstr "handled above"
 
 #: src/gtk/controls.rs:823
-#: src/gtk/sections.rs:45
+#: src/gtk/sections.rs:42
 msgid "Tramage de la palette quantifiée"
 msgstr "Dithering of the quantized palette"
 
-#: src/gui/ui.rs:2217
+#: src/gui/ui.rs:2138
 msgid "Tramage ordonné : rendu « pixel art », sans diffusion d'erreur"
 msgstr "Ordered dithering: 'pixel art' rendering, without error diffusion"
 
-#: src/gui/ui.rs:2224
+#: src/gui/ui.rs:2143
 msgid "Tramage ordonné plus fin : motif de trame 8×8"
 msgstr "Finer ordered dithering: 8×8 screen pattern"
 
@@ -1958,7 +1951,7 @@ msgstr "Ink screen: CMYK rosette or dominant colors, offset print style."
 msgid "Trame FM (blue noise)"
 msgstr "FM screen (blue noise)"
 
-#: src/gui/ui.rs:1344
+#: src/gui/ui.rs:1275
 msgid "Trame régulière : le rayon du dot code la couverture d'encre"
 msgstr "Regular screen: dot radius encodes ink coverage"
 
@@ -1966,21 +1959,20 @@ msgstr "Regular screen: dot radius encodes ink coverage"
 msgid "Trame stochastique : c'est la densité qui code l'encre"
 msgstr "Stochastic screen: density encodes ink coverage"
 
-#: src/gui/ui.rs:1352
+#: src/gui/ui.rs:1283
 msgid "Trame stochastique : la densité des dots code la couverture d'encre"
 msgstr "Stochastic screen: dot density encodes ink coverage"
 
-#: src/color.rs:190
-#: src/color.rs:251
+#: src/color.rs:203
 msgid "Transformation colorimétrique échouée : {e:?}"
 msgstr "Colorimetric transform failed: {e:?}"
 
-#: src/gtk/sections.rs:91
+#: src/gtk/sections.rs:85
 msgid "Une cellule = un point. Rapide et prévisible."
 msgstr "One cell = one point. Fast and predictable."
 
 #: src/gtk/controls.rs:550
-#: src/gui/ui.rs:1795
+#: src/gui/ui.rs:1718
 msgid "Utiliser un exemple"
 msgstr "Use an example"
 
@@ -1988,7 +1980,7 @@ msgstr "Use an example"
 msgid "variance_sensitivity doit etre dans [0, 1], got {}"
 msgstr "variance_sensitivity must be within [0, 1], got {}"
 
-#: src/gui/ui.rs:1211
+#: src/gui/ui.rs:1150
 msgid "Varier"
 msgstr "Vary"
 
@@ -2028,21 +2020,21 @@ msgstr "Zoom in (+)"
 msgid "Zoomer / Dézoomer"
 msgstr "Zoom in / out"
 
-#: src/frontend.rs:591
+#: src/frontend.rs:597
 msgid "{:.0} Ko"
 msgstr "{:.0} kB"
 
-#: src/frontend.rs:568
-#: src/frontend.rs:587
+#: src/frontend.rs:574
+#: src/frontend.rs:593
 msgid "{:.1} Go"
 msgstr "{:.1} GB"
 
-#: src/frontend.rs:589
+#: src/frontend.rs:595
 msgid "{:.1} Mo"
 msgstr "{:.1} MB"
 
-#: src/gui/ui.rs:2102
-#: src/gui/ui.rs:2153
+#: src/gui/ui.rs:2025
+#: src/gui/ui.rs:2076
 msgid ""
 "{hint}\n"
 "Plage autorisée : {range_label}"
@@ -2050,7 +2042,7 @@ msgstr ""
 "{hint}\n"
 "Allowed range: {range_label}"
 
-#: src/gtk/files.rs:502
+#: src/gtk/files.rs:488
 msgid "{subtitle} (modifié)"
 msgstr "{subtitle} (modified)"
 
@@ -2058,20 +2050,20 @@ msgstr "{subtitle} (modified)"
 msgid "{} doit etre fini, got {}"
 msgstr "{} must be finite, got {}"
 
-#: src/main.rs:510
+#: src/main.rs:503
 msgid "{} fichier(s) n'ont pas pu être traité(s)"
 msgstr "{} file(s) could not be processed"
 
-#: src/main.rs:410
+#: src/main.rs:416
 msgid "{} fichier(s) à traiter"
 msgstr "{} file(s) to process"
 
-#: src/frontend.rs:574
-#: src/frontend.rs:961
+#: src/frontend.rs:580
+#: src/frontend.rs:967
 msgid "{} Mo"
 msgstr "{} MB"
 
-#: src/frontend.rs:593
+#: src/frontend.rs:599
 msgid "{} o"
 msgstr "{} B"
 
@@ -2092,8 +2084,7 @@ msgstr "× no screen"
 msgid "Échap"
 msgstr "Esc"
 
-#: src/main.rs:473
-#: src/main.rs:494
+#: src/main.rs:172
 msgid "échec '{}': {}"
 msgstr "failed '{}': {}"
 

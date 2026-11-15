@@ -99,7 +99,9 @@ sh scripts/update-i18n.sh
 Le script extrait chaque site d'appel `gettext("...")`, fusionne les nouveaux
 msgids dans le `.po`, supprime les obsolètes et recompile le `.mo` embarqué.
 Remplissez les nouveaux `msgstr` entre deux exécutions. La CI échoue si le
-catalogue commité n'est pas synchronisé avec le code.
+catalogue commité n'est pas synchronisé avec le code ; les références sources
+`#: fichier:ligne` y sont ignorées, puisqu'un refactor les déplace sans changer
+aucune chaîne.
 
 ## Questions ?
 

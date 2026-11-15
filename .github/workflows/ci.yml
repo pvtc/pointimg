@@ -154,7 +154,10 @@ jobs:
       - name: Regenerate the catalogue
         run: python3 scripts/sync-i18n.py
       - name: Check the committed catalogue is up to date
-        run: git diff --exit-code -- locales/
+        # `#:` source references are metadata: any refactor that moves a
+        # `gettext()` call rewrites them without changing a single string.
+        # Ignore them so the job only gates on real catalogue changes.
+        run: "git diff --exit-code -I '^#: ' -- locales/"
 
   docs:
     name: Docs
