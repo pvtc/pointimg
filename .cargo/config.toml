@@ -1,11 +1,13 @@
 # Workspace-wide policy, shared by developers and CI.
 
 [registry]
-# Ignore versions published less than 7 days ago. A compromised release is
+# Ignore versions published less than 3 days ago. A compromised release is
 # almost always yanked within hours; this window lets the dust settle without
 # slowing down routine updates. Versions already in Cargo.lock stay valid.
-global-min-publish-age = "7 days"
+global-min-publish-age = "3 days"
 
 [resolver]
-# Without `deny`, the limit above is only advisory.
+# Without `deny`, the limit above is only advisory. For an urgent fix, or a
+# release already tested by hand, override it for one command:
+#   CARGO_RESOLVER_INCOMPATIBLE_PUBLISH_AGE=allow cargo update -p <crate> --precise <version>
 incompatible-publish-age = "deny"

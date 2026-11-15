@@ -30,9 +30,13 @@ et ce projet adhère au [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 - **Lints Cargo** : `[lints.cargo] unused_dependencies = "deny"` fait échouer
   la compilation quand une dépendance déclarée n'est plus utilisée.
 - **Délai de publication des dépendances** : `.cargo/config.toml` fait ignorer
-  au résolveur les versions de moins de 7 jours, et Dependabot applique le même
+  au résolveur les versions de moins de 3 jours, et Dependabot applique le même
   délai — une version compromise est presque toujours retirée dans les heures
   qui suivent. Les versions déjà présentes dans `Cargo.lock` restent valides.
+  Un correctif urgent, ou une version déjà testée à la main, peut toujours être
+  pris avec
+  `CARGO_RESOLVER_INCOMPATIBLE_PUBLISH_AGE=allow cargo update -p <crate> --precise <version>` ;
+  les mises à jour de sécurité Dependabot ne sont jamais retardées.
 - **Commentaires** : les commentaires de configuration (build, CI) sont en
   anglais, comme les sources Rust.
 

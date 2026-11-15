@@ -5,10 +5,10 @@ updates:
     schedule:
       interval: weekly
     open-pull-requests-limit: 5
-    # Same 7-day window as `.cargo/config.toml`: the PRs Dependabot opens
-    # already satisfy the cargo cooldown.
+    # Same 3-day window as `.cargo/config.toml`: the PRs Dependabot opens
+    # already satisfy the cargo cooldown. Security updates are never delayed.
     cooldown:
-      default-days: 7
+      default-days: 3
     # GTK4/libadwaita bumps are grouped: they must stay compatible with the
     # distro versions targeted by the CI jobs.
     groups:
@@ -30,7 +30,7 @@ updates:
       interval: weekly
     open-pull-requests-limit: 2
     cooldown:
-      default-days: 7
+      default-days: 3
 
   - package-ecosystem: github-actions
     directory: /
@@ -39,6 +39,6 @@ updates:
     # Enough slots for checkout, upload-artifact, download-artifact and the
     # rest: a lower limit silently hides bumps (download-artifact was missed).
     open-pull-requests-limit: 5
-    # Actions have no SemVer rule: a plain 7-day delay applies.
+    # Actions have no SemVer rule: a plain 3-day delay applies.
     cooldown:
-      default-days: 7
+      default-days: 3

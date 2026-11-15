@@ -27,9 +27,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Cargo lints**: `[lints.cargo] unused_dependencies = "deny"` fails the build
   when a declared dependency is no longer used.
 - **Dependency cooldown**: `.cargo/config.toml` makes the resolver ignore
-  releases younger than 7 days, and Dependabot applies the same delay — a
+  releases younger than 3 days, and Dependabot applies the same delay — a
   compromised release is almost always yanked within hours. Versions already in
-  `Cargo.lock` stay valid.
+  `Cargo.lock` stay valid. An urgent fix, or a release already tested by hand,
+  can still be taken with
+  `CARGO_RESOLVER_INCOMPATIBLE_PUBLISH_AGE=allow cargo update -p <crate> --precise <version>`;
+  Dependabot security updates are never delayed.
 - **Comments**: build and CI configuration comments are in English, like the
   Rust sources.
 

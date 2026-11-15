@@ -57,12 +57,20 @@ If you touch user-facing strings, see the i18n workflow below.
 - **MSRV**: Rust 1.100 (`rust-version` in `Cargo.toml`), checked by the `msrv`
   CI job with `cargo +1.100`.
 - **Cooldown**: `.cargo/config.toml` makes the resolver ignore releases
-  published less than 7 days ago (`registry.global-min-publish-age` plus
+  published less than 3 days ago (`registry.global-min-publish-age` plus
   `resolver.incompatible-publish-age = "deny"`). A compromised release is
   almost always yanked within hours. Versions already in `Cargo.lock` stay
-  valid, but a blanket `cargo update` will therefore pick versions at least a
-  week old; target one crate with `cargo update -p <crate>` when you need a
-  fresher release. Dependabot applies the same delay.
+  valid, but a blanket `cargo update` will therefore pick versions at least
+  3 days old; target one crate with `cargo update -p <crate>` when you need a
+  fresher release. For an urgent fix, or a release you already tested by hand,
+  override the limit for one command:
+
+  ```bash
+  CARGO_RESOLVER_INCOMPATIBLE_PUBLISH_AGE=allow cargo update -p <crate> --precise <version>
+  ```
+
+  Dependabot applies the same 3-day delay to version updates; **security
+  updates are never delayed**.
 - **Unused dependencies**: `[lints.cargo] unused_dependencies = "deny"` fails
   the build when a declared dependency is no longer used.
 

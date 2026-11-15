@@ -58,13 +58,21 @@ ci-dessous.
 - **MSRV** : Rust 1.100 (`rust-version` dans `Cargo.toml`), vérifié par le job
   CI `msrv` avec `cargo +1.100`.
 - **Délai de publication** : `.cargo/config.toml` fait ignorer au résolveur les
-  versions publiées depuis moins de 7 jours (`registry.global-min-publish-age`
+  versions publiées depuis moins de 3 jours (`registry.global-min-publish-age`
   et `resolver.incompatible-publish-age = "deny"`). Une version compromise est
   presque toujours retirée dans les heures qui suivent. Les versions déjà dans
   `Cargo.lock` restent valides, mais un `cargo update` global choisira donc des
-  versions d'au moins une semaine ; ciblez une crate avec
+  versions d'au moins 3 jours ; ciblez une crate avec
   `cargo update -p <crate>` si vous avez besoin d'une version plus récente.
-  Dependabot applique le même délai.
+  Pour un correctif urgent, ou une version déjà testée à la main, levez la
+  limite le temps d'une commande :
+
+  ```bash
+  CARGO_RESOLVER_INCOMPATIBLE_PUBLISH_AGE=allow cargo update -p <crate> --precise <version>
+  ```
+
+  Dependabot applique le même délai de 3 jours aux mises à jour de version ;
+  les **mises à jour de sécurité ne sont jamais retardées**.
 - **Dépendances inutilisées** : `[lints.cargo] unused_dependencies = "deny"`
   fait échouer la compilation quand une dépendance déclarée n'est plus utilisée.
 
