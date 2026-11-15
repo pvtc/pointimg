@@ -70,9 +70,20 @@ jobs:
         run: vulkaninfo --summary | grep -i llvmpipe
       - name: CPU/GPU density parity test
         env:
-          VK_ICD_FILENAMES: /usr/share/vulkan/icd.d/lvp_icd.x86_64.json
           POINTIMG_GPU: "1"
-        run: cargo test --locked --features gpu --test gpu_density -- --nocapture
+        run: |
+          # Force the software rasterizer. The lavapipe ICD was renamed from
+          # `lvp_icd.x86_64.json` to `lvp_icd.json` in newer Mesa packages, so
+          # resolve it instead of hardcoding a name that may not exist on
+          # `ubuntu-latest`.
+          ls -l /usr/share/vulkan/icd.d/
+          icd=$(ls /usr/share/vulkan/icd.d/lvp_icd*.json 2>/dev/null | head -n 1)
+          test -n "$icd" || { echo "lavapipe ICD not found" >&2; exit 1; }
+          echo "lavapipe ICD: $icd"
+          # `VK_ICD_FILENAMES` is the legacy name of `VK_DRIVER_FILES`: set both
+          # so the loader version on the image does not matter.
+          VK_DRIVER_FILES="$icd" VK_ICD_FILENAMES="$icd" \
+            cargo test --locked --features gpu --test gpu_density -- --nocapture
 
   msrv:
     name: MSRV (${{ matrix.toolchain }})

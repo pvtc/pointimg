@@ -104,7 +104,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   GL 3.3 adapter unable to create a compute device, even when a working Vulkan
   adapter (lavapipe in CI) was available. The parity test now treats a missing
   adapter as a failure when `POINTIMG_GPU` is set, so the job can no longer go
-  green by skipping the comparison.
+  green by skipping the comparison. The job also resolves the lavapipe ICD
+  (`lvp_icd*.json`) instead of hardcoding `lvp_icd.x86_64.json`, a name that
+  newer Mesa packages dropped: pointing the loader at a missing file left it
+  with no ICD at all.
 - **Documentation drift**: `ARCHITECTURE.md` and `ARCHITECTURE.fr.md` described a
   single dithering algorithm (there are four), omitted `halftone` from
   `--algorithm` and the ICC profile flags; `CONTRIBUTING` now lists the fuzz

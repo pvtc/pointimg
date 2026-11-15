@@ -110,7 +110,9 @@ et ce projet adhère au [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
   même quand un adaptateur Vulkan fonctionnel (lavapipe en CI) était disponible.
   Le test de parité considère désormais l'absence d'adaptateur comme un échec
   quand `POINTIMG_GPU` est défini : le job ne peut plus passer en sautant la
-  comparaison.
+  comparaison. Le job résout aussi l'ICD lavapipe (`lvp_icd*.json`) au lieu de
+  coder en dur `lvp_icd.x86_64.json`, nom abandonné par les paquets Mesa
+  récents : pointer le loader vers un fichier absent le laissait sans aucun ICD.
 - **Dérive de la documentation** : `ARCHITECTURE.md` et `ARCHITECTURE.fr.md`
   décrivaient un seul algorithme de dithering (il y en a quatre), omettaient
   `halftone` dans `--algorithm` et les options de profil ICC ; `CONTRIBUTING`
