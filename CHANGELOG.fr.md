@@ -21,6 +21,9 @@ et ce projet adhère au [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
   rafraîchis aux dernières versions compatibles (48 paquets, niveau correctif :
   `wgpu` 30.0.2, la pile gtk/glib 0.22.11, `jiff` 0.2.45, `wasm-bindgen`
   0.2.130, …).
+- **Manifeste** : `package.homepage` supprimé — Cargo 1.100 le signale comme
+  redondant avec `package.repository`, et la compilation redevient sans
+  warning.
 
 ### Ajouté
 

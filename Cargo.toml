@@ -6,7 +6,6 @@ rust-version = "1.97"
 description = "A pointillist filter that transforms images into compositions of colored dots"
 license = "MIT"
 repository = "https://github.com/pvtc/pointimg"
-homepage = "https://github.com/pvtc/pointimg"
 documentation = "https://docs.rs/pointimg"
 readme = "README.md"
 keywords = ["image-processing", "pointillism", "halftone", "dithering", "voronoi"]

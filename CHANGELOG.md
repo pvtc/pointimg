@@ -20,6 +20,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   hidden several bumps. The root and fuzz lockfiles are also refreshed to the
   latest semver-compatible versions (48 packages, patch-level: `wgpu` 30.0.2,
   the gtk/glib 0.22.11 stack, `jiff` 0.2.45, `wasm-bindgen` 0.2.130, …).
+- **Manifest**: `package.homepage` removed — Cargo 1.100 reports it as
+  redundant with `package.repository`, and the build is warning-free again.
 
 ### Added
 
