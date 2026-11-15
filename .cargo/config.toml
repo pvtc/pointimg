@@ -1,0 +1,11 @@
+# Workspace-wide policy, shared by developers and CI.
+
+[registry]
+# Ignore versions published less than 7 days ago. A compromised release is
+# almost always yanked within hours; this window lets the dust settle without
+# slowing down routine updates. Versions already in Cargo.lock stay valid.
+global-min-publish-age = "7 days"
+
+[resolver]
+# Without `deny`, the limit above is only advisory.
+incompatible-publish-age = "deny"

@@ -53,6 +53,21 @@ malveillant ne transforme le fuzzing en test de déni de service.
 Si vous touchez des chaînes visibles par l'utilisateur, voir le flux i18n
 ci-dessous.
 
+## Dépendances
+
+- **MSRV** : Rust 1.100 (`rust-version` dans `Cargo.toml`), vérifié par le job
+  CI `msrv` avec `cargo +1.100`.
+- **Délai de publication** : `.cargo/config.toml` fait ignorer au résolveur les
+  versions publiées depuis moins de 7 jours (`registry.global-min-publish-age`
+  et `resolver.incompatible-publish-age = "deny"`). Une version compromise est
+  presque toujours retirée dans les heures qui suivent. Les versions déjà dans
+  `Cargo.lock` restent valides, mais un `cargo update` global choisira donc des
+  versions d'au moins une semaine ; ciblez une crate avec
+  `cargo update -p <crate>` si vous avez besoin d'une version plus récente.
+  Dependabot applique le même délai.
+- **Dépendances inutilisées** : `[lints.cargo] unused_dependencies = "deny"`
+  fait échouer la compilation quand une dépendance déclarée n'est plus utilisée.
+
 ## Traductions (i18n)
 
 Les chaînes visibles par l'utilisateur sont des msgids français passés par

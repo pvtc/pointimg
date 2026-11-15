@@ -104,9 +104,9 @@ jobs:
     steps:
       - uses: actions/checkout@v7
       
-      # `pointimg-gui` est la GUI egui/eframe+wgpu : elle ne dépend pas de GTK
-      # (rfd 0.17 utilise le portail XDG sur Linux). Le front GTK4 est un
-      # binaire séparé, construit par le job `build-gtk-linux`.
+      # `pointimg-gui` is the egui/eframe+wgpu GUI: it does not depend on GTK
+      # (rfd uses the XDG portal on Linux). The GTK4 front-end is a separate
+      # binary, built by the `build-gtk-linux` job.
       - name: Install dependencies
         run: |
           sudo apt-get update
@@ -118,10 +118,9 @@ jobs:
       - name: Build GUI
         run: cargo build --release --locked --bin pointimg-gui
       
-      # Le binaire seul ne suffit pas pour être installable sur un bureau
-      # Linux : le tarball embarque le .desktop, les icônes hicolor (régénérées
-      # depuis le SVG source — les PNG ne sont pas commités) et le metainfo
-      # AppStream.
+      # The binary alone is not enough to be installable on a Linux desktop:
+      # the tarball ships the .desktop file, the hicolor icons (regenerated from
+      # the SVG source — the PNGs are not committed) and the AppStream metainfo.
       - name: Package
         run: |
           sh packaging/icons/regenerate.sh
@@ -218,8 +217,8 @@ jobs:
       - name: Build GTK4 GUI
         run: cargo build --release --locked --no-default-features --features gtk --bin pointimg-gtk
 
-      # Même logique que le tarball egui : binaire + .desktop + icônes
-      # hicolor régénérées + metainfo AppStream.
+      # Same logic as the egui tarball: binary + .desktop + regenerated
+      # hicolor icons + AppStream metainfo.
       - name: Package
         run: |
           sh packaging/icons/regenerate.sh

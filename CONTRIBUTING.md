@@ -52,6 +52,20 @@ a denial-of-service test.
 
 If you touch user-facing strings, see the i18n workflow below.
 
+## Dependencies
+
+- **MSRV**: Rust 1.100 (`rust-version` in `Cargo.toml`), checked by the `msrv`
+  CI job with `cargo +1.100`.
+- **Cooldown**: `.cargo/config.toml` makes the resolver ignore releases
+  published less than 7 days ago (`registry.global-min-publish-age` plus
+  `resolver.incompatible-publish-age = "deny"`). A compromised release is
+  almost always yanked within hours. Versions already in `Cargo.lock` stay
+  valid, but a blanket `cargo update` will therefore pick versions at least a
+  week old; target one crate with `cargo update -p <crate>` when you need a
+  fresher release. Dependabot applies the same delay.
+- **Unused dependencies**: `[lints.cargo] unused_dependencies = "deny"` fails
+  the build when a declared dependency is no longer used.
+
 ## Translations (i18n)
 
 User-facing strings are French msgids passed through `pointimg::frontend::gettext`.

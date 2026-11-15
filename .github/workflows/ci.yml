@@ -32,11 +32,11 @@ jobs:
         with:
           components: clippy
       - uses: Swatinem/rust-cache@v2
-      # `gtk` est exclu de --all-features : il exige GTK4/libadwaita installés
-      # (job dédié ci-dessous, Linux uniquement).
-      # `--all-targets` lint aussi les tests, benches et exemples.
+      # `gtk` is excluded from --all-features: it needs GTK4/libadwaita
+      # installed (dedicated Linux-only job below).
+      # `--all-targets` also lints tests, benches and examples.
       - run: cargo clippy --features gui,gpu,avif --all-targets -- -D warnings
-      # Couverture du build CLI-only (aucune dépendance GUI).
+      # Coverage of the CLI-only build (no GUI dependencies).
       - name: Clippy (CLI-only)
         run: cargo clippy --no-default-features --all-targets -- -D warnings
 
@@ -51,7 +51,7 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
       - run: cargo test --features gui,gpu,avif --locked
-      # Le build CLI-only doit rester testé (pas de dépendances GUI).
+      # The CLI-only build must stay tested (no GUI dependencies).
       - name: Test (CLI-only)
         run: cargo test --no-default-features --locked
 
@@ -79,7 +79,7 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        toolchain: ["1.97", stable]
+        toolchain: ["1.100", stable]
     steps:
       - uses: actions/checkout@v7
       - uses: dtolnay/rust-toolchain@master
@@ -122,14 +122,14 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
-      # `msgfmt` est utilisé quand il est présent : le .mo commité doit être
-      # reproduit à l'identique, sinon le diff échoue à tort.
+      # `msgfmt` is used when available: the committed .mo must be reproduced
+      # byte for byte, or the diff fails for the wrong reason.
       - name: Install gettext
         run: |
           sudo apt-get update
           sudo apt-get install -y gettext
-      # Le catalogue est dérivé des `gettext("…")` du code. Le script échoue
-      # (exit 1) dès qu'un msgid n'a pas de traduction anglaise.
+      # The catalogue is derived from the `gettext("…")` calls in the code.
+      # The script fails (exit 1) as soon as a msgid has no English translation.
       - name: Regenerate the catalogue
         run: python3 scripts/sync-i18n.py
       - name: Check the committed catalogue is up to date
@@ -159,9 +159,9 @@ jobs:
   fuzz-build:
     name: Fuzz smoke tests
     runs-on: ubuntu-latest
-    # cargo-fuzz a besoin de nightly (sanitizer coverage). Le
-    # `rust-toolchain.toml` stable de la racine l'emporterait sur le toolchain
-    # installé par l'action : on force explicitement nightly pour ce job.
+    # cargo-fuzz needs nightly (sanitizer coverage). The stable
+    # `rust-toolchain.toml` at the root would override the toolchain installed
+    # by the action, so nightly is forced explicitly for this job.
     env:
       RUSTUP_TOOLCHAIN: nightly
     steps:

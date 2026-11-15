@@ -2,7 +2,7 @@
 name = "pointimg"
 version = "0.2.0"
 edition = "2024"
-rust-version = "1.97"
+rust-version = "1.100"
 description = "A pointillist filter that transforms images into compositions of colored dots"
 license = "MIT"
 repository = "https://github.com/pvtc/pointimg"
@@ -10,9 +10,9 @@ documentation = "https://docs.rs/pointimg"
 readme = "README.md"
 keywords = ["image-processing", "pointillism", "halftone", "dithering", "voronoi"]
 categories = ["multimedia::images", "command-line-utilities"]
-# Le dossier `fuzz/` est un paquet séparé (son propre Cargo.toml/lock) : il est
-# automatiquement exclu du paquet publié. `assets/` reste inclus car le README
-# référence les images d'exemple par lien relatif.
+# The `fuzz/` folder is a separate package (its own Cargo.toml/lock): it is
+# automatically excluded from the published package. `assets/` stays included
+# because the README links the example images relatively.
 exclude = ["/.github", "/.idea"]
 
 [lib]
@@ -38,8 +38,8 @@ default = ["gui"]
 gui = ["dep:eframe", "dep:egui", "dep:wgpu", "dep:rfd"]
 gtk = ["dep:gtk", "dep:adw", "dep:async-channel"]
 gpu = ["dep:wgpu", "dep:pollster", "dep:bytemuck"]
-# Codec de sortie optionnel (l'encodage AVIF implique ravif, plus lourd à compiler).
-# WebP est déjà inclus par défaut dans la crate `image`.
+# Optional output codec (AVIF encoding pulls in ravif, heavier to compile).
+# WebP is already included by default in the `image` crate.
 avif = ["image/avif"]
 
 [dependencies]
@@ -69,17 +69,16 @@ serde = { version = "1", features = ["derive"] }
 toml = "1"
 glob = "0.3"
 
-# Déclaration explicite pour les IDE/Cargo metadata ; les features Linux
-# supplémentaires sont ajoutées dans la dépendance target-specific ci-dessous.
-# `persistence` : eframe enregistre alors son état (taille de fenêtre, largeur
-# des panneaux, thème courant) dans le répertoire de données de l'application.
-# Nos préférences d'interface (échelle, thème) ont leur propre fichier, écrit
-# immédiatement — voir `src/gui/prefs.rs`.
+# Explicit declaration for IDEs/Cargo metadata; the extra Linux features are
+# added in the target-specific dependency below.
+# `persistence`: eframe then saves its state (window size, panel width, current
+# theme) in the application data directory. Our UI preferences (scale, theme)
+# have their own file, written immediately — see `src/gui/prefs.rs`.
 eframe = { version = "0.37", default-features = false, features = ["wgpu", "accesskit", "persistence"], optional = true }
 gettext = "0.4.0"
 
-# eframe est configuré par plateforme : les features wayland/x11 n'existent
-# que sur Linux. Sur macOS/Windows on garde uniquement wgpu + accesskit.
+# eframe is configured per platform: the wayland/x11 features only exist on
+# Linux. On macOS/Windows only wgpu + accesskit are kept.
 [target.'cfg(target_os = "linux")'.dependencies]
 eframe = { version = "0.37", default-features = false, features = ["wgpu", "wayland", "x11", "accesskit", "persistence"], optional = true }
 
@@ -99,16 +98,16 @@ harness = false
 name = "gpu_density"
 required-features = ["gpu"]
 
-# ─── Profils ──────────────────────────────────────────────────────────────────
+# ─── Profiles ─────────────────────────────────────────────────────────────────
 
 [profile.dev]
-opt-level = 1          # évite que le debug soit trop lent sur les images
+opt-level = 1          # keeps debug builds fast enough on images
 
 [profile.release]
 opt-level = 3
-lto = "thin"           # link-time optimisation légère
-codegen-units = 1      # optimisation inter-modules maximale (build plus lent)
-strip = true           # binaires de release sans symboles
+lto = "thin"           # light link-time optimisation
+codegen-units = 1      # maximum cross-module optimisation (slower build)
+strip = true           # release binaries without symbols
 
 # ─── Lints ────────────────────────────────────────────────────────────────────
 
@@ -120,9 +119,13 @@ dead_code = "warn"
 perf = "warn"
 complexity = "warn"
 
+[lints.cargo]
+# Cargo 1.100: reports a dependency declared but never used.
+unused_dependencies = "deny"
+
 # ─── Documentation (docs.rs) ──────────────────────────────────────────────────
 
 [package.metadata.docs.rs]
-# `gtk` est exclu : GTK4/libadwaita ne sont pas disponibles sur le builder docs.rs.
+# `gtk` is excluded: GTK4/libadwaita are not available on the docs.rs builder.
 features = ["gui", "gpu", "avif"]
 rustdoc-args = ["--cfg", "docsrs"]

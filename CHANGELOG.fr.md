@@ -24,6 +24,17 @@ et ce projet adhère au [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 - **Manifeste** : `package.homepage` supprimé — Cargo 1.100 le signale comme
   redondant avec `package.repository`, et la compilation redevient sans
   warning.
+- **MSRV 1.100** : `rust-version`, la matrice CI, les badges README et
+  `ARCHITECTURE` passent de 1.97 à 1.100 ; le job `msrv` épingle désormais
+  `+1.100`.
+- **Lints Cargo** : `[lints.cargo] unused_dependencies = "deny"` fait échouer
+  la compilation quand une dépendance déclarée n'est plus utilisée.
+- **Délai de publication des dépendances** : `.cargo/config.toml` fait ignorer
+  au résolveur les versions de moins de 7 jours, et Dependabot applique le même
+  délai — une version compromise est presque toujours retirée dans les heures
+  qui suivent. Les versions déjà présentes dans `Cargo.lock` restent valides.
+- **Commentaires** : les commentaires de configuration (build, CI) sont en
+  anglais, comme les sources Rust.
 
 ### Ajouté
 

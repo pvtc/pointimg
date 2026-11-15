@@ -22,6 +22,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   the gtk/glib 0.22.11 stack, `jiff` 0.2.45, `wasm-bindgen` 0.2.130, …).
 - **Manifest**: `package.homepage` removed — Cargo 1.100 reports it as
   redundant with `package.repository`, and the build is warning-free again.
+- **MSRV 1.100**: `rust-version`, the CI matrix, the README badges and
+  `ARCHITECTURE` move from 1.97 to 1.100; the `msrv` job now pins `+1.100`.
+- **Cargo lints**: `[lints.cargo] unused_dependencies = "deny"` fails the build
+  when a declared dependency is no longer used.
+- **Dependency cooldown**: `.cargo/config.toml` makes the resolver ignore
+  releases younger than 7 days, and Dependabot applies the same delay — a
+  compromised release is almost always yanked within hours. Versions already in
+  `Cargo.lock` stay valid.
+- **Comments**: build and CI configuration comments are in English, like the
+  Rust sources.
 
 ### Added
 
