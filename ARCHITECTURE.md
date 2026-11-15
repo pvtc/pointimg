@@ -23,7 +23,7 @@ and variance.
     - [10.2 egui](#102-egui-srcgui)
     - [10.3 GTK4 / libadwaita](#103-gtk4--libadwaita-srcgtk)
     - [10.4 Dithering](#104-dithering-srcfilterditherrs)
-11. [Export Size](#11-export-size)
+11. [Export Size](#11-export-size-srcexportrs)
 12. [SVG Export](#12-svg-export)
 13. [Quality Tools](#13-quality-tools)
 
@@ -126,25 +126,25 @@ pointimg/
 └── fuzz/               — cargo-fuzz targets (image, preset) + versioned corpus
 ```
 
-| Crate             | Role                                                             |
-| ----------------- | ---------------------------------------------------------------- |
-| `image 0.25`      | Loading / saving / manipulating `RgbImage`                       |
-| `moxcms 0.9`      | Pure-Rust ICC transforms (sRGB working space)                    |
-| `clap 4`          | CLI argument parsing                                             |
-| `rayon 1`         | Parallel iteration (density map, Lloyd, k-means)                 |
-| `anyhow 1`        | Error handling (`Result`, `anyhow!`)                             |
-| `log` / `env_logger` | Logging (`-v`/`-vv`/`-q`, `RUST_LOG`)                         |
-| `eframe 0.37`     | egui framework (wgpu backend) — *feature-gated* `gui`            |
-| `egui 0.37`       | Immediate-mode GUI widgets — *feature-gated* `gui`               |
-| `wgpu 30`         | GPU backend (Vulkan + GL fallback) — *feature-gated* `gui`/`gpu` |
-| `rfd 0.18`        | Native file dialogs — *feature-gated* `gui`                      |
-| `gtk4 0.11`       | GTK4 bindings — *feature-gated* `gtk`                            |
-| `libadwaita 0.9`  | libadwaita widgets — *feature-gated* `gtk`                       |
-| `async-channel 2` | Worker → UI messaging (GTK) — *feature-gated* `gtk`              |
-| `serde 1`         | Serialization framework (`FilterParams` derive)                  |
-| `toml 1`          | TOML preset files (`--preset` / `--save-preset`)                 |
-| `glob 0.3`        | Glob expansion for batch `--input` (`*`, `?`, `[`)               |
-| `criterion 0.8`   | Benchmarks — *dev-dependency*                                    |
+| Crate                | Role                                                             |
+| -------------------- | ---------------------------------------------------------------- |
+| `image 0.25`         | Loading / saving / manipulating `RgbImage`                       |
+| `moxcms 0.9`         | Pure-Rust ICC transforms (sRGB working space)                    |
+| `clap 4`             | CLI argument parsing                                             |
+| `rayon 1`            | Parallel iteration (density map, Lloyd, k-means)                 |
+| `anyhow 1`           | Error handling (`Result`, `anyhow!`)                             |
+| `log` / `env_logger` | Logging (`-v`/`-vv`/`-q`, `RUST_LOG`)                            |
+| `eframe 0.37`        | egui framework (wgpu backend) — *feature-gated* `gui`            |
+| `egui 0.37`          | Immediate-mode GUI widgets — *feature-gated* `gui`               |
+| `wgpu 30`            | GPU backend (Vulkan + GL fallback) — *feature-gated* `gui`/`gpu` |
+| `rfd 0.18`           | Native file dialogs — *feature-gated* `gui`                      |
+| `gtk4 0.11`          | GTK4 bindings — *feature-gated* `gtk`                            |
+| `libadwaita 0.9`     | libadwaita widgets — *feature-gated* `gtk`                       |
+| `async-channel 2`    | Worker → UI messaging (GTK) — *feature-gated* `gtk`              |
+| `serde 1`            | Serialization framework (`FilterParams` derive)                  |
+| `toml 1`             | TOML preset files (`--preset` / `--save-preset`)                 |
+| `glob 0.3`           | Glob expansion for batch `--input` (`*`, `?`, `[`)               |
+| `criterion 0.8`      | Benchmarks — *dev-dependency*                                    |
 
 
 > **Optional features:** `avif` (pulls `image/avif`; AVIF encoder via `ravif`).
@@ -241,41 +241,41 @@ pointimg -i photo.jpg -o stochastic.png --halftone cmyk --screening fm
 
 **All flags:**
 
-| Flag                     | Short | Default      | Description                                                                                         |
-| ------------------------ | ----- | ------------ | --------------------------------------------------------------------------------------------------- |
-| `--input`                | `-i`  | required     | Source image, glob, or directory. Optional if `--save-preset` alone.                                |
-| `--output`               | `-o`  | `output.png` | Output file. Patterns: `{n}` (index), `{stem}` (source name sans ext), `{name}` (source full name). |
-| `--algorithm`            | `-a`  | `voronoi`    | `grid` \| `kmeans` \| `voronoi` \| `quadtree` \| `halftone`                                          |
-| `--num-points`           | `-n`  | `800`        | Number of points (kmeans/voronoi/quadtree)                                                          |
-| `--cols`                 | `-c`  | `80`         | Grid columns (grid only)                                                                            |
-| `--min-radius`           |       | `0.003`      | Min radius = fraction of `min(W,H)`                                                                 |
-| `--max-radius`           |       | `0.06`       | Max radius = fraction of `min(W,H)`                                                                 |
-| `--bg`                   | `-b`  | `white`      | `white`, `black`, `transparent`/`none`, or `#rrggbb`                                                |
-| `--shape`                |       | `circle`     | `circle` \| `square` \| `ellipse` \| `polygon`                                                      |
-| `--ellipse-aspect`       |       | `1.5`        | Width/height ratio (ellipse)                                                                        |
-| `--ellipse-angle`        |       | `0.0`        | Rotation angle in degrees (ellipse)                                                                 |
-| `--polygon-sides`        |       | `6`          | Number of sides (polygon, 3-12)                                                                     |
-| `--iterations`           |       | `10`         | Lloyd / k-means iterations                                                                          |
-| `--variance-sensitivity` |       | `0.7`        | Variance redistribution strength `[0,1]`                                                            |
-| `--max-boost`            |       | `2.5`        | Max multiplier in uniform zones                                                                     |
-| `--seed`                 |       | *(random)*   | RNG seed for exact reproduction                                                                     |
-| `--palette`              |       | *(disabled)* | Number of colors in reduced palette                                                                 |
-| `--svg`                  |       | *(disabled)* | Also export SVG (same path, `.svg` extension)                                                       |
-| `--gamma`                |       | *(disabled)* | Gamma-correct perceptual averages (linear space)                                                    |
+| Flag                     | Short | Default      | Description                                                                                              |
+| ------------------------ | ----- | ------------ | -------------------------------------------------------------------------------------------------------- |
+| `--input`                | `-i`  | required     | Source image, glob, or directory. Optional if `--save-preset` alone.                                     |
+| `--output`               | `-o`  | `output.png` | Output file. Patterns: `{n}` (index), `{stem}` (source name sans ext), `{name}` (source full name).      |
+| `--algorithm`            | `-a`  | `voronoi`    | `grid` \| `kmeans` \| `voronoi` \| `quadtree` \| `halftone`                                              |
+| `--num-points`           | `-n`  | `800`        | Number of points (kmeans/voronoi/quadtree)                                                               |
+| `--cols`                 | `-c`  | `80`         | Grid columns (grid only)                                                                                 |
+| `--min-radius`           |       | `0.003`      | Min radius = fraction of `min(W,H)`                                                                      |
+| `--max-radius`           |       | `0.06`       | Max radius = fraction of `min(W,H)`                                                                      |
+| `--bg`                   | `-b`  | `white`      | `white`, `black`, `transparent`/`none`, or `#rrggbb`                                                     |
+| `--shape`                |       | `circle`     | `circle` \| `square` \| `ellipse` \| `polygon`                                                           |
+| `--ellipse-aspect`       |       | `1.5`        | Width/height ratio (ellipse)                                                                             |
+| `--ellipse-angle`        |       | `0.0`        | Rotation angle in degrees (ellipse)                                                                      |
+| `--polygon-sides`        |       | `6`          | Number of sides (polygon, 3-12)                                                                          |
+| `--iterations`           |       | `10`         | Lloyd / k-means iterations                                                                               |
+| `--variance-sensitivity` |       | `0.7`        | Variance redistribution strength `[0,1]`                                                                 |
+| `--max-boost`            |       | `2.5`        | Max multiplier in uniform zones                                                                          |
+| `--seed`                 |       | *(random)*   | RNG seed for exact reproduction                                                                          |
+| `--palette`              |       | *(disabled)* | Number of colors in reduced palette                                                                      |
+| `--svg`                  |       | *(disabled)* | Also export SVG (same path, `.svg` extension)                                                            |
+| `--gamma`                |       | *(disabled)* | Gamma-correct perceptual averages (linear space)                                                         |
 | `--dithering [MODE]`     |       | *(disabled)* | `floyd-steinberg` (default when no value) \| `riemersma` \| `bayer4` \| `bayer8` — on the rendered image |
-| `--preset`               |       | *(disabled)* | Load `FilterParams` from a TOML preset file                                                         |
-| `--save-preset`          |       | *(disabled)* | Save current params to a TOML preset file and exit (if `--input` absent)                            |
-| `--verbose`              | `-v`  | *(0)*        | `-v` = info, `-vv` = debug. Overridable via `RUST_LOG`.                                             |
-| `--quiet`                | `-q`  | *(disabled)* | Suppress info messages (warnings only)                                                              |
-| `--preview`              |       | *(disabled)* | Downscale source to `WxH` (max, preserves aspect) before pipeline                                   |
-| `--input-profile`        |       | `auto`       | `auto` (embedded ICC) \| `srgb` \| `display-p3` \| path to an `.icc` file                           |
-| `--output-profile`       |       | `srgb`       | Convert and embed an ICC profile: `srgb` \| path to an `.icc` file                                  |
-| `--grid-angle`           |       | `0.0`        | Rotation of grid placement in degrees (Grid only, halftone screen effect)                           |
-| `--halftone`             |       | `off`        | `off` \| `cmyk` (4-channel rosette) \| `dominant-N` (N colors via k-means)                          |
-| `--screening`            |       | `am`         | `am` (rotated-grid rosette) \| `fm` (stochastic blue noise)                                         |
-| `--halftone-freq`        |       | `60.0`       | AM cells per `min(W,H)` (≈ dot frequency in lpp at 1 dpi)                                           |
-| `--halftone-min-radius`  |       | `0.002`      | Min radius per ink dot (fraction of `min(W,H)`)                                                     |
-| `--halftone-max-dot`     |       | `0.85`       | Max radius per ink dot (fraction of trame step)                                                     |
+| `--preset`               |       | *(disabled)* | Load `FilterParams` from a TOML preset file                                                              |
+| `--save-preset`          |       | *(disabled)* | Save current params to a TOML preset file and exit (if `--input` absent)                                 |
+| `--verbose`              | `-v`  | *(0)*        | `-v` = info, `-vv` = debug. Overridable via `RUST_LOG`.                                                  |
+| `--quiet`                | `-q`  | *(disabled)* | Suppress info messages (warnings only)                                                                   |
+| `--preview`              |       | *(disabled)* | Downscale source to `WxH` (max, preserves aspect) before pipeline                                        |
+| `--input-profile`        |       | `auto`       | `auto` (embedded ICC) \| `srgb` \| `display-p3` \| path to an `.icc` file                                |
+| `--output-profile`       |       | `srgb`       | Convert and embed an ICC profile: `srgb` \| path to an `.icc` file                                       |
+| `--grid-angle`           |       | `0.0`        | Rotation of grid placement in degrees (Grid only, halftone screen effect)                                |
+| `--halftone`             |       | `off`        | `off` \| `cmyk` (4-channel rosette) \| `dominant-N` (N colors via k-means)                               |
+| `--screening`            |       | `am`         | `am` (rotated-grid rosette) \| `fm` (stochastic blue noise)                                              |
+| `--halftone-freq`        |       | `60.0`       | AM cells per `min(W,H)` (≈ dot frequency in lpp at 1 dpi)                                                |
+| `--halftone-min-radius`  |       | `0.002`      | Min radius per ink dot (fraction of `min(W,H)`)                                                          |
+| `--halftone-max-dot`     |       | `0.85`       | Max radius per ink dot (fraction of trame step)                                                          |
 
 **Output formats (driven by file extension):** PNG, JPEG, BMP, TIFF, WebP by default.
 AVIF requires `cargo build --features avif` (pulls in `ravif`). Transparent PNG
@@ -439,7 +439,7 @@ direct path — a regression test compares the two over several iterations,
 variances and algorithms, including halftone. Measured 1.21× on a 1000×800
 preview.
 
-```rust
+```text
 pub fn apply_with_iteration_counts<F>(src, params, cancel, on_iter: F)
     -> Result<(RgbImage, Vec<Dot>)>
 where F: FnMut(usize, usize);
@@ -788,10 +788,10 @@ struct Dot {
 Two front-ends share the library (`src/frontend.rs` for formatting, atomic
 writes, export and presets):
 
-| Binary          | Toolkit                | Role                                     |
-| --------------- | ---------------------- | ---------------------------------------- |
-| `pointimg-gui`  | `eframe`/`egui`        | immediate mode, default egui look         |
-| `pointimg-gtk`  | `gtk4`/`libadwaita`    | native widgets, `adw::PreferencesPage`    |
+| Binary         | Toolkit             | Role                                   |
+| -------------- | ------------------- | -------------------------------------- |
+| `pointimg-gui` | `eframe`/`egui`     | immediate mode, default egui look      |
+| `pointimg-gtk` | `gtk4`/`libadwaita` | native widgets, `adw::PreferencesPage` |
 
 ### 10.1 UI decisions (shared by both front-ends)
 
@@ -888,16 +888,16 @@ is logic that has no widget. What was written once per front-end — and could
 therefore drift in silence — now lives in `frontend`, while each front-end keeps
 its own widgets for *displaying* it:
 
-| `frontend` | Was written | Why it belongs here rather than in each front-end |
-|---|---|---|
-| `random_seed` | 2× | "vary the seed" must draw the same way on both sides |
-| `derived_export_name` | 5× | the `{stem}-pointimg.<ext>` name must not differ |
-| `matching_preset_index` | 4× | the question "have I customised a preset?" |
-| `collect_folder_images` / `FolderError` | 2× | the scan *and* its two error messages |
-| `downsample` | 2× | two previews of one image should show the same pixels |
-| `ZOOM_MIN` / `ZOOM_MAX` / `ZOOM_STEP` | side by side | two ranges for the same wheel gesture would be incomparable |
-| `msg::*` (13 messages) | 13× | an action should not change text between front-ends |
-| `checker_shade` / `composite_on_checker` | 3× | "what transparency looks like", byte order excluded |
+| `frontend`                               | Was written  | Why it belongs here rather than in each front-end           |
+| ---------------------------------------- | ------------ | ----------------------------------------------------------- |
+| `random_seed`                            | 2×           | "vary the seed" must draw the same way on both sides        |
+| `derived_export_name`                    | 5×           | the `{stem}-pointimg.<ext>` name must not differ            |
+| `matching_preset_index`                  | 4×           | the question "have I customised a preset?"                  |
+| `collect_folder_images` / `FolderError`  | 2×           | the scan *and* its two error messages                       |
+| `downsample`                             | 2×           | two previews of one image should show the same pixels       |
+| `ZOOM_MIN` / `ZOOM_MAX` / `ZOOM_STEP`    | side by side | two ranges for the same wheel gesture would be incomparable |
+| `msg::*` (13 messages)                   | 13×          | an action should not change text between front-ends         |
+| `checker_shade` / `composite_on_checker` | 3×           | "what transparency looks like", byte order excluded         |
 
 The last one is the most telling: the checker formula was written three times
 with the same constants, only because cairo reads BGRX where egui packs

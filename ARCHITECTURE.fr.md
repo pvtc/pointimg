@@ -18,8 +18,9 @@ et la variance locale.
 8. [Accélération spatiale (`SeedGrid`)](#8-accélération-spatiale-seedgrid)
 9. [Rendu (ordre de dessin)](#9-rendu-ordre-de-dessin)
 10. [Architecture GUI](#10-architecture-gui)
-11. [Export SVG](#11-export-svg)
-12. [Outils de qualité](#12-outils-de-qualité)
+11. [Taille de l'export (`src/export.rs`)](#11-taille-de-lexport-srcexportrs)
+12. [Export SVG](#12-export-svg)
+13. [Outils de qualité](#13-outils-de-qualité)
 
 ---
 
@@ -56,23 +57,23 @@ pointimg/
 └── assets/             — images de test et sorties
 ```
 
-| Crate             | Rôle                                                             |
-| ----------------- | ---------------------------------------------------------------- |
-| `image 0.25`      | Chargement / sauvegarde / manipulation de `RgbImage`             |
-| `moxcms 0.9`      | Transformations ICC pur Rust vers l'espace de travail sRGB       |
-| `clap 4`          | Parsing des arguments CLI                                        |
-| `rayon 1`         | Itération parallèle (carte de densité)                           |
-| `log` / `env_logger` | Journalisation (`-v`/`-vv`/`-q`, `RUST_LOG`)                  |
-| `eframe 0.37`     | Framework egui (backend wgpu) — *feature-gated* `gui`            |
-| `egui 0.37`       | Widgets GUI en mode immédiat — *feature-gated* `gui`             |
-| `wgpu 30`         | Backend GPU (Vulkan + GL en fallback) — *feature-gated* `gui`/`gpu` |
-| `rfd 0.18`        | Boîtes de dialogue fichier natives — *feature-gated* `gui`       |
-| `gtk4 0.11`       | Bindings GTK4 — *feature-gated* `gtk`                            |
-| `libadwaita 0.9`  | Widgets libadwaita — *feature-gated* `gtk`                       |
-| `async-channel 2` | Messagerie worker → UI (GTK) — *feature-gated* `gtk`             |
-| `serde 1` / `toml 1` | Presets TOML (`--preset` / `--save-preset`)                   |
-| `glob 0.3`        | Expansion glob pour le batch `--input` (`*`, `?`, `[`)           |
-| `criterion 0.8`   | Benchmarks — *dev-dependency*                                    |
+| Crate                | Rôle                                                                |
+| -------------------- | ------------------------------------------------------------------- |
+| `image 0.25`         | Chargement / sauvegarde / manipulation de `RgbImage`                |
+| `moxcms 0.9`         | Transformations ICC pur Rust vers l'espace de travail sRGB          |
+| `clap 4`             | Parsing des arguments CLI                                           |
+| `rayon 1`            | Itération parallèle (carte de densité)                              |
+| `log` / `env_logger` | Journalisation (`-v`/`-vv`/`-q`, `RUST_LOG`)                        |
+| `eframe 0.37`        | Framework egui (backend wgpu) — *feature-gated* `gui`               |
+| `egui 0.37`          | Widgets GUI en mode immédiat — *feature-gated* `gui`                |
+| `wgpu 30`            | Backend GPU (Vulkan + GL en fallback) — *feature-gated* `gui`/`gpu` |
+| `rfd 0.18`           | Boîtes de dialogue fichier natives — *feature-gated* `gui`          |
+| `gtk4 0.11`          | Bindings GTK4 — *feature-gated* `gtk`                               |
+| `libadwaita 0.9`     | Widgets libadwaita — *feature-gated* `gtk`                          |
+| `async-channel 2`    | Messagerie worker → UI (GTK) — *feature-gated* `gtk`                |
+| `serde 1` / `toml 1` | Presets TOML (`--preset` / `--save-preset`)                         |
+| `glob 0.3`           | Expansion glob pour le batch `--input` (`*`, `?`, `[`)              |
+| `criterion 0.8`      | Benchmarks — *dev-dependency*                                       |
 
 > **Feature-gating :** les dépendances GUI sont derrière les features `gui` et
 > `gtk`, toutes deux **désactivées par défaut** : la bibliothèque et le CLI
@@ -111,41 +112,41 @@ pointimg -i photo.jpg -o result.png --shape ellipse --ellipse-aspect 2.0 --ellip
 
 **Tous les flags :**
 
-| Flag                     | Court | Défaut        | Description                                           |
-| ------------------------ | ----- | ------------- | ----------------------------------------------------- |
-| `--input`                | `-i`  | requis        | Image source (JPEG, PNG, RGBA supporté)               |
-| `--output`               | `-o`  | `output.png`  | Image de sortie PNG                                   |
-| `--algorithm`            | `-a`  | `voronoi`     | `grid` \| `kmeans` \| `voronoi` \| `quadtree` \| `halftone`         |
-| `--num-points`           | `-n`  | `800`         | Nombre de points (kmeans/voronoi/quadtree)            |
-| `--cols`                 | `-c`  | `80`          | Colonnes de grille (grid uniquement)                  |
-| `--min-radius`           |       | `0.003`       | Rayon min = fraction de `min(W,H)`                    |
-| `--max-radius`           |       | `0.06`        | Rayon max = fraction de `min(W,H)`                    |
-| `--bg`                   | `-b`  | `white`       | `white`, `black`, `transparent`/`none`, ou `#rrggbb`  |
-| `--shape`                |       | `circle`      | `circle` \| `square` \| `ellipse` \| `polygon`        |
-| `--ellipse-aspect`       |       | `1.5`         | Ratio largeur/hauteur (ellipse)                       |
-| `--ellipse-angle`        |       | `0.0`         | Angle de rotation en degrés (ellipse)                 |
-| `--polygon-sides`        |       | `6`           | Nombre de côtés (polygon, 3-12)                       |
-| `--iterations`           |       | `10`          | Itérations Lloyd / k-means                            |
-| `--variance-sensitivity` |       | `0.7`         | Force de redistribution par variance `[0,1]`          |
-| `--max-boost`            |       | `2.5`         | Multiplicateur max dans les zones uniformes           |
-| `--seed`                 |       | *(aléatoire)* | Seed RNG pour reproduction exacte                     |
-| `--palette`              |       | *(désactivé)* | Nombre de couleurs dans la palette réduite            |
-| `--svg`                  |       | *(désactivé)* | Exporter aussi en SVG (même chemin, extension `.svg`) |
-| `--gamma`                |       | *(désactivé)* | Moyennes perceptuelles corrigées (espace linéaire)    |
+| Flag                     | Court | Défaut        | Description                                                                                        |
+| ------------------------ | ----- | ------------- | -------------------------------------------------------------------------------------------------- |
+| `--input`                | `-i`  | requis        | Image source (JPEG, PNG, RGBA supporté)                                                            |
+| `--output`               | `-o`  | `output.png`  | Image de sortie PNG                                                                                |
+| `--algorithm`            | `-a`  | `voronoi`     | `grid` \| `kmeans` \| `voronoi` \| `quadtree` \| `halftone`                                        |
+| `--num-points`           | `-n`  | `800`         | Nombre de points (kmeans/voronoi/quadtree)                                                         |
+| `--cols`                 | `-c`  | `80`          | Colonnes de grille (grid uniquement)                                                               |
+| `--min-radius`           |       | `0.003`       | Rayon min = fraction de `min(W,H)`                                                                 |
+| `--max-radius`           |       | `0.06`        | Rayon max = fraction de `min(W,H)`                                                                 |
+| `--bg`                   | `-b`  | `white`       | `white`, `black`, `transparent`/`none`, ou `#rrggbb`                                               |
+| `--shape`                |       | `circle`      | `circle` \| `square` \| `ellipse` \| `polygon`                                                     |
+| `--ellipse-aspect`       |       | `1.5`         | Ratio largeur/hauteur (ellipse)                                                                    |
+| `--ellipse-angle`        |       | `0.0`         | Angle de rotation en degrés (ellipse)                                                              |
+| `--polygon-sides`        |       | `6`           | Nombre de côtés (polygon, 3-12)                                                                    |
+| `--iterations`           |       | `10`          | Itérations Lloyd / k-means                                                                         |
+| `--variance-sensitivity` |       | `0.7`         | Force de redistribution par variance `[0,1]`                                                       |
+| `--max-boost`            |       | `2.5`         | Multiplicateur max dans les zones uniformes                                                        |
+| `--seed`                 |       | *(aléatoire)* | Seed RNG pour reproduction exacte                                                                  |
+| `--palette`              |       | *(désactivé)* | Nombre de couleurs dans la palette réduite                                                         |
+| `--svg`                  |       | *(désactivé)* | Exporter aussi en SVG (même chemin, extension `.svg`)                                              |
+| `--gamma`                |       | *(désactivé)* | Moyennes perceptuelles corrigées (espace linéaire)                                                 |
 | `--dithering [MODE]`     |       | *(désactivé)* | `floyd-steinberg` (défaut sans valeur) \| `riemersma` \| `bayer4` \| `bayer8` — sur l'image rendue |
-| `--preset`               |       | *(désactivé)* | Charge les `FilterParams` depuis un preset TOML       |
-| `--save-preset`          |       | *(désactivé)* | Sauvegarde les paramètres en TOML et quitte (sans `--input`) |
-| `--verbose`              | `-v`  | *(0)*         | `-v` = info, `-vv` = debug. Surchargeable via `RUST_LOG`. |
-| `--quiet`                | `-q`  | *(désactivé)* | Supprime les messages d'information (avertissements seuls) |
-| `--preview`              |       | *(désactivé)* | Réduit la source à `WxH` (max, ratio conservé) avant le pipeline |
-| `--grid-angle`           |       | `0.0`         | Rotation du placement en degrés (Grid seul, effet trame halftone) |
-| `--halftone`             |       | `off`         | `off` \| `cmyk` (rosette 4 canaux) \| `dominant-N` (N couleurs via k-means) |
-| `--screening`            |       | `am`          | `am` (rosette grille rotationnée) \| `fm` (blue noise stochastique) |
-| `--halftone-freq`        |       | `60.0`        | Cellules AM par `min(W,H)` (≈ fréquence de points en lpp à 1 dpi) |
-| `--halftone-min-radius`  |       | `0.002`       | Rayon min par point d'encre (fraction de `min(W,H)`)  |
-| `--halftone-max-dot`     |       | `0.85`        | Rayon max par point d'encre (fraction du pas de trame) |
-| `--input-profile`        |       | `auto`        | `auto` (ICC embarqué) \| `srgb` \| `display-p3` \| chemin `.icc` |
-| `--output-profile`       |       | `srgb`        | Convertit et embarque un profil ICC : `srgb` \| chemin `.icc` |
+| `--preset`               |       | *(désactivé)* | Charge les `FilterParams` depuis un preset TOML                                                    |
+| `--save-preset`          |       | *(désactivé)* | Sauvegarde les paramètres en TOML et quitte (sans `--input`)                                       |
+| `--verbose`              | `-v`  | *(0)*         | `-v` = info, `-vv` = debug. Surchargeable via `RUST_LOG`.                                          |
+| `--quiet`                | `-q`  | *(désactivé)* | Supprime les messages d'information (avertissements seuls)                                         |
+| `--preview`              |       | *(désactivé)* | Réduit la source à `WxH` (max, ratio conservé) avant le pipeline                                   |
+| `--grid-angle`           |       | `0.0`         | Rotation du placement en degrés (Grid seul, effet trame halftone)                                  |
+| `--halftone`             |       | `off`         | `off` \| `cmyk` (rosette 4 canaux) \| `dominant-N` (N couleurs via k-means)                        |
+| `--screening`            |       | `am`          | `am` (rosette grille rotationnée) \| `fm` (blue noise stochastique)                                |
+| `--halftone-freq`        |       | `60.0`        | Cellules AM par `min(W,H)` (≈ fréquence de points en lpp à 1 dpi)                                  |
+| `--halftone-min-radius`  |       | `0.002`       | Rayon min par point d'encre (fraction de `min(W,H)`)                                               |
+| `--halftone-max-dot`     |       | `0.85`        | Rayon max par point d'encre (fraction du pas de trame)                                             |
+| `--input-profile`        |       | `auto`        | `auto` (ICC embarqué) \| `srgb` \| `display-p3` \| chemin `.icc`                                   |
+| `--output-profile`       |       | `srgb`        | Convertit et embarque un profil ICC : `srgb` \| chemin `.icc`                                      |
 
 ### Profils colorimétriques
 
@@ -586,10 +587,10 @@ struct Dot {
 Deux front-ends partagent la bibliothèque (`src/frontend.rs` pour le formatage,
 les écritures atomiques, l'export et les presets) :
 
-| Binaire     | Bibliothèque      | Rôle                                             |
-| ----------- | ----------------- | ------------------------------------------------ |
-| `pointimg-gui` | `eframe`/`egui` | rendu immédiat, style egui par défaut           |
-| `pointimg-gtk` | `gtk4`/`libadwaita` | widgets natifs, `adw::PreferencesPage`        |
+| Binaire        | Bibliothèque        | Rôle                                   |
+| -------------- | ------------------- | -------------------------------------- |
+| `pointimg-gui` | `eframe`/`egui`     | rendu immédiat, style egui par défaut  |
+| `pointimg-gtk` | `gtk4`/`libadwaita` | widgets natifs, `adw::PreferencesPage` |
 
 ### 10.1 Décisions d'interface (communes aux deux)
 

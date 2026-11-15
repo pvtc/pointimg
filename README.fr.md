@@ -35,8 +35,8 @@ Filtre pointilliste qui transforme une image en une composition de points color�
 
 ## Exemples
 
-| Source                                                                                       | Résultat (Voronoi, 1200 points)                |
-| -------------------------------------------------------------------------------------------- | ---------------------------------------------- |
+| Source                                                                                       | Résultat (Voronoi, 1200 points)                 |
+| -------------------------------------------------------------------------------------------- | ----------------------------------------------- |
 | [`pexels-kofishelbyfotos-38152015.jpg`](assets/examples/pexels-kofishelbyfotos-38152015.jpg) | ![Résultat Voronoi](assets/examples/result.png) |
 
 Images de test : [`kilauea25_0.jpeg`](assets/examples/kilauea25_0.jpeg),
@@ -242,28 +242,28 @@ bouton hamburger ; le panneau se replie au-dessus de l'aperçu sous 900 px.
 
 ### Raccourcis clavier
 
-| Raccourci                            | Action                                      |
-| ------------------------------------ | ------------------------------------------- |
-| `Ctrl+O`                             | Ouvrir une image                            |
-| `Ctrl+Maj+O`                         | Ouvrir un dossier d'images                  |
-| `←` / `→`                            | Image précédente / suivante du dossier      |
-| `Ctrl+S`                             | Exporter l'image                            |
-| `Ctrl+Maj+S`                         | Exporter en SVG                             |
-| `Ctrl+E`                             | Exporter à côté de la source (sans dialogue) |
-| `Ctrl+C`                             | Copier l'image dans le presse-papiers       |
-| `Ctrl+P`                             | Preset suivant                              |
-| `Alt+↑` / `Alt+↓`                    | Preset précédent / suivant (GTK4)           |
-| `Ctrl+Z` / `Ctrl+Y`                  | Annuler / Rétablir                          |
-| `Ctrl+R`                             | Réinitialiser tous les réglages             |
-| `Espace`                             | Recalculer (en pleine résolution)           |
-| `Échap`                              | Annuler le calcul en cours (GTK4)           |
-| `Tab` / `Maj+Tab`                    | Aperçu suivant / précédent                  |
-| `+` / `−`                            | Zoomer / Dézoomer                           |
-| `0` / `1`                            | Ajuster à la fenêtre / 100 %                |
-| `Ctrl+K`                             | Palette de commandes (egui)                 |
-| `Ctrl+molette`                       | Zoom (GTK4)                                 |
-| `F11`                                | Plein écran (GTK4)                          |
-| `Ctrl+?`                             | Fenêtre de raccourcis (GTK4)                |
+| Raccourci           | Action                                       |
+| ------------------- | -------------------------------------------- |
+| `Ctrl+O`            | Ouvrir une image                             |
+| `Ctrl+Maj+O`        | Ouvrir un dossier d'images                   |
+| `←` / `→`           | Image précédente / suivante du dossier       |
+| `Ctrl+S`            | Exporter l'image                             |
+| `Ctrl+Maj+S`        | Exporter en SVG                              |
+| `Ctrl+E`            | Exporter à côté de la source (sans dialogue) |
+| `Ctrl+C`            | Copier l'image dans le presse-papiers        |
+| `Ctrl+P`            | Preset suivant                               |
+| `Alt+↑` / `Alt+↓`   | Preset précédent / suivant (GTK4)            |
+| `Ctrl+Z` / `Ctrl+Y` | Annuler / Rétablir                           |
+| `Ctrl+R`            | Réinitialiser tous les réglages              |
+| `Espace`            | Recalculer (en pleine résolution)            |
+| `Échap`             | Annuler le calcul en cours (GTK4)            |
+| `Tab` / `Maj+Tab`   | Aperçu suivant / précédent                   |
+| `+` / `−`           | Zoomer / Dézoomer                            |
+| `0` / `1`           | Ajuster à la fenêtre / 100 %                 |
+| `Ctrl+K`            | Palette de commandes (egui)                  |
+| `Ctrl+molette`      | Zoom (GTK4)                                  |
+| `F11`               | Plein écran (GTK4)                           |
+| `Ctrl+?`            | Fenêtre de raccourcis (GTK4)                 |
 
 Les images dépassant 8 millions de pixels ou 65 535 pixels par côté sont
 automatiquement réduites en conservant leur ratio, avec un avertissement dans la

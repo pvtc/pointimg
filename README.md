@@ -33,9 +33,9 @@ A pointillist filter that transforms images into compositions of colored dots of
 
 ## Examples
 
-| Source                                                                                       | Result (Voronoi, 1200 points)                  |
-| -------------------------------------------------------------------------------------------- | ---------------------------------------------- |
-| [`pexels-kofishelbyfotos-38152015.jpg`](assets/examples/pexels-kofishelbyfotos-38152015.jpg) | ![Voronoi result](assets/examples/result.png)  |
+| Source                                                                                       | Result (Voronoi, 1200 points)                 |
+| -------------------------------------------------------------------------------------------- | --------------------------------------------- |
+| [`pexels-kofishelbyfotos-38152015.jpg`](assets/examples/pexels-kofishelbyfotos-38152015.jpg) | ![Voronoi result](assets/examples/result.png) |
 
 Sample test images: [`kilauea25_0.jpeg`](assets/examples/kilauea25_0.jpeg),
 [`pexels-kofishelbyfotos-38152015.jpg`](assets/examples/pexels-kofishelbyfotos-38152015.jpg),
@@ -231,28 +231,28 @@ button; the panel folds over the preview below 900 px.
 
 ### Keyboard shortcuts
 
-| Shortcut                            | Action                                    |
-| ----------------------------------- | ----------------------------------------- |
-| `Ctrl+O`                            | Open an image                             |
-| `Ctrl+Shift+O`                      | Open a folder of images                   |
-| `←` / `→`                           | Previous / next image of the folder       |
-| `Ctrl+S`                            | Export the image                          |
-| `Ctrl+Shift+S`                      | Export as SVG                             |
-| `Ctrl+E`                            | Export next to the source (no dialog)     |
-| `Ctrl+C`                            | Copy the image to the clipboard           |
-| `Ctrl+P`                            | Next preset                               |
-| `Alt+Up` / `Alt+Down`               | Previous / next preset (GTK4)             |
-| `Ctrl+Z` / `Ctrl+Y`                 | Undo / Redo                               |
-| `Ctrl+R`                            | Reset all settings                        |
-| `Space`                             | Recalculate (at full resolution)          |
-| `Escape`                            | Cancel the running compute (GTK4)         |
-| `Tab` / `Shift+Tab`                 | Next / previous view                      |
-| `+` / `-`                           | Zoom in / out                             |
-| `0` / `1`                           | Fit to window / 100 %                     |
-| `Ctrl+K`                            | Command palette (egui)                    |
-| `Ctrl+wheel`                        | Zoom (GTK4)                               |
-| `F11`                               | Fullscreen (GTK4)                         |
-| `Ctrl+?`                            | Shortcuts window (GTK4)                   |
+| Shortcut              | Action                                |
+| --------------------- | ------------------------------------- |
+| `Ctrl+O`              | Open an image                         |
+| `Ctrl+Shift+O`        | Open a folder of images               |
+| `←` / `→`             | Previous / next image of the folder   |
+| `Ctrl+S`              | Export the image                      |
+| `Ctrl+Shift+S`        | Export as SVG                         |
+| `Ctrl+E`              | Export next to the source (no dialog) |
+| `Ctrl+C`              | Copy the image to the clipboard       |
+| `Ctrl+P`              | Next preset                           |
+| `Alt+Up` / `Alt+Down` | Previous / next preset (GTK4)         |
+| `Ctrl+Z` / `Ctrl+Y`   | Undo / Redo                           |
+| `Ctrl+R`              | Reset all settings                    |
+| `Space`               | Recalculate (at full resolution)      |
+| `Escape`              | Cancel the running compute (GTK4)     |
+| `Tab` / `Shift+Tab`   | Next / previous view                  |
+| `+` / `-`             | Zoom in / out                         |
+| `0` / `1`             | Fit to window / 100 %                 |
+| `Ctrl+K`              | Command palette (egui)                |
+| `Ctrl+wheel`          | Zoom (GTK4)                           |
+| `F11`                 | Fullscreen (GTK4)                     |
+| `Ctrl+?`              | Shortcuts window (GTK4)               |
 
 Images exceeding 8,388,608 pixels or 65,535 pixels per side are automatically
 downscaled while preserving aspect ratio, with a warning in the GUI and CLI
