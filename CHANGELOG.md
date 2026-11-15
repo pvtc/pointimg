@@ -17,7 +17,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   GitHub Actions `checkout` v7, `upload-artifact` v7, `download-artifact` v8
   and `action-gh-release` v3 (the inputs we pass are unchanged). The
   `github-actions` Dependabot limit goes from 2 to 5, which had silently
-  hidden several bumps.
+  hidden several bumps. The root and fuzz lockfiles are also refreshed to the
+  latest semver-compatible versions (48 packages, patch-level: `wgpu` 30.0.2,
+  the gtk/glib 0.22.11 stack, `jiff` 0.2.45, `wasm-bindgen` 0.2.130, …).
 
 ### Added
 
