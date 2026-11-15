@@ -35,9 +35,42 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   Dependabot security updates are never delayed.
 - **Comments**: build and CI configuration comments are in English, like the
   Rust sources.
+- **Default features are now empty**: the library and the CLI no longer pull
+  eframe/wgpu/GTK unless `gui` or `gtk` is requested. `cargo build` produces
+  the CLI; `cargo install pointimg` installs it without the GUI stack. The
+  release jobs pass `--features gui` explicitly.
+- Linux release builds: the x86_64 CLI and egui GUI are built on Ubuntu 22.04
+  instead of 24.04, so their glibc requirement is lower. The GTK tarball stays
+  on 24.04 (GTK 4.14) and points to the Flatpak manifest for older systems.
+- `ensure_image_extension` no longer accepts `.svg` for raster exports; a typed
+  `.svg` name falls back to the default raster extension instead of failing in
+  the encoder.
+- README and architecture docs now match the actual GTK requirement (4.14+ /
+  libadwaita 1.5+), the egui/rfd versions, the Linux architecture coverage and
+  the SVG/dithering behaviour.
 
 ### Added
 
+- **Flatpak manifest** for the GTK4 front-end
+  (`packaging/flatpak/`), with vendored `cargo-sources.json`. It removes the
+  dependency on the host's glibc/GTK version and is the portable Linux
+  distribution path. A CI job validates the manifest with
+  `flatpak-builder --show-manifest`.
+- **CLI integration tests** (`tests/cli.rs`): single image, batch indexing,
+  parallel batch, versioned presets and clean failures. They cover `main.rs`,
+  which the library tests could not reach.
+- **Packaging validation** in CI: `desktop-file-validate`, `appstreamcli
+  validate --no-net` and the Flatpak manifest.
+- **`cargo-deny`** in CI (`deny.toml`): licenses, duplicate versions and source
+  origins, alongside the existing vulnerability audit.
+- **Build provenance** on releases (`actions/attest-build-provenance`), so an
+  artifact can be verified against this workflow and repository.
+- **SVG halftone blending**: halftone dots are emitted inside a
+  `mix-blend-mode: multiply; isolation: isolate` group, matching the raster
+  subtractive compositor.
+- **Background image loading and exporting** in both front-ends. Decoding,
+  ICC conversion, PNG/WebP encoding and SVG generation no longer block the UI
+  thread.
 - **AppStream metadata** for both applications
   (`packaging/io.github.pvtc.pointimg-gtk.metainfo.xml`,
   `packaging/io.github.pvtc.pointimg-gui.metainfo.xml`):
@@ -71,6 +104,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   notifications, GTK confirmation buttons and window labels now go through
   `gettext`; the parameter validation messages and the density-map errors
   complete the coverage.
+- **Uppercase output extensions lost transparency**: `format_preserves_alpha`
+  compared the extension case-sensitively while `image_format` lowercased it,
+  so a GUI export to `photo.PNG` encoded a PNG after flattening the alpha
+  channel onto the background. Covered by a regression test.
+- **Tofu boxes in the egui interface**: eframe was built without its bundled
+  fonts, so the arrow glyphs (`←`, `→`) used by the command palette and the
+  undo labels fell back to a system font that lacks them. `default_fonts` is
+  enabled and Hack — already shipped by epaint, and the only bundled font with
+  U+2190–U+2193 — is appended as a fallback to the proportional family.
+- **Invalid GTK desktop entry**: the `[Desktop Action open]` group had no
+  matching `Actions=` key, which `desktop-file-validate` rejects. The dangling
+  action was removed, and packaging validation now runs in CI.
+- **Desktop MIME types** advertised PNM/PBM decoders that the `image` crate is
+  not built with, and omitted GIF although it is supported.
 
 ## [0.2.0] - 2026-10-24
 

@@ -110,10 +110,12 @@ pointimg/
 │   ├── io.github.pvtc.pointimg-{gui,gtk}.desktop — entries, `%F` so the
 │   │                     file manager can open an image in either front-end
 │   ├── io.github.pvtc.pointimg-{gui,gtk}.metainfo.xml — AppStream metadata
+│   ├── flatpak/        — GTK4 Flatpak manifest + vendored cargo sources
 │   └── icons/          — `hicolor` icon tree, generated from the SVG by
 │                         `icons/regenerate.sh`
 ├── tests/              — integration tests (public API end-to-end)
 │   ├── pipeline.rs     — algorithm dimensions, progress, dots, flatten, density
+│   ├── cli.rs          — the `pointimg` binary: batch, patterns, presets
 │   ├── svg.rs          — SVG header, shapes, bg color, empty-image error
 │   ├── reproducibility.rs — same seed → identical, different seed → diverge
 │   ├── palette.rs      — palette quantization reduces SVG fill colors
@@ -132,10 +134,10 @@ pointimg/
 | `rayon 1`         | Parallel iteration (density map, Lloyd, k-means)                 |
 | `anyhow 1`        | Error handling (`Result`, `anyhow!`)                             |
 | `log` / `env_logger` | Logging (`-v`/`-vv`/`-q`, `RUST_LOG`)                         |
-| `eframe 0.36`     | egui framework (wgpu backend) — *feature-gated* `gui`            |
-| `egui 0.36`       | Immediate-mode GUI widgets — *feature-gated* `gui`               |
+| `eframe 0.37`     | egui framework (wgpu backend) — *feature-gated* `gui`            |
+| `egui 0.37`       | Immediate-mode GUI widgets — *feature-gated* `gui`               |
 | `wgpu 30`         | GPU backend (Vulkan + GL fallback) — *feature-gated* `gui`/`gpu` |
-| `rfd 0.17`        | Native file dialogs — *feature-gated* `gui`                      |
+| `rfd 0.18`        | Native file dialogs — *feature-gated* `gui`                      |
 | `gtk4 0.11`       | GTK4 bindings — *feature-gated* `gtk`                            |
 | `libadwaita 0.9`  | libadwaita widgets — *feature-gated* `gtk`                       |
 | `async-channel 2` | Worker → UI messaging (GTK) — *feature-gated* `gtk`              |
@@ -165,8 +167,10 @@ once. The default remains the exact CPU summed-area-table implementation:
 without `POINTIMG_GPU=1`, or when no adapter/device/readback is available, the
 function returns to the CPU path automatically.
 
-> **Feature-gating:** GUI dependencies are behind the `gui` feature
-> (enabled by default). To compile CLI-only: `cargo build --no-default-features`.
+> **Feature-gating:** GUI dependencies are behind the `gui` and `gtk` features,
+> both **off by default**, so the library and CLI stay light. Build the egui
+> front-end with `cargo build --features gui --bin pointimg-gui`, the GTK one
+> with `--features gtk --bin pointimg-gtk`.
 > **MSRV:** Rust 1.100 (declared via `rust-version` in `Cargo.toml`,
 > enforced by the `msrv` CI job).
 
@@ -805,6 +809,11 @@ writes, export and presets):
   (`compute_source()`); after ~900 ms without a change, a `final_pass` at full
   resolution runs. The result is only `result_is_final` once that pass lands:
   image and SVG export stay disabled while it is stale.
+- **Long operations stay off the UI thread**: image decoding (including the
+  ICC transform), PNG/WebP encoding and SVG generation run in workers and
+  publish through a generation-checked slot/channel. Only the state swap and
+  the notification happen on the UI thread. Each loader carries a generation,
+  so opening three images quickly cannot let the first one overwrite the last.
 - **Density map is indexed by scale**: `State.density_scale` records the scale
   the cache was computed at; a half-resolution density map is never reused by a
   full-resolution pass (the sizes do not match).
@@ -963,6 +972,11 @@ to egui's `ThemePreference::System`, which is reapplied on the first frame.
 - **Notifications** (`src/gui/notify.rs`): a stack of toasts over the preview.
   Expiry needs an explicit `request_repaint_after` — egui has no clock, so
   without it a message would stay until the user touched something.
+- **Fonts**: eframe's `default_fonts` are enabled (Ubuntu-Light), and Hack —
+  already bundled by epaint — is appended to the proportional family.
+  Ubuntu-Light has no arrow glyphs, so `←`/`→` in the command palette and in
+  undo labels rendered as tofu boxes with system fallback. Hack covers
+  U+2190–U+2193; earlier fonts keep precedence for every other glyph.
 - **Window icon**: egui has no icon theme, so the 256 px PNG is embedded with
   `include_bytes!` and decoded at startup (`window_icon()` in `main.rs`).
   `assets/logo/pointimg.svg` is the master; `packaging/icons/regenerate.sh`
@@ -1112,6 +1126,16 @@ Generates a standalone SVG document with:
 SVG size is identical to the source image in pixels.
 The SVG can be opened in a browser, Inkscape, or further vectorized.
 
+**Halftone:** when `algorithm == Halftone` and an ink mode is active, the dots
+are wrapped in a `<g style="mix-blend-mode:multiply;isolation:isolate">` group.
+Inks are subtractive, exactly like the raster `render_halftone` compositor:
+magenta over yellow must become red, not stay magenta.
+
+**Dithering is raster-only.** It is an error-diffusion / ordered-screen pass on
+the final pixels, not a property of the dots; it cannot be represented by the
+per-dot SVG model. The export still succeeds, but the CLI logs a warning and
+both GUIs show a notification, so the difference from the PNG is explicit.
+
 **Public API:**
 ```text
 pub fn render_svg_from_dots(w: u32, h: u32, dots: &[Dot], params: &FilterParams) -> Result<String>
@@ -1142,13 +1166,18 @@ cargo test --lib
 
 # Integration tests (tests/*.rs — pipeline, svg, repro, palette, halftone)
 cargo test --features gui,gpu,avif
-cargo test --no-default-features            # CLI-only build
+cargo test                                  # default: library + CLI, no GUI deps
 
 # Benchmarks (criterion)
 cargo bench
 
 # Generate Rust documentation
 cargo doc --no-deps --features gui,gpu,avif
+
+# Validate the shipped desktop/AppStream/Flatpak metadata
+desktop-file-validate packaging/*.desktop
+appstreamcli validate --no-net packaging/*.metainfo.xml
+flatpak-builder --show-manifest packaging/flatpak/io.github.pvtc.pointimg-gtk.yml > /dev/null
 ```
 
 ### Installed
@@ -1157,7 +1186,10 @@ cargo doc --no-deps --features gui,gpu,avif
 # cargo-audit — vulnerability detection in dependencies
 cargo install cargo-audit
 cargo audit
-# Note: the `audit` CI job runs this on each push (continue-on-error).
+
+# cargo-deny — licenses, duplicate versions and source origins
+cargo install cargo-deny
+cargo deny check
 ```
 
 ### CI (GitHub Actions)
@@ -1170,14 +1202,17 @@ push/PR to `main`:
   `cargo clippy --features gui,gpu,avif --all-targets -- -D warnings` plus
   `--no-default-features --all-targets` (CLI-only coverage)
 - **test** — matrix `ubuntu/macos/windows`, `cargo test --features gui,gpu,avif --locked`
-  plus `cargo test --no-default-features --locked`
+  plus `cargo test --locked` (library + CLI)
 - **gpu** — lavapipe software adapter, CPU/GPU density parity
 - **msrv** — `cargo +1.100 check --features gui,gpu,avif --locked` (and `stable`)
 - **build** — `cargo build --release --features gui,gpu,avif`
 - **gtk** — Linux-only, installs `libgtk-4-dev`/`libadwaita-1-dev`, clippy +
   release build of `pointimg-gtk`
+- **packaging** — `desktop-file-validate`, `appstreamcli validate --no-net` and
+  `flatpak-builder --show-manifest`
 - **docs** — `cargo doc --no-deps --features gui,gpu,avif` with `--cfg docsrs`
 - **audit** — `cargo audit` (scheduled workflow too)
+- **deny** — `cargo deny check`
 - **fuzz-build** — nightly `cargo fuzz` smoke runs (100 runs per target)
 
 `gtk` is deliberately excluded from `--all-features` everywhere: GTK4 and

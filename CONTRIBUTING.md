@@ -21,25 +21,35 @@ Open an issue with the "Feature Request" template.
 ### Before Submitting
 
 - [ ] Code compiles (`cargo build`)
-- [ ] Tests pass (`cargo test`)
-- [ ] Clippy is happy (`cargo clippy -- -D warnings`)
+- [ ] Tests pass (`cargo test --features gui,gpu,avif`)
+- [ ] Clippy is happy (`cargo clippy --features gui,gpu,avif --all-targets -- -D warnings`)
 - [ ] Code is formatted (`cargo fmt`)
 - [ ] Fuzz targets compile (`cargo check --manifest-path fuzz/Cargo.toml`)
+- [ ] Shipped metadata validates (`desktop-file-validate`, `appstreamcli`, `flatpak-builder --show-manifest`)
 
 ## Development
 
 ```bash
-# Build
+# Build the CLI (the default: no GUI dependency)
 cargo build --release
 
-# Tests
-cargo test --lib
+# Build the egui GUI
+cargo build --release --features gui --bin pointimg-gui
+
+# Tests (the default covers the library and CLI; the features add the GUIs)
+cargo test
+cargo test --features gui,gpu,avif
 
 # Linting
-cargo clippy -- -D warnings
+cargo clippy --features gui,gpu,avif --all-targets -- -D warnings
 
 # Formatting
 cargo fmt
+
+# Shipped metadata
+desktop-file-validate packaging/*.desktop
+appstreamcli validate --no-net packaging/*.metainfo.xml
+flatpak-builder --show-manifest packaging/flatpak/io.github.pvtc.pointimg-gtk.yml > /dev/null
 
 # Fuzzing (install cargo-fuzz first)
 cargo fuzz run preset --fuzz-dir fuzz

@@ -80,11 +80,32 @@ pub(crate) enum Msg {
         /// Scale of the image used (the density map depends on it).
         scale: f32,
     },
+    /// Image decoded by the background loader.
+    Loaded {
+        generation: u64,
+        result: Result<LoadedImage, String>,
+    },
     /// Measured export sizes (real encoding, off the main thread).
     ExportSizes {
         generation: u64,
         sizes: ExportSizes,
     },
+    /// Completion of a background raster or SVG export.
+    Saved {
+        path: PathBuf,
+        svg: bool,
+        result: Result<(), String>,
+    },
+}
+
+/// Decoded source image produced by the background loader.
+pub(crate) struct LoadedImage {
+    pub path: PathBuf,
+    pub image: DynamicImage,
+    pub original_dimensions: (u32, u32),
+    pub profile_converted: bool,
+    pub was_resized: bool,
+    pub source_size: Option<u64>,
 }
 
 /// Shared application state between the modules.
@@ -158,6 +179,9 @@ pub(crate) struct State {
     pub cancel: Arc<AtomicBool>,
     pub generation: Arc<AtomicU64>,
     pub density_generation: Arc<AtomicU64>,
+    /// Identifies the last requested image load; an obsolete loader's result is
+    /// discarded.
+    pub load_generation: u64,
     pub tx: async_channel::Sender<Msg>,
 
     // Cache of the preview textures.
@@ -214,6 +238,7 @@ impl State {
             cancel: Arc::new(AtomicBool::new(false)),
             generation: Arc::new(AtomicU64::new(0)),
             density_generation: Arc::new(AtomicU64::new(0)),
+            load_generation: 0,
             tx,
             src_texture: None,
             result_texture: None,

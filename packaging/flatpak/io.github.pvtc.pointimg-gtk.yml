@@ -1,0 +1,76 @@
+# Flatpak manifest for the GTK4 front-end.
+#
+# The GTK front-end is the natural candidate for Flatpak: it uses libadwaita,
+# follows the portal conventions, and the AppStream/desktop/icons files are
+# already in `packaging/`. Building it here also removes the Ubuntu 24.04 +
+# GTK 4.14 dependency of the release tarball.
+#
+# Build (from the repository root):
+#
+#   flatpak-builder --user --install --force-clean build-dir \
+#       packaging/flatpak/io.github.pvtc.pointimg-gtk.yml
+#
+# Run:
+#
+#   flatpak run io.github.pvtc.pointimg-gtk photo.jpg
+#
+# After changing Cargo.lock, regenerate the vendored sources:
+#
+#   python3 flatpak-cargo-generator.py Cargo.lock \
+#       -o packaging/flatpak/cargo-sources.json
+#
+# (`flatpak-cargo-generator.py` comes from
+# https://github.com/flatpak/flatpak-builder-tools/tree/master/cargo.)
+app-id: io.github.pvtc.pointimg-gtk
+runtime: org.gnome.Platform
+runtime-version: "48"
+sdk: org.gnome.Sdk
+sdk-extensions:
+  - org.freedesktop.Sdk.Extension.rust-stable
+command: pointimg-gtk
+
+finish-args:
+  - --share=ipc
+  - --socket=wayland
+  - --socket=fallback-x11
+  - --device=dri
+  # Images can live anywhere; the GTK file chooser also goes through the
+  # document portal, but the recent-files list and drag & drop need direct
+  # access to the user's files.
+  - --filesystem=home
+  - --talk-name=org.freedesktop.portal.Desktop
+  - --talk-name=org.freedesktop.portal.Settings
+
+cleanup:
+  - /include
+  - /lib/pkgconfig
+  - /share/man
+  - /share/doc
+
+modules:
+  - name: pointimg
+    buildsystem: simple
+    build-options:
+      append-path: /usr/lib/sdk/rust-stable/bin
+      env:
+        CARGO_HOME: /run/build/pointimg/cargo
+    build-commands:
+      - cargo build --release --locked --no-default-features --features gtk --bin pointimg-gtk
+      - install -Dm755 target/release/pointimg-gtk /app/bin/pointimg-gtk
+      - install -Dm644 packaging/io.github.pvtc.pointimg-gtk.desktop
+        /app/share/applications/io.github.pvtc.pointimg-gtk.desktop
+      - install -Dm644 packaging/io.github.pvtc.pointimg-gtk.metainfo.xml
+        /app/share/metainfo/io.github.pvtc.pointimg-gtk.metainfo.xml
+      - install -d /app/share/icons
+      - cp -r packaging/icons/hicolor /app/share/icons/hicolor
+    sources:
+      - type: dir
+        path: ../..
+        skip:
+          - .git
+          - .github
+          - .idea
+          - target
+          - fuzz/target
+          - build-dir
+      - cargo-sources.json

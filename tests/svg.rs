@@ -1,6 +1,6 @@
 //! Tests for the validity of the SVG rendering through the public API.
 
-use pointimg::filter::{self, Algorithm, Dot, DotShape, FilterParams};
+use pointimg::filter::{self, Algorithm, Dot, DotShape, FilterParams, HalftoneMode};
 use std::sync::atomic::AtomicBool;
 
 fn checkerboard(w: u32, h: u32) -> image::RgbImage {
@@ -85,6 +85,45 @@ fn render_svg_dynamic_path_uses_bg() {
     };
     let svg = filter::render_svg_dynamic(&dyn_img, &params).unwrap();
     assert!(svg.contains("#0a141e"), "bg hex #0a141e doit être présent");
+}
+
+#[test]
+fn halftone_svg_uses_multiply_blending() {
+    let dots = [
+        Dot {
+            x: 4.0,
+            y: 4.0,
+            color: [0, 255, 255], // cyan
+            radius: 3.0,
+        },
+        Dot {
+            x: 5.0,
+            y: 4.0,
+            color: [255, 0, 255], // magenta
+            radius: 3.0,
+        },
+    ];
+    let params = FilterParams {
+        algorithm: Algorithm::Halftone,
+        halftone: HalftoneMode::Cmyk {
+            angles: [15.0, 75.0, 0.0, 45.0],
+        },
+        ..FilterParams::default()
+    };
+    let svg = filter::render_svg_from_dots(10, 10, &dots, &params).unwrap();
+    assert!(
+        svg.contains("mix-blend-mode:multiply"),
+        "les encres doivent être composées en multiply : {svg}"
+    );
+    assert!(svg.contains("isolation:isolate"), "blend isolé du fond");
+
+    // The same dots without halftone use the ordinary source-over order.
+    let normal = FilterParams {
+        algorithm: Algorithm::Grid,
+        ..FilterParams::default()
+    };
+    let svg = filter::render_svg_from_dots(10, 10, &dots, &normal).unwrap();
+    assert!(!svg.contains("mix-blend-mode"));
 }
 
 #[test]

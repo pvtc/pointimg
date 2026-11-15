@@ -9,11 +9,7 @@ TryExec=pointimg-gtk
 Icon=pointimg
 Terminal=false
 Categories=Graphics;2DGraphics;RasterGraphics;
-MimeType=image/png;image/jpeg;image/webp;image/bmp;image/tiff;image/x-portable-anymap;image/x-portable-bitmap;
+MimeType=image/png;image/jpeg;image/webp;image/gif;image/bmp;image/tiff;
 StartupNotify=true
 SingleMainWindow=true
 Keywords=pointillism;dots;halftone;stipple;voronoi;dithering;art;filter;
-
-[Desktop Action open]
-Name=Open a folder of images
-Exec=pointimg-gtk %F

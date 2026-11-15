@@ -39,9 +39,42 @@ et ce projet adhère au [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
   les mises à jour de sécurité Dependabot ne sont jamais retardées.
 - **Commentaires** : les commentaires de configuration (build, CI) sont en
   anglais, comme les sources Rust.
+- **Les features par défaut sont désormais vides** : la bibliothèque et le CLI
+  ne tirent plus eframe/wgpu/GTK tant que `gui` ou `gtk` n'est pas demandé.
+  `cargo build` produit le CLI ; `cargo install pointimg` l'installe sans la
+  pile GUI. Les jobs de release passent explicitement `--features gui`.
+- **Releases Linux** : le CLI x86_64 et la GUI egui sont construits sur
+  Ubuntu 22.04 au lieu de 24.04, ce qui abaisse l'exigence de glibc. L'archive
+  GTK reste sur 24.04 (GTK 4.14) et renvoie au manifest Flatpak pour les
+  systèmes plus anciens.
+- `ensure_image_extension` n'accepte plus `.svg` pour un export raster : un nom
+  `.svg` saisi retombe sur l'extension raster par défaut au lieu d'échouer dans
+  l'encodeur.
+- Le README et la documentation d'architecture correspondent maintenant aux
+  vraies exigences GTK (4.14+ / libadwaita 1.5+), aux versions egui/rfd, à la
+  couverture des architectures Linux et au comportement SVG/dithering.
 
 ### Ajouté
 
+- **Manifest Flatpak** pour la GUI GTK4 (`packaging/flatpak/`), avec
+  `cargo-sources.json` vendorisé. Il supprime la dépendance à la glibc/GTK de
+  l'hôte et devient la distribution Linux portable. Un job CI valide le
+  manifeste avec `flatpak-builder --show-manifest`.
+- **Tests d'intégration du CLI** (`tests/cli.rs`) : image seule, indexation du
+  batch, batch parallèle, presets versionnés et échecs propres. Ils couvrent
+  `main.rs`, que les tests de la bibliothèque ne pouvaient pas atteindre.
+- **Validation packaging** en CI : `desktop-file-validate`, `appstreamcli
+  validate --no-net` et le manifeste Flatpak.
+- **`cargo-deny`** en CI (`deny.toml`) : licences, versions dupliquées et
+  origines des sources, en complément de l'audit de vulnérabilités.
+- **Provenance de build** sur les releases (`actions/attest-build-provenance`) :
+  un artefact peut être vérifié contre ce workflow et ce dépôt.
+- **Composition SVG du halftone** : les points sont dans un groupe
+  `mix-blend-mode: multiply; isolation: isolate`, comme le compositeur
+  soustractif raster.
+- **Chargement d'image et export en arrière-plan** dans les deux interfaces :
+  décodage, conversion ICC, encodage PNG/WebP et génération SVG ne bloquent
+  plus le thread UI.
 - **Métadonnées AppStream** pour les deux applications
   (`packaging/io.github.pvtc.pointimg-gtk.metainfo.xml`,
   `packaging/io.github.pvtc.pointimg-gui.metainfo.xml`) :
@@ -78,6 +111,21 @@ et ce projet adhère au [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
   et libellés de fenêtre GTK passent désormais par `gettext` ; les messages de
   validation des paramètres et les erreurs de carte de densité complètent la
   couverture.
+- **Extensions de sortie en majuscules** : `format_preserves_alpha` comparait
+  l'extension sans tenir compte de la casse alors que `image_format` la
+  minusculait ; un export GUI vers `photo.PNG` encodait un PNG après avoir
+  aplati le canal alpha sur le fond. Un test de non-régression couvre le cas.
+- **Carrés à la place des caractères dans egui** : eframe était compilé sans
+  ses polices embarquées ; les flèches (`←`, `→`) de la palette de commandes et
+  des libellés d'annulation retombaient sur une police système qui ne les
+  contient pas. `default_fonts` est activé et Hack — déjà fourni par epaint, et
+  seule police embarquée couvrant U+2190–U+2193 — est ajouté en secours à la
+  famille proportionnelle.
+- **Entrée desktop GTK invalide** : le groupe `[Desktop Action open]` n'avait
+  pas de clé `Actions=` correspondante, ce que `desktop-file-validate` refuse.
+  L'action orpheline est supprimée et la validation packaging tourne en CI.
+- **Types MIME desktop** : ils annonçaient des décodeurs PNM/PBM que la crate
+  `image` n'active pas, et omettaient le GIF pourtant supporté.
 
 ## [0.2.0] - 2026-10-24
 

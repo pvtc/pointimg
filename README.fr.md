@@ -26,6 +26,7 @@ Filtre pointilliste qui transforme une image en une composition de points color�
 - **Angle de trame halftone** : rotation de la grille via `--grid-angle`
 - **Rosette CMJN** & **halftone N couleurs dominantes** (`--halftone cmyk|dominant-N`) — mélange soustractif multiply, screening AM (grille rotationée) ou FM (blue noise stochastique)
 - **Formats de sortie** : PNG/JPEG/BMP/TIFF/WebP par défaut ; AVIF via `--features avif`
+- **Export SVG** : vrais points vectoriels ; les encres halftone utilisent `mix-blend-mode: multiply`. Le dithering est une passe raster et n'est pas reproduit en SVG (un avertissement est émis)
 - **Profils colorimétriques** : profils ICC d'entrée détectés automatiquement, sRGB, Display-P3 ou fichiers `.icc` via `--input-profile` et `--output-profile`
 - **Density map GPU optionnelle** : compiler avec `--features gpu`, activer avec
   `POINTIMG_GPU=1` ; fallback CPU/SAT automatique
@@ -48,9 +49,13 @@ Images de test : [`kilauea25_0.jpeg`](assets/examples/kilauea25_0.jpeg),
 
 Téléchargez les binaires depuis la page [Releases](https://github.com/pvtc/pointimg/releases) pour votre plateforme :
 
-- Linux (x86_64, ARM64)
-- macOS (Intel, Apple Silicon, Universel)
-- Windows (x86_64)
+- Linux x86_64 (CLI et les deux GUI), Linux ARM64 (CLI ; les GUI se compilent depuis les sources)
+- macOS (Intel, Apple Silicon, Universel ; GUI egui et CLI)
+- Windows (x86_64 ; GUI egui et CLI)
+
+Sous Linux, la GUI GTK4 dispose aussi d'un manifest Flatpak
+(`packaging/flatpak/`), l'option portable quand la distribution ne fournit pas
+GTK 4.14+ / libadwaita 1.5+.
 
 ### Compilation depuis les sources
 
@@ -58,23 +63,28 @@ Téléchargez les binaires depuis la page [Releases](https://github.com/pvtc/poi
 cargo build --release
 ```
 
-Les binaires sont dans `target/release/` :
+La compilation par défaut produit la bibliothèque et le CLI. Les binaires
+disponibles sont :
 
-- `pointimg` -- outil CLI
-- `pointimg-gui` -- application GUI egui/wgpu (nécessite Vulkan ou OpenGL)
-- `pointimg-gtk` -- application GUI GTK4/libadwaita (feature optionnelle `gtk`)
+- `pointimg` -- outil CLI (compilation par défaut)
+- `pointimg-gui` -- application GUI egui/wgpu (Vulkan ou OpenGL ; `--features gui`)
+- `pointimg-gtk` -- application GUI GTK4/libadwaita (`--features gtk`)
 
-Pour compiler uniquement le CLI (sans les dépendances GUI) :
+Pour compiler la GUI egui (sans dépendance GTK) :
 
 ```bash
-cargo build --release --no-default-features
+cargo build --release --features gui --bin pointimg-gui
 ```
 
-Pour compiler la GUI GTK4 (nécessite GTK 4.10+ et libadwaita 1.4+) :
+Pour compiler la GUI GTK4 (nécessite GTK 4.14+ et libadwaita 1.5+) :
 
 ```bash
 cargo build --release --no-default-features --features gtk --bin pointimg-gtk
 ```
+
+`cargo install pointimg` installe le CLI seul ; ajoutez `--features gui` pour
+l'interface egui. La bibliothèque ne tire elle non plus aucune dépendance GUI
+tant que les features `gui` ou `gtk` ne sont pas activées.
 
 ## Utilisation CLI
 
@@ -265,9 +275,14 @@ se signale explicitement lorsqu'elle dépasse 1,5 Go. Le CLI dispose en plus de
 
 ```bash
 cargo test --features gui,gpu,avif   # suite complète (GUI + GPU + AVIF)
-cargo test --no-default-features     # CLI seul (sans dépendances GUI)
+cargo test                           # CLI + bibliothèque, sans dépendances GUI
 cargo clippy --features gui,gpu,avif --all-targets -- -D warnings
 cargo bench                          # benchmarks criterion (benches/filter.rs)
+
+# Métadonnées livrées
+desktop-file-validate packaging/*.desktop
+appstreamcli validate --no-net packaging/*.metainfo.xml
+flatpak-builder --show-manifest packaging/flatpak/io.github.pvtc.pointimg-gtk.yml > /dev/null
 ```
 
 > La feature `gtk` est exclue : elle exige GTK4/libadwaita installés. Pour la

@@ -1,4 +1,5 @@
-use crate::filter::params::{Dot, DotShape, FilterParams, validate_params};
+use crate::filter::HalftoneMode;
+use crate::filter::params::{Algorithm, Dot, DotShape, FilterParams, validate_params};
 use crate::filter::render::quantize_dots;
 use crate::filter::util::flatten_to_rgb;
 use anyhow::{Result, anyhow};
@@ -62,6 +63,17 @@ pub fn render_svg_from_dots(w: u32, h: u32, dots: &[Dot], params: &FilterParams)
     let mut sorted: Vec<&Dot> = dots_final.iter().collect();
     sorted.sort_unstable_by(|a, b| b.radius.total_cmp(&a.radius));
 
+    // Halftone inks are subtractive: the raster render composites them with
+    // `multiply`, not with source-over. Without this group, overlapping CMYK
+    // dots would show the last ink instead of the ink mixture (magenta over
+    // yellow would stay magenta instead of becoming red). `isolation` keeps
+    // the blend inside this group so it multiplies the paper background, not
+    // whatever the SVG is later placed on.
+    let multiply = params.algorithm == Algorithm::Halftone && params.halftone != HalftoneMode::Off;
+    if multiply {
+        svg.push_str("  <g style=\"mix-blend-mode:multiply;isolation:isolate\">\n");
+    }
+
     for dot in sorted {
         let r = dot.radius;
         if r < 0.5 {
@@ -121,6 +133,9 @@ pub fn render_svg_from_dots(w: u32, h: u32, dots: &[Dot], params: &FilterParams)
                 );
             }
         }
+    }
+    if multiply {
+        svg.push_str("  </g>\n");
     }
     svg.push_str("</svg>\n");
     Ok(svg)

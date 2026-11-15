@@ -117,6 +117,27 @@ jobs:
       - name: Build (release)
         run: cargo build --release --no-default-features --features gtk --bin pointimg-gtk
 
+  packaging:
+    name: Packaging metadata
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - name: Install validators
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y desktop-file-utils appstream flatpak-builder
+      # `desktop-file-validate` catches dangling actions, bogus MIME types and
+      # malformed keys; `appstreamcli` checks the metadata shown by software
+      # centres. Both are cheap and run before a release can ship them.
+      - name: Validate desktop entries
+        run: desktop-file-validate packaging/*.desktop
+      - name: Validate AppStream metadata
+        run: appstreamcli validate --no-net packaging/*.metainfo.xml
+      # Parse the Flatpak manifest (sources, YAML keys, app id) without
+      # downloading a runtime or building the app.
+      - name: Validate Flatpak manifest
+        run: flatpak-builder --show-manifest packaging/flatpak/io.github.pvtc.pointimg-gtk.yml > /dev/null
+
   i18n:
     name: Translations
     runs-on: ubuntu-latest
@@ -155,6 +176,14 @@ jobs:
       - uses: actions/checkout@v7
       - uses: taiki-e/install-action@cargo-audit
       - run: cargo audit
+
+  deny:
+    name: Licenses and sources
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: taiki-e/install-action@cargo-deny
+      - run: cargo deny check
 
   fuzz-build:
     name: Fuzz smoke tests

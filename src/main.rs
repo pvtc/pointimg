@@ -741,6 +741,12 @@ fn process_one(
             "--output-profile ne s'applique pas à l'export SVG"
         ));
     }
+    if args.svg && params.dithering != Dithering::Off {
+        log::warn!(
+            "{}",
+            pointimg::frontend::gettext("Le dithering n'est pas reproduit dans l'export SVG.")
+        );
+    }
     log::info!(
         "{}",
         pointimg::frontend::gettext("mémoire de travail estimée : {} Mo").replace(

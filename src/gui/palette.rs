@@ -60,19 +60,19 @@ pub(crate) fn all(app: &crate::App) -> Vec<Command> {
             label: pointimg::frontend::gettext("Exporter l'image…"),
             hint: "Ctrl+S",
             enabled: has_final,
-            run: |app, _| app.choose_export(),
+            run: |app, ctx| app.choose_export(ctx),
         },
         Command {
             label: pointimg::frontend::gettext("Exporter en SVG…"),
             hint: pointimg::frontend::gettext("Ctrl+Maj+S"),
             enabled: has_dots,
-            run: |app, _| app.choose_svg_export(),
+            run: |app, ctx| app.choose_svg_export(ctx),
         },
         Command {
             label: pointimg::frontend::gettext("Exporter à côté de la source"),
             hint: "Ctrl+E",
             enabled: has_final,
-            run: |app, _| app.quick_export(),
+            run: |app, ctx| app.quick_export(ctx),
         },
         Command {
             label: pointimg::frontend::gettext("Copier dans le presse-papiers"),

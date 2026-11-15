@@ -660,7 +660,11 @@ pub fn ensure_image_extension(path: PathBuf, default_ext: &str) -> PathBuf {
     with_allowed_extension(
         path,
         default_ext,
-        &["png", "jpg", "jpeg", "svg", "webp", "bmp", "tif", "tiff"],
+        // SVG is deliberately absent: this helper normalizes *raster* export
+        // paths, and `save_rgba_image` cannot encode SVG. A typed `.svg` name
+        // therefore falls back to the default raster extension instead of
+        // reaching the encoder and failing there.
+        &["png", "jpg", "jpeg", "webp", "bmp", "tif", "tiff"],
     )
 }
 
@@ -875,7 +879,13 @@ fn image_format(extension: &str) -> image::ImageResult<image::ImageFormat> {
 }
 
 fn format_preserves_alpha(extension: &str) -> bool {
-    matches!(extension, "png" | "webp" | "tif" | "tiff")
+    // `image_format` lowercases the extension; this predicate must agree with
+    // it, otherwise `photo.PNG` is encoded as a PNG and silently flattened
+    // onto the background (losing transparency).
+    matches!(
+        extension.to_ascii_lowercase().as_str(),
+        "png" | "webp" | "tif" | "tiff"
+    )
 }
 
 /// Serializes `params` as TOML and writes it atomically.
@@ -1065,6 +1075,33 @@ mod tests {
             ensure_image_extension(PathBuf::from("out.xyz"), "png"),
             PathBuf::from("out.png")
         );
+        // Raster export does not support SVG: it must not be kept as is.
+        assert_eq!(
+            ensure_image_extension(PathBuf::from("out.svg"), "png"),
+            PathBuf::from("out.png")
+        );
+        // Recognized extensions are kept with their original case.
+        assert_eq!(
+            ensure_image_extension(PathBuf::from("out.PNG"), "png"),
+            PathBuf::from("out.PNG")
+        );
+    }
+
+    #[test]
+    fn in_memory_encoder_preserves_alpha_for_uppercase_extensions() {
+        let img = RgbaImage::from_pixel(2, 2, image::Rgba([255, 0, 0, 128]));
+        for extension in ["png", "PNG", "Png", "webp", "WEBP", "tif", "TIFF"] {
+            let bytes = encode_rgba_extension(extension, &img, true, [255, 255, 255])
+                .expect("encodage de test");
+            let decoded = image::load_from_memory(&bytes)
+                .expect("décodage de test")
+                .to_rgba8();
+            assert_eq!(
+                decoded.get_pixel(0, 0)[3],
+                128,
+                "{extension} a perdu son canal alpha"
+            );
+        }
     }
 
     #[test]

@@ -83,12 +83,35 @@ fn main() -> eframe::Result {
     eframe::run_native(
         "pointimg",
         options,
-        Box::new(move |_cc| {
+        Box::new(move |cc| {
+            configure_fonts(&cc.egui_ctx);
             let mut app = App::new();
             app.pending_open = requested;
             Ok(Box::new(app))
         }),
     )
+}
+
+/// Adds the bundled Hack font as a fallback to the proportional family.
+///
+/// Ubuntu-Light and the emoji fonts have no arrow glyphs: the command-palette
+/// hints (`←`, `→`) and the undo labels (`Grid → Voronoi`) were rendered as
+/// tofu boxes. Hack is already shipped by epaint and covers U+2190–U+2193, so
+/// adding it last costs no asset and changes nothing else — earlier fonts keep
+/// precedence for every glyph they already have.
+fn configure_fonts(ctx: &egui::Context) {
+    ctx.set_fonts(font_definitions_with_arrows());
+}
+
+fn font_definitions_with_arrows() -> egui::FontDefinitions {
+    let mut fonts = egui::FontDefinitions::default();
+    if fonts.font_data.contains_key("Hack")
+        && let Some(family) = fonts.families.get_mut(&egui::FontFamily::Proportional)
+        && !family.iter().any(|name| name == "Hack")
+    {
+        family.push("Hack".to_owned());
+    }
+    fonts
 }
 
 /// Window icon, read into the binary.
@@ -148,6 +171,21 @@ pub(crate) struct HistoryEntry {
     pub label: String,
 }
 
+/// Decoded source image produced by the background loader.
+pub(crate) struct LoadedImage {
+    pub path: PathBuf,
+    pub image: DynamicImage,
+    pub original_dimensions: (u32, u32),
+    pub profile_converted: bool,
+    pub was_resized: bool,
+    pub source_size: Option<u64>,
+}
+
+/// Slot filled by the background image loader.
+type LoadSlot = Arc<Mutex<Option<(u64, Result<LoadedImage, String>)>>>;
+/// Slot filled by the background exporter.
+type SaveResultSlot = Arc<Mutex<Option<(PathBuf, bool, Result<(), String>)>>>;
+
 /// Application state: shares the type between the `app`, `compute`,
 /// `save` and `ui` modules (one `impl App` per module for its part of logic).
 pub(crate) struct App {
@@ -158,6 +196,11 @@ pub(crate) struct App {
     // Source image converted to RGB8 (cached, recomputed if bg_color changes)
     pub src_rgb: Option<RgbImage>,
     pub src_path: Option<PathBuf>,
+    /// Identifies the last requested image load. An obsolete loader publishes
+    /// nothing.
+    pub load_generation: Arc<AtomicU64>,
+    /// Result slot for the last completed background load.
+    pub load_slot: LoadSlot,
     /// Size of the source file in bytes, to compare the export to the original.
     pub source_size: Option<u64>,
     /// Last save directory (then offered to the dialogs).
@@ -243,6 +286,11 @@ pub(crate) struct App {
     pub export_sizes_computing: Arc<std::sync::atomic::AtomicBool>,
     pub export_sizes_slot: Arc<Mutex<Option<pointimg::export::ExportSizes>>>,
 
+    /// Result of the last completed background export: path, whether it was
+    /// an SVG export, and success/error message. Encoding is slow for WebP and
+    /// must not block the UI thread.
+    pub save_result_slot: SaveResultSlot,
+
     // Display mode
     pub view_mode: ViewMode,
 
@@ -293,6 +341,8 @@ impl Default for App {
             src_dynamic: None,
             src_rgb: None,
             src_path: None,
+            load_generation: Default::default(),
+            load_slot: Default::default(),
             last_dir: None,
             folder_images: Vec::new(),
             folder_index: None,
@@ -331,6 +381,7 @@ impl Default for App {
             export_sizes_generation: Arc::new(AtomicU64::new(0)),
             export_sizes_computing: Arc::new(std::sync::atomic::AtomicBool::new(false)),
             export_sizes_slot: Arc::new(Mutex::new(None)),
+            save_result_slot: Arc::new(Mutex::new(None)),
             view_mode: ViewMode::Compare,
             zoom: 1.0,
             zoom_fit: true,
@@ -483,5 +534,19 @@ mod tests {
         // And the corner, itself, must be transparent: a desktop icon must not
         // set an opaque square.
         assert_eq!(&icon.rgba[..4], &[0, 0, 0, 0]);
+    }
+
+    #[test]
+    fn proportional_family_falls_back_to_a_font_with_arrows() {
+        let fonts = font_definitions_with_arrows();
+        let proportional = &fonts.families[&egui::FontFamily::Proportional];
+        assert!(
+            proportional.iter().any(|name| name == "Hack"),
+            "la famille proportionnelle doit contenir Hack pour ←/→ : {proportional:?}"
+        );
+        assert!(
+            fonts.font_data.contains_key("Hack"),
+            "les données de police Hack doivent être présentes"
+        );
     }
 }

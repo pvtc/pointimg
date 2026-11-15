@@ -1,5 +1,7 @@
 /target
 /fuzz/target
+/.flatpak-builder
+/build-dir
 *.png
 !assets/
 !assets/**

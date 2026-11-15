@@ -34,7 +34,11 @@ path = "src/gtk/main.rs"
 required-features = ["gtk"]
 
 [features]
-default = ["gui"]
+# The library and the CLI are usable without any GUI dependency. The GUI
+# front-ends opt in explicitly: `cargo build --features gui`, `--features gtk`.
+# This keeps `cargo add pointimg` / `cargo install pointimg` free of eframe,
+# wgpu and GTK.
+default = []
 gui = ["dep:eframe", "dep:egui", "dep:wgpu", "dep:rfd"]
 gtk = ["dep:gtk", "dep:adw", "dep:async-channel"]
 gpu = ["dep:wgpu", "dep:pollster", "dep:bytemuck"]
@@ -74,21 +78,26 @@ glob = "0.3"
 # `persistence`: eframe then saves its state (window size, panel width, current
 # theme) in the application data directory. Our UI preferences (scale, theme)
 # have their own file, written immediately — see `src/gui/prefs.rs`.
-eframe = { version = "0.37", default-features = false, features = ["wgpu", "accesskit", "persistence"], optional = true }
+# `default_fonts`: Ubuntu-Light + Hack + emoji fallbacks. Without it, egui
+# relies on system fonts and the arrow glyphs (←/→) render as tofu.
+eframe = { version = "0.37", default-features = false, features = ["wgpu", "accesskit", "persistence", "default_fonts"], optional = true }
 gettext = "0.4.0"
 
 # eframe is configured per platform: the wayland/x11 features only exist on
 # Linux. On macOS/Windows only wgpu + accesskit are kept.
 [target.'cfg(target_os = "linux")'.dependencies]
-eframe = { version = "0.37", default-features = false, features = ["wgpu", "wayland", "x11", "accesskit", "persistence"], optional = true }
+eframe = { version = "0.37", default-features = false, features = ["wgpu", "wayland", "x11", "accesskit", "persistence", "default_fonts"], optional = true }
 
 [target.'cfg(not(target_os = "linux"))'.dependencies]
-eframe = { version = "0.37", default-features = false, features = ["wgpu", "accesskit", "persistence"], optional = true }
+eframe = { version = "0.37", default-features = false, features = ["wgpu", "accesskit", "persistence", "default_fonts"], optional = true }
 
 # ─── Dev (tests/benches) ──────────────────────────────────────────────────────
 
 [dev-dependencies]
 criterion = "0.8"
+assert_cmd = "2"
+predicates = "3"
+tempfile = "3"
 
 [[bench]]
 name = "filter"

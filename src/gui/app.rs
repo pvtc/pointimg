@@ -98,105 +98,111 @@ impl App {
         {
             self.folder_index = Some(index);
         }
-        let dimensions = match ImageReader::open(&path) {
-            Ok(reader) => match reader.into_dimensions() {
-                Ok(dimensions) => dimensions,
-                Err(e) => {
-                    self.notify_error(
-                        frontend::gettext("Erreur lecture dimensions : {e}")
-                            .replace("{e}", &e.to_string()),
-                    );
-                    return;
-                }
-            },
-            Err(e) => {
-                self.notify_error(
-                    frontend::gettext("Erreur lecture dimensions : {e}")
-                        .replace("{e}", &e.to_string()),
-                );
-                return;
+        let generation = self.load_generation.fetch_add(1, Ordering::AcqRel) + 1;
+        self.status = frontend::gettext("Chargement de l'image…").to_string();
+        let slot = Clone::clone(&self.load_slot);
+        let load_generation = Clone::clone(&self.load_generation);
+        let ctx = ctx.clone();
+        std::thread::spawn(move || {
+            let result = load_from_disk(&path);
+            // A newer load may have been requested while this one was
+            // decoding: do not overwrite its result.
+            if load_generation.load(Ordering::Acquire) == generation {
+                *slot.lock().unwrap_or_else(|e| e.into_inner()) = Some((generation, result));
             }
+            ctx.request_repaint();
+        });
+    }
+
+    /// Applies a decoded image once the background loader has finished.
+    pub(crate) fn poll_load_result(&mut self, ctx: &egui::Context) {
+        let outcome = self
+            .load_slot
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .take();
+        let Some((generation, result)) = outcome else {
+            return;
         };
-        if dimensions.0 == 0 || dimensions.1 == 0 {
-            self.notify_error(
-                frontend::gettext("Image vide ({}x{})")
-                    .replacen("{}", &dimensions.0.to_string(), 1)
-                    .replacen("{}", &dimensions.1.to_string(), 1),
-            );
+        if generation != self.load_generation.load(Ordering::Acquire) {
             return;
         }
-        match pointimg::color::decode_to_srgb(&path, "auto") {
-            Ok((img, profile_converted, was_resized)) => {
-                let original_dimensions = dimensions;
-                // Invalidate workers before replacing the source. An old worker
-                // may still be unwinding, but it must not publish its result.
-                self.compute_generation.fetch_add(1, Ordering::AcqRel);
-                self.cancel.store(true, Ordering::Release);
-                self.finalize_at = None;
-                self.final_pass = false;
-                let rgb = filter::flatten_to_rgb(&img, self.params.bg_color);
-                self.density_image = None;
-                self.density_texture = None;
-                self.src_dynamic = Some(img);
-                self.src_rgb = Some(rgb);
-                self.src_path = Some(path.clone());
-                // Recent image: the welcome state offers it on the next launch.
-                // GTK reads the same information in the desktop manager; egui has
-                // no equivalent and keeps its own list.
-                if let Some(prefs) = self.prefs.as_mut() {
-                    prefs.push_recent(&path);
-                }
-                // Size of the original file: it is the reference against which
-                // the export size is compared.
-                self.source_size = std::fs::metadata(&path).ok().map(|meta| meta.len());
-                self.export_sizes = None;
-                self.src_texture = None;
-                self.result_texture = None;
-                *self.result.lock().unwrap_or_else(|e| e.into_inner()) = None;
-                self.result_revision.fetch_add(1, Ordering::Release);
-                *self.last_dots.lock().unwrap_or_else(|e| e.into_inner()) = None;
-                self.history.clear();
-                self.future.clear();
-                self.last_committed = Some(self.params.clone());
-                self.status = if was_resized {
-                    frontend::gettext(
-                        "Image chargée et réduite de {}x{} à {}x{} pour respecter la mémoire.",
-                    )
-                    .replacen("{}", &original_dimensions.0.to_string(), 1)
-                    .replacen("{}", &original_dimensions.1.to_string(), 1)
-                    .replacen(
-                        "{}",
-                        &self
-                            .src_rgb
-                            .as_ref()
-                            .map_or(0, |image| image.width())
-                            .to_string(),
-                        1,
-                    )
-                    .replacen(
-                        "{}",
-                        &self
-                            .src_rgb
-                            .as_ref()
-                            .map_or(0, |image| image.height())
-                            .to_string(),
-                        1,
-                    )
-                } else if profile_converted {
-                    frontend::gettext("Profil ICC converti vers sRGB.").to_string()
-                } else {
-                    frontend::gettext("Image chargée : {}")
-                        .replace("{}", &path.display().to_string())
-                };
-                self.start_density_compute(ctx);
-                self.start_compute(ctx);
-            }
-            Err(e) => {
-                self.notify_error(
-                    frontend::gettext("Erreur chargement : {e}").replace("{e}", &e.to_string()),
-                );
-            }
+        match result {
+            Ok(loaded) => self.finish_load(loaded, ctx),
+            Err(e) => self.notify_error(e),
         }
+    }
+
+    fn finish_load(&mut self, loaded: super::LoadedImage, ctx: &egui::Context) {
+        let super::LoadedImage {
+            path,
+            image,
+            original_dimensions,
+            profile_converted,
+            was_resized,
+            source_size,
+        } = loaded;
+        // Invalidate workers before replacing the source. An old worker may
+        // still be unwinding, but it must not publish its result.
+        self.compute_generation.fetch_add(1, Ordering::AcqRel);
+        self.cancel.store(true, Ordering::Release);
+        self.finalize_at = None;
+        self.final_pass = false;
+        let rgb = filter::flatten_to_rgb(&image, self.params.bg_color);
+        self.density_image = None;
+        self.density_texture = None;
+        self.src_dynamic = Some(image);
+        self.src_rgb = Some(rgb);
+        self.src_path = Some(path.clone());
+        // Recent image: the welcome state offers it on the next launch.
+        // GTK reads the same information in the desktop manager; egui has
+        // no equivalent and keeps its own list.
+        if let Some(prefs) = self.prefs.as_mut() {
+            prefs.push_recent(&path);
+        }
+        // Size of the original file: it is the reference against which the
+        // export size is compared.
+        self.source_size = source_size;
+        self.export_sizes = None;
+        self.src_texture = None;
+        self.result_texture = None;
+        *self.result.lock().unwrap_or_else(|e| e.into_inner()) = None;
+        self.result_revision.fetch_add(1, Ordering::Release);
+        *self.last_dots.lock().unwrap_or_else(|e| e.into_inner()) = None;
+        self.history.clear();
+        self.future.clear();
+        self.last_committed = Some(self.params.clone());
+        self.status = if was_resized {
+            frontend::gettext(
+                "Image chargée et réduite de {}x{} à {}x{} pour respecter la mémoire.",
+            )
+            .replacen("{}", &original_dimensions.0.to_string(), 1)
+            .replacen("{}", &original_dimensions.1.to_string(), 1)
+            .replacen(
+                "{}",
+                &self
+                    .src_rgb
+                    .as_ref()
+                    .map_or(0, |image| image.width())
+                    .to_string(),
+                1,
+            )
+            .replacen(
+                "{}",
+                &self
+                    .src_rgb
+                    .as_ref()
+                    .map_or(0, |image| image.height())
+                    .to_string(),
+                1,
+            )
+        } else if profile_converted {
+            frontend::gettext("Profil ICC converti vers sRGB.").to_string()
+        } else {
+            frontend::gettext("Image chargée : {}").replace("{}", &path.display().to_string())
+        };
+        self.start_density_compute(ctx);
+        self.start_compute(ctx);
     }
 
     // ─── Presets ─────────────────────────────────────────────────────────────
@@ -402,5 +408,65 @@ impl App {
             self.src_texture = None;
             self.start_density_compute(ctx);
         }
+    }
+}
+
+/// Reads and decodes an image for the background loader.
+///
+/// The dimensions are read before the full decode so that an empty image is
+/// rejected with a precise message, and so the status can report the original
+/// size even when the pipeline downsizes the image.
+fn load_from_disk(path: &Path) -> Result<super::LoadedImage, String> {
+    let dimensions = ImageReader::open(path)
+        .map_err(|e| {
+            frontend::gettext("Erreur lecture dimensions : {e}").replace("{e}", &e.to_string())
+        })?
+        .into_dimensions()
+        .map_err(|e| {
+            frontend::gettext("Erreur lecture dimensions : {e}").replace("{e}", &e.to_string())
+        })?;
+    if dimensions.0 == 0 || dimensions.1 == 0 {
+        return Err(frontend::gettext("Image vide ({}x{})")
+            .replacen("{}", &dimensions.0.to_string(), 1)
+            .replacen("{}", &dimensions.1.to_string(), 1));
+    }
+    let (image, profile_converted, was_resized) = pointimg::color::decode_to_srgb(path, "auto")
+        .map_err(|e| frontend::gettext("Erreur chargement : {e}").replace("{e}", &e.to_string()))?;
+    Ok(super::LoadedImage {
+        path: path.to_path_buf(),
+        image,
+        original_dimensions: dimensions,
+        profile_converted,
+        was_resized,
+        source_size: std::fs::metadata(path).ok().map(|meta| meta.len()),
+    })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use image::GenericImageView;
+
+    #[test]
+    fn background_loader_reads_dimensions_and_pixels() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("source.png");
+        image::RgbImage::from_pixel(32, 24, image::Rgb([12, 34, 56]))
+            .save(&path)
+            .unwrap();
+
+        let loaded = load_from_disk(&path).expect("image valide");
+        assert_eq!(loaded.original_dimensions, (32, 24));
+        assert_eq!(loaded.image.dimensions(), (32, 24));
+        assert!(!loaded.was_resized);
+        assert!(loaded.source_size.unwrap() > 0);
+    }
+
+    #[test]
+    fn background_loader_reports_a_readable_error() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("missing.png");
+        let error = load_from_disk(&path).err().expect("erreur attendue");
+        assert!(!error.is_empty(), "le chargeur doit expliquer l'échec");
     }
 }

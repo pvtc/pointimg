@@ -20,7 +20,7 @@ impl App {
 
     // ─── Dialogs ──────────────────────────────────────────────────────────────
 
-    pub(crate) fn choose_export(&mut self) {
+    pub(crate) fn choose_export(&mut self, ctx: &egui::Context) {
         let Some(name) = self.default_name("png") else {
             self.notify(frontend::msg::open_first());
             return;
@@ -36,11 +36,11 @@ impl App {
             dialog = dialog.set_directory(folder);
         }
         if let Some(path) = dialog.save_file() {
-            self.save_result(path);
+            self.save_result(path, ctx);
         }
     }
 
-    pub(crate) fn choose_svg_export(&mut self) {
+    pub(crate) fn choose_svg_export(&mut self, ctx: &egui::Context) {
         let Some(name) = self.default_name("svg") else {
             self.notify(frontend::msg::open_first());
             return;
@@ -52,7 +52,7 @@ impl App {
             dialog = dialog.set_directory(folder);
         }
         if let Some(path) = dialog.save_file() {
-            self.save_svg(path);
+            self.save_svg(path, ctx);
         }
     }
 
@@ -90,14 +90,14 @@ impl App {
     // ─── Exports ──────────────────────────────────────────────────────────────
 
     /// Export without a dialog, next to the source image.
-    pub(crate) fn quick_export(&mut self) {
+    pub(crate) fn quick_export(&mut self, ctx: &egui::Context) {
         let Some(path) = self.src_path.as_ref().map(|source| {
             source.with_file_name(frontend::derived_export_name(Some(source), "png"))
         }) else {
             self.notify(frontend::msg::open_first());
             return;
         };
-        self.save_result(path);
+        self.save_result(path, ctx);
     }
 
     /// Copies the current render into the system clipboard.
@@ -114,7 +114,7 @@ impl App {
         self.notify(frontend::msg::copied());
     }
 
-    pub(crate) fn save_result(&mut self, path: PathBuf) {
+    pub(crate) fn save_result(&mut self, path: PathBuf, ctx: &egui::Context) {
         // We never export a downscaled preview by inadvertence.
         if !self.has_final_result() {
             self.status = pointimg::frontend::gettext(
@@ -129,79 +129,109 @@ impl App {
             self.notify(frontend::msg::save_cancelled());
             return;
         }
-        // The guard is released before mutating `self` (see `remember_dir`).
-        let result = {
+        // Clone the `Arc` (not the image) and encode off the UI thread: a
+        // lossless WebP on a 8 Mpx render takes seconds.
+        let image = {
             let guard = self.result.lock().unwrap_or_else(|e| e.into_inner());
-            let Some(img) = guard.as_ref() else {
-                return;
-            };
-            // PNG/WebP/TIFF preserve alpha; JPEG/BMP composite onto the
-            // bg_color if the render is transparent (logic shared with GTK).
-            frontend::save_rgba_image(&path, img, self.params.transparent, self.params.bg_color)
+            guard.as_ref().map(Clone::clone)
         };
-
-        match result {
-            Ok(_) => {
-                self.remember_dir(&path);
-                self.notify(
-                    pointimg::frontend::gettext("Sauvegardé : {}")
-                        .replace("{}", &path.display().to_string()),
-                );
-            }
-            Err(e) => self.notify_error(
-                pointimg::frontend::gettext("Erreur sauvegarde : {e}")
-                    .replace("{e}", &e.to_string()),
-            ),
-        }
+        let Some(image) = image else {
+            return;
+        };
+        let transparent = self.params.transparent;
+        let bg = self.params.bg_color;
+        let slot = Clone::clone(&self.save_result_slot);
+        let thread_path = path.clone();
+        let ctx = ctx.clone();
+        self.status = pointimg::frontend::gettext("Export en cours…").to_string();
+        std::thread::spawn(move || {
+            let result = frontend::save_rgba_image(&thread_path, &image, transparent, bg)
+                .map_err(|e| e.to_string());
+            *slot.lock().unwrap_or_else(|e| e.into_inner()) = Some((thread_path, false, result));
+            ctx.request_repaint();
+        });
     }
 
-    pub(crate) fn save_svg(&mut self, path: PathBuf) {
+    pub(crate) fn save_svg(&mut self, path: PathBuf, ctx: &egui::Context) {
         let path = frontend::ensure_svg_extension(path);
         if !io::confirm_overwrite(&path) {
             self.notify(frontend::msg::save_cancelled());
             return;
         }
         // Reusing the dots of the last render avoids restarting the pipeline.
-        let rendered = {
-            let dots_guard = self.last_dots.lock().unwrap_or_else(|e| e.into_inner());
-            match (dots_guard.as_ref(), &self.src_rgb) {
-                (Some(dots), Some(src)) => {
-                    let (w, h) = src.dimensions();
-                    Some(filter::render_svg_from_dots(w, h, dots, &self.params))
-                }
-                _ => None,
-            }
-        };
-        if let Some(rendered) = rendered {
-            self.write_svg(path, rendered);
+        // The SVG string generation is also moved off the UI thread: it walks
+        // every dot and can allocate a large string.
+        let dots = self
+            .last_dots
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .clone();
+        let Some(src) = self.src_rgb.as_ref() else {
+            self.notify(frontend::msg::open_first());
             return;
+        };
+        let (w, h) = src.dimensions();
+        // The cached dots avoid a full source clone; only the fallback path
+        // (no dots yet) needs the image.
+        let fallback = if dots.is_none() {
+            Some(src.clone())
+        } else {
+            None
+        };
+        if self.params.dithering != filter::Dithering::Off {
+            self.notify(pointimg::frontend::gettext(
+                "Le dithering n'est pas reproduit dans l'export SVG.",
+            ));
         }
-        // Fallback: no cached dot, we recompute from the source image.
-        if let Some(src) = &self.src_rgb {
-            let rendered = filter::render_svg(src, &self.params);
-            self.write_svg(path, rendered);
-        }
+        let params = self.params.clone();
+        let slot = Clone::clone(&self.save_result_slot);
+        let thread_path = path.clone();
+        let ctx = ctx.clone();
+        self.status = pointimg::frontend::gettext("Export SVG en cours…").to_string();
+        std::thread::spawn(move || {
+            let rendered = match dots.as_deref() {
+                Some(dots) => filter::render_svg_from_dots(w, h, dots, &params),
+                None => match fallback.as_ref() {
+                    Some(src) => filter::render_svg(src, &params),
+                    None => Err(anyhow::anyhow!(pointimg::frontend::gettext("Image vide"))),
+                },
+            };
+            let result = rendered.map_err(|e| e.to_string()).and_then(|svg| {
+                frontend::atomic_text_write(&thread_path, &svg).map_err(|e| e.to_string())
+            });
+            *slot.lock().unwrap_or_else(|e| e.into_inner()) = Some((thread_path, true, result));
+            ctx.request_repaint();
+        });
     }
 
-    fn write_svg(&mut self, path: PathBuf, rendered: anyhow::Result<String>) {
-        match rendered {
-            Ok(svg) => match frontend::atomic_text_write(&path, &svg) {
-                Ok(_) => {
-                    self.remember_dir(&path);
-                    self.notify(
-                        pointimg::frontend::gettext("SVG sauvegardé : {}")
-                            .replace("{}", &path.display().to_string()),
-                    );
-                }
-                Err(e) => self.notify_error(
-                    pointimg::frontend::gettext("Erreur écriture SVG : {e}")
-                        .replace("{e}", &e.to_string()),
-                ),
-            },
-            Err(e) => self.notify_error(
-                pointimg::frontend::gettext("Erreur rendu SVG : {e}")
-                    .replace("{e}", &e.to_string()),
-            ),
+    /// Publishes the completion of a background export.
+    pub(crate) fn poll_save_result(&mut self) {
+        let outcome = self
+            .save_result_slot
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .take();
+        let Some((path, svg, result)) = outcome else {
+            return;
+        };
+        match result {
+            Ok(()) => {
+                self.remember_dir(&path);
+                let message = if svg {
+                    pointimg::frontend::gettext("SVG sauvegardé : {}")
+                } else {
+                    pointimg::frontend::gettext("Sauvegardé : {}")
+                };
+                self.notify(message.replace("{}", &path.display().to_string()));
+            }
+            Err(e) => {
+                let message = if svg {
+                    pointimg::frontend::gettext("Erreur écriture SVG : {e}").replace("{e}", &e)
+                } else {
+                    pointimg::frontend::gettext("Erreur sauvegarde : {e}").replace("{e}", &e)
+                };
+                self.notify_error(message);
+            }
         }
     }
 }

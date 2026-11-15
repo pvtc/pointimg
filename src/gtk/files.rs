@@ -3,12 +3,14 @@
 use std::cell::RefCell;
 use std::path::PathBuf;
 use std::rc::Rc;
+use std::sync::Arc;
 
 use adw::prelude::*;
 
 use pointimg::filter;
 use pointimg::frontend;
 
+use crate::Msg;
 use crate::State;
 use crate::actions;
 use crate::controls::Widgets;
@@ -57,7 +59,7 @@ fn default_name(state: &Rc<RefCell<State>>, ext: &str) -> String {
 }
 
 /// Remembers the folder of a written file, for the next dialogs.
-fn remember_dir(state: &Rc<RefCell<State>>, path: &std::path::Path) {
+pub(crate) fn remember_dir(state: &Rc<RefCell<State>>, path: &std::path::Path) {
     if let Some(parent) = path.parent().filter(|p| p.is_dir()) {
         state.borrow_mut().last_dir = Some(parent.to_path_buf());
     }
@@ -340,9 +342,9 @@ fn apply_preset(path: PathBuf, state: &Rc<RefCell<State>>, widgets: &Rc<Widgets>
 
 pub(crate) fn save_result(path: PathBuf, state: &Rc<RefCell<State>>, widgets: &Rc<Widgets>) {
     let path = frontend::ensure_image_extension(path, "png");
-    let result = {
+    let (image, transparent, bg, tx) = {
         let st = state.borrow();
-        let Some(img) = st.result.as_ref() else {
+        let Some(image) = st.result.as_ref().map(Arc::clone) else {
             preview::notify(
                 state,
                 widgets,
@@ -361,51 +363,73 @@ pub(crate) fn save_result(path: PathBuf, state: &Rc<RefCell<State>>, widgets: &R
             );
             return;
         }
-        frontend::save_rgba_image(&path, img, st.params.transparent, st.params.bg_color)
+        (
+            image,
+            st.params.transparent,
+            st.params.bg_color,
+            st.tx.clone(),
+        )
     };
-    report_save(
-        result.map_err(|e| e.to_string()),
-        &path,
-        || {
-            pointimg::frontend::gettext("Sauvegardé : {}")
-                .replace("{}", &path.display().to_string())
-        },
-        |e| pointimg::frontend::gettext("Erreur de sauvegarde : {e}").replace("{e}", e),
-        state,
-        widgets,
-    );
+    state.borrow_mut().status = pointimg::frontend::gettext("Export en cours…").to_string();
+    preview::update_status_labels(state, widgets);
+    // Encoding can take seconds (lossless WebP): never block the GTK loop.
+    let thread_path = path.clone();
+    std::thread::spawn(move || {
+        let result = frontend::save_rgba_image(&thread_path, &image, transparent, bg)
+            .map_err(|e| e.to_string());
+        let _ = tx.send_blocking(Msg::Saved {
+            path: thread_path,
+            svg: false,
+            result,
+        });
+    });
 }
 
 pub(crate) fn save_svg(path: PathBuf, state: &Rc<RefCell<State>>, widgets: &Rc<Widgets>) {
     let path = frontend::ensure_svg_extension(path);
-    let result = {
+    let (dots, src, dims, params, tx) = {
         let st = state.borrow();
         let Some(src) = st.src_rgb.as_ref() else {
-            drop(st);
             preview::notify(state, widgets, &frontend::msg::open_first());
             return;
         };
-        let (w, h) = src.dimensions();
-        let rendered = if let Some(dots) = st.last_dots.as_ref() {
-            filter::render_svg_from_dots(w, h, dots, &st.params)
-        } else {
-            filter::render_svg(src, &st.params)
-        };
-        rendered
-            .map_err(|e| e.to_string())
-            .and_then(|svg| frontend::atomic_text_write(&path, &svg).map_err(|e| e.to_string()))
+        let dims = src.dimensions();
+        (
+            st.last_dots.clone(),
+            // Keep the source only for the fallback path (no cached dots).
+            st.last_dots.is_none().then(|| src.clone()),
+            dims,
+            st.params.clone(),
+            st.tx.clone(),
+        )
     };
-    report_save(
-        result,
-        &path,
-        || {
-            pointimg::frontend::gettext("SVG sauvegardé : {}")
-                .replace("{}", &path.display().to_string())
-        },
-        |e| pointimg::frontend::gettext("Erreur d'écriture SVG : {e}").replace("{e}", e),
-        state,
-        widgets,
-    );
+    if params.dithering != filter::Dithering::Off {
+        preview::notify(
+            state,
+            widgets,
+            pointimg::frontend::gettext("Le dithering n'est pas reproduit dans l'export SVG."),
+        );
+    }
+    state.borrow_mut().status = pointimg::frontend::gettext("Export SVG en cours…").to_string();
+    preview::update_status_labels(state, widgets);
+    let thread_path = path.clone();
+    std::thread::spawn(move || {
+        let rendered = match dots.as_deref() {
+            Some(dots) => filter::render_svg_from_dots(dims.0, dims.1, dots, &params),
+            None => match src.as_ref() {
+                Some(src) => filter::render_svg(src, &params),
+                None => Err(anyhow::anyhow!(pointimg::frontend::gettext("Image vide"))),
+            },
+        };
+        let result = rendered.map_err(|e| e.to_string()).and_then(|svg| {
+            frontend::atomic_text_write(&thread_path, &svg).map_err(|e| e.to_string())
+        });
+        let _ = tx.send_blocking(Msg::Saved {
+            path: thread_path,
+            svg: true,
+            result,
+        });
+    });
 }
 
 /// Export without a dialog: next to the source image, as PNG.

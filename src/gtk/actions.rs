@@ -10,7 +10,7 @@ use std::time::{Duration, Instant};
 use gtk::glib;
 use gtk::prelude::*;
 
-use image::RgbImage;
+use image::{ImageReader, RgbImage};
 use pointimg::filter::{self, Algorithm, FilterParams};
 use pointimg::frontend;
 pub(crate) use pointimg::frontend::{
@@ -193,11 +193,6 @@ pub(crate) fn start_density(state: &Rc<RefCell<State>>) {
 /// Loads an image from disk.
 pub(crate) fn load_image(path: PathBuf, state: &Rc<RefCell<State>>, widgets: &Rc<Widgets>) {
     // If the image belongs to the current folder, we move onto it.
-    //
-    // The read borrow is explicitly closed before the write: inside an
-    // `if let`, the scrutinee temporary stays alive until the end of the
-    // block, and the following `borrow_mut()` panicked — which made ←/→
-    // navigation inside a folder unusable.
     let index = {
         let st = state.borrow();
         st.folder_images
@@ -208,77 +203,124 @@ pub(crate) fn load_image(path: PathBuf, state: &Rc<RefCell<State>>, widgets: &Rc
         state.borrow_mut().folder_index = Some(index);
     }
 
-    match pointimg::color::decode_to_srgb(&path, "auto") {
-        Ok((img, profile_converted, was_resized)) => {
-            let (orig_w, orig_h) = (img.width(), img.height());
-            {
-                let mut st = state.borrow_mut();
-                st.generation.fetch_add(1, Ordering::AcqRel);
-                st.cancel.store(true, Ordering::SeqCst);
-                st.computing = false;
-                st.restart_pending = false;
-                st.user_cancelled = false;
-                if let Some(id) = st.finalize_pending.take() {
-                    id.remove();
-                }
-                let rgb = filter::flatten_to_rgb(&img, st.params.bg_color);
-                let dims = rgb.dimensions();
-                st.src_dynamic = Some(img);
-                st.src_rgb = Some(rgb);
-                st.src_path = Some(path.clone());
-                // Desktop recent document: this is what feeds the
-                // "Recent images" group of the welcome state at the next
-                // launch.
-                crate::recent::remember(&path);
-                // Size of the original file: reference for the export size.
-                st.source_size = std::fs::metadata(&path).ok().map(|meta| meta.len());
-                st.export_sizes = None;
-                st.src_texture = None;
-                st.result = None;
-                st.result_texture = None;
-                st.result_is_final = true;
-                st.last_dots = None;
-                st.density_image = None;
-                st.density_data = None;
-                st.density_texture = None;
-                st.history.clear();
-                st.future.clear();
-                st.last_committed = Some(st.params.clone());
-                st.source_was_resized = was_resized;
-                st.status = if was_resized {
-                    {
-                        let mut s = pointimg::frontend::gettext(
-                            "Image réduite de {orig_w}x{orig_h} à {}x{} pour respecter la mémoire.",
-                        )
-                        .to_string();
-                        s = s.replace("{orig_w}", &orig_w.to_string());
-                        s = s.replace("{orig_h}", &orig_h.to_string());
-                        s = s.replacen("{}", &dims.0.to_string(), 1);
-                        s = s.replacen("{}", &dims.1.to_string(), 1);
-                        s
-                    }
-                } else if profile_converted {
-                    pointimg::frontend::gettext("Profil ICC converti vers sRGB.").to_string()
-                } else {
-                    pointimg::frontend::gettext("Image chargée : {}")
-                        .replace("{}", &path.display().to_string())
-                };
-            }
-            preview::refresh_preview(state, widgets);
-            preview::refresh_actions(state, widgets);
-            preview::update_status_labels(state, widgets);
-            start_density(state);
-            start_compute(state, widgets);
-        }
-        Err(e) => {
-            preview::notify_error(
-                state,
-                widgets,
-                &pointimg::frontend::gettext("Erreur de chargement : {e}")
-                    .replace("{e}", &e.to_string()),
-            );
-        }
+    let (generation, tx) = {
+        let mut st = state.borrow_mut();
+        st.load_generation += 1;
+        st.status = pointimg::frontend::gettext("Chargement de l'image…").to_string();
+        (st.load_generation, st.tx.clone())
+    };
+    preview::update_status_labels(state, widgets);
+    // Decoding (and the ICC transform) can freeze the interface for a large
+    // image; it runs off the GTK thread and is published through the channel.
+    std::thread::spawn(move || {
+        let result = load_from_disk(&path);
+        let _ = tx.send_blocking(Msg::Loaded { generation, result });
+    });
+}
+
+/// Reads and decodes an image for the background loader.
+fn load_from_disk(path: &std::path::Path) -> Result<crate::LoadedImage, String> {
+    let dimensions = ImageReader::open(path)
+        .map_err(|e| {
+            pointimg::frontend::gettext("Erreur lecture dimensions : {e}")
+                .replace("{e}", &e.to_string())
+        })?
+        .into_dimensions()
+        .map_err(|e| {
+            pointimg::frontend::gettext("Erreur lecture dimensions : {e}")
+                .replace("{e}", &e.to_string())
+        })?;
+    if dimensions.0 == 0 || dimensions.1 == 0 {
+        return Err(pointimg::frontend::gettext("Image vide ({}x{})")
+            .replacen("{}", &dimensions.0.to_string(), 1)
+            .replacen("{}", &dimensions.1.to_string(), 1));
     }
+    let (image, profile_converted, was_resized) = pointimg::color::decode_to_srgb(path, "auto")
+        .map_err(|e| {
+            pointimg::frontend::gettext("Erreur de chargement : {e}").replace("{e}", &e.to_string())
+        })?;
+    Ok(crate::LoadedImage {
+        path: path.to_path_buf(),
+        image,
+        original_dimensions: dimensions,
+        profile_converted,
+        was_resized,
+        source_size: std::fs::metadata(path).ok().map(|meta| meta.len()),
+    })
+}
+
+/// Applies a decoded image on the GTK thread.
+pub(crate) fn finish_load(
+    loaded: crate::LoadedImage,
+    state: &Rc<RefCell<State>>,
+    widgets: &Rc<Widgets>,
+) {
+    let crate::LoadedImage {
+        path,
+        image,
+        original_dimensions,
+        profile_converted,
+        was_resized,
+        source_size,
+    } = loaded;
+    let (orig_w, orig_h) = original_dimensions;
+    {
+        let mut st = state.borrow_mut();
+        st.generation.fetch_add(1, Ordering::AcqRel);
+        st.cancel.store(true, Ordering::SeqCst);
+        st.computing = false;
+        st.restart_pending = false;
+        st.user_cancelled = false;
+        if let Some(id) = st.finalize_pending.take() {
+            id.remove();
+        }
+        let rgb = filter::flatten_to_rgb(&image, st.params.bg_color);
+        let dims = rgb.dimensions();
+        st.src_dynamic = Some(image);
+        st.src_rgb = Some(rgb);
+        st.src_path = Some(path.clone());
+        // Desktop recent document: this is what feeds the "Recent images"
+        // group of the welcome state at the next launch.
+        crate::recent::remember(&path);
+        // Size of the original file: reference for the export size.
+        st.source_size = source_size;
+        st.export_sizes = None;
+        st.src_texture = None;
+        st.result = None;
+        st.result_texture = None;
+        st.result_is_final = true;
+        st.last_dots = None;
+        st.density_image = None;
+        st.density_data = None;
+        st.density_texture = None;
+        st.history.clear();
+        st.future.clear();
+        st.last_committed = Some(st.params.clone());
+        st.source_was_resized = was_resized;
+        st.status = if was_resized {
+            {
+                let mut s = pointimg::frontend::gettext(
+                    "Image réduite de {orig_w}x{orig_h} à {}x{} pour respecter la mémoire.",
+                )
+                .to_string();
+                s = s.replace("{orig_w}", &orig_w.to_string());
+                s = s.replace("{orig_h}", &orig_h.to_string());
+                s = s.replacen("{}", &dims.0.to_string(), 1);
+                s = s.replacen("{}", &dims.1.to_string(), 1);
+                s
+            }
+        } else if profile_converted {
+            pointimg::frontend::gettext("Profil ICC converti vers sRGB.").to_string()
+        } else {
+            pointimg::frontend::gettext("Image chargée : {}")
+                .replace("{}", &path.display().to_string())
+        };
+    }
+    preview::refresh_preview(state, widgets);
+    preview::refresh_actions(state, widgets);
+    preview::update_status_labels(state, widgets);
+    start_density(state);
+    start_compute(state, widgets);
 }
 
 /// Opens a folder: loads the first image and enables navigation.
@@ -319,10 +361,15 @@ pub(crate) fn step_folder(delta: i32, state: &Rc<RefCell<State>>, widgets: &Rc<W
 
 /// Rebuilds `src_rgb` from `src_dynamic` (useful when the background color changes).
 pub(crate) fn refresh_src_rgb(state: &Rc<RefCell<State>>, widgets: &Rc<Widgets>) {
-    let Some(img) = state.borrow().src_dynamic.clone() else {
-        return;
+    // Keep the borrow scoped: cloning the `DynamicImage` here copied up to
+    // ~32 MB on every undo/reset/background change.
+    let rgb = {
+        let st = state.borrow();
+        let Some(img) = st.src_dynamic.as_ref() else {
+            return;
+        };
+        filter::flatten_to_rgb(img, st.params.bg_color)
     };
-    let rgb = filter::flatten_to_rgb(&img, state.borrow().params.bg_color);
     {
         let mut st = state.borrow_mut();
         st.src_rgb = Some(rgb);
@@ -592,6 +639,15 @@ pub(crate) fn copy_to_clipboard(state: &Rc<RefCell<State>>, widgets: &Rc<Widgets
 /// Retrieves a message from a worker and updates the interface.
 pub(crate) fn handle_message(msg: Msg, state: &Rc<RefCell<State>>, widgets: &Rc<Widgets>) {
     match msg {
+        Msg::Loaded { generation, result } => {
+            if state.borrow().load_generation != generation {
+                return;
+            }
+            match result {
+                Ok(loaded) => finish_load(loaded, state, widgets),
+                Err(e) => preview::notify_error(state, widgets, &e),
+            }
+        }
         Msg::Progress {
             generation,
             done,
@@ -730,6 +786,29 @@ pub(crate) fn handle_message(msg: Msg, state: &Rc<RefCell<State>>, widgets: &Rc<
             }
             preview::update_status_labels(state, widgets);
         }
+        Msg::Saved { path, svg, result } => match result {
+            Ok(()) => {
+                crate::files::remember_dir(state, &path);
+                let message = if svg {
+                    pointimg::frontend::gettext("SVG sauvegardé : {}")
+                } else {
+                    pointimg::frontend::gettext("Sauvegardé : {}")
+                };
+                preview::notify(
+                    state,
+                    widgets,
+                    &message.replace("{}", &path.display().to_string()),
+                );
+            }
+            Err(e) => {
+                let message = if svg {
+                    pointimg::frontend::gettext("Erreur d'écriture SVG : {e}").replace("{e}", &e)
+                } else {
+                    pointimg::frontend::gettext("Erreur de sauvegarde : {e}").replace("{e}", &e)
+                };
+                preview::notify_error(state, widgets, &message);
+            }
+        },
     }
 }
 

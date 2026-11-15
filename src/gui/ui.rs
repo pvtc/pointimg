@@ -154,6 +154,8 @@ impl eframe::App for App {
         }
 
         self.poll_worker_results();
+        self.poll_save_result();
+        self.poll_load_result(&ctx);
         self.collect_errors();
         self.expire_toasts(&ctx);
         self.handle_pending_open(&ctx);
@@ -403,13 +405,13 @@ impl App {
             self.choose_folder(ctx);
         }
         if keys.save && self.has_final_result() {
-            self.choose_export();
+            self.choose_export(ctx);
         }
         if keys.save_svg && self.has_final_result() {
-            self.choose_svg_export();
+            self.choose_svg_export(ctx);
         }
         if keys.quick_save {
-            self.quick_export();
+            self.quick_export(ctx);
         }
         if keys.copy && !wants_text {
             self.copy_to_clipboard(ctx);
@@ -608,7 +610,7 @@ impl App {
                     .on_hover_text(export_hint)
                     .clicked()
                 {
-                    self.choose_export();
+                    self.choose_export(ctx);
                 }
                 if ui
                     .add_enabled(
@@ -620,7 +622,7 @@ impl App {
                     ))
                     .clicked()
                 {
-                    self.choose_svg_export();
+                    self.choose_svg_export(ctx);
                 }
                 if ui
                     .add_enabled(

@@ -1,0 +1,45 @@
+# cargo-deny configuration.
+#
+# `cargo audit` covers vulnerabilities; this adds license, duplicate-version
+# and source-origin checks. Run with:
+#
+#   cargo deny check
+#
+# The ignored advisory is a maintenance notice, not a vulnerability:
+# - RUSTSEC-2021-0153 (`encoding`): pulled by `gettext`, used for catalogue
+#   parsing only. Replacing it would mean replacing `gettext` itself.
+#   (`paste`, RUSTSEC-2024-0436, is only pulled by the optional AVIF backend
+#   and is ignored in `audit.toml` for `cargo audit`.)
+
+[advisories]
+ignore = ["RUSTSEC-2021-0153"]
+
+[licenses]
+allow = [
+    "MIT",
+    "Apache-2.0",
+    "Apache-2.0 WITH LLVM-exception",
+    "Zlib",
+    "BSD-2-Clause",
+    "BSD-3-Clause",
+    "BSL-1.0",
+    "ISC",
+    "Unlicense",
+    "CC0-1.0",
+    "Unicode-3.0",
+    "NCSA",
+    "MPL-2.0",
+    "0BSD",
+    "CDLA-Permissive-2.0",
+]
+confidence-threshold = 0.9
+
+[bans]
+# Duplicate versions are reported but do not fail the build: transitive
+# duplicates are common and not actionable from here.
+multiple-versions = "warn"
+wildcards = "deny"
+
+[sources]
+unknown-registry = "deny"
+unknown-git = "deny"

@@ -8,6 +8,8 @@ on:
 
 permissions:
   contents: write
+  id-token: write
+  attestations: write
 
 jobs:
   build-cli-linux:
@@ -15,8 +17,11 @@ jobs:
     strategy:
       matrix:
         include:
+          # Build the x86_64 CLI on the oldest runner still maintained:
+          # binaries then target the oldest practical glibc, instead of only
+          # running on the release runner's distribution.
           - target: x86_64-unknown-linux-gnu
-            os: ubuntu-24.04
+            os: ubuntu-22.04
           - target: aarch64-unknown-linux-gnu
             os: ubuntu-24.04-arm
     runs-on: ${{ matrix.os }}
@@ -100,7 +105,9 @@ jobs:
 
   build-gui-linux:
     name: Build GUI - Linux x86_64
-    runs-on: ubuntu-24.04
+    # The egui front-end does not link GTK: building it on Ubuntu 22.04 keeps
+    # the glibc requirement lower than a 24.04 build would.
+    runs-on: ubuntu-22.04
     steps:
       - uses: actions/checkout@v7
       
@@ -116,7 +123,7 @@ jobs:
         uses: dtolnay/rust-toolchain@stable
       
       - name: Build GUI
-        run: cargo build --release --locked --bin pointimg-gui
+        run: cargo build --release --locked --features gui --bin pointimg-gui
       
       # The binary alone is not enough to be installable on a Linux desktop:
       # the tarball ships the .desktop file, the hicolor icons (regenerated from
@@ -151,10 +158,10 @@ jobs:
           targets: x86_64-apple-darwin,aarch64-apple-darwin
       
       - name: Build GUI (x86_64)
-        run: cargo build --release --locked --bin pointimg-gui --target x86_64-apple-darwin
+        run: cargo build --release --locked --features gui --bin pointimg-gui --target x86_64-apple-darwin
       
       - name: Build GUI (aarch64)
-        run: cargo build --release --locked --bin pointimg-gui --target aarch64-apple-darwin
+        run: cargo build --release --locked --features gui --bin pointimg-gui --target aarch64-apple-darwin
       
       - name: Create Universal Binary
         run: |
@@ -186,7 +193,7 @@ jobs:
         uses: dtolnay/rust-toolchain@stable
       
       - name: Build GUI
-        run: cargo build --release --locked --bin pointimg-gui
+        run: cargo build --release --locked --features gui --bin pointimg-gui
       
       - name: Package
         run: |
@@ -202,6 +209,9 @@ jobs:
 
   build-gtk-linux:
     name: Build GTK4 GUI - Linux x86_64
+    # GTK 4.14 / libadwaita 1.5 are only packaged from Ubuntu 24.04 on. This
+    # tarball therefore targets recent distributions; the Flatpak manifest in
+    # `packaging/flatpak/` is the portable alternative.
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v7
@@ -265,7 +275,15 @@ jobs:
             | sort -z \
             | xargs -0 sha256sum > SHA256SUMS
           sha256sum -c SHA256SUMS
-      
+
+      # Signed build provenance: users can verify that an artifact was built
+      # by this workflow from this repository, without trusting the release
+      # page. See `gh attestation verify <file> --repo pvtc/pointimg`.
+      - name: Attest build provenance
+        uses: actions/attest-build-provenance@v4
+        with:
+          subject-path: artifacts/**/*
+
       - name: Create Release
         uses: softprops/action-gh-release@v3
         with:
