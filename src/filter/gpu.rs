@@ -16,6 +16,19 @@ use wgpu::util::DeviceExt;
 // driver crash while keeping the parallelism inside the shader.
 static GPU_LOCK: Mutex<()> = Mutex::new(());
 
+/// Instance restricted to the backends that reliably expose compute shaders.
+///
+/// The GL backend is left out: drivers such as NVIDIA in GL 3.3 mode expose a
+/// GL adapter that cannot create a compute-capable device, and wgpu prefers it
+/// over a perfectly usable Vulkan adapter (hardware or software, e.g. lavapipe
+/// in CI). The GUI keeps GL as a fallback for presentation; the compute path
+/// does not need it.
+fn compute_instance() -> wgpu::Instance {
+    let mut descriptor = wgpu::InstanceDescriptor::new_without_display_handle();
+    descriptor.backends = wgpu::Backends::PRIMARY;
+    wgpu::Instance::new(descriptor)
+}
+
 #[repr(C)]
 #[derive(Clone, Copy, Pod, Zeroable)]
 struct Params {
@@ -29,7 +42,7 @@ struct Params {
 /// path of the density map. The CPU/GPU parity tests rely on it to disable
 /// themselves cleanly without a GPU.
 pub fn gpu_available() -> bool {
-    let instance = wgpu::Instance::new(wgpu::InstanceDescriptor::new_without_display_handle());
+    let instance = compute_instance();
     request_adapter_on(&instance).is_some()
 }
 
@@ -102,7 +115,7 @@ fn compute_raw_variance(src: &RgbImage) -> Option<Vec<f32>> {
         return Some(Vec::new());
     }
 
-    let instance = wgpu::Instance::new(wgpu::InstanceDescriptor::new_without_display_handle());
+    let instance = compute_instance();
     let adapter = request_adapter_on(&instance)?;
     let device_result: Result<(wgpu::Device, wgpu::Queue), wgpu::RequestDeviceError> =
         block_on_pumped(

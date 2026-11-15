@@ -62,7 +62,17 @@ rayon = "1"
 log = "0.4"
 env_logger = "0.11"
 egui = { version = "0.37", optional = true }
-wgpu = { version = "30", default-features = false, features = ["wgsl"], optional = true }
+# Backends must be listed explicitly: `default-features = false` is kept to
+# avoid pulling the whole wgpu surface, but the `gui` build then inherits the
+# backends from `egui-wgpu` (`wgpu/default`). Without them, `--features gpu`
+# alone instantiates wgpu with no backend and panics at the first `Instance`.
+wgpu = { version = "30", default-features = false, features = [
+    "wgsl",
+    "vulkan",
+    "gles",
+    "metal",
+    "dx12",
+], optional = true }
 pollster = { version = "1", optional = true }
 bytemuck = { version = "1", features = ["derive"], optional = true }
 rfd = { version = "0.18", optional = true }

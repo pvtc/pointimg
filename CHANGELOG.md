@@ -95,6 +95,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **GPU parity job**: `--features gpu` built `wgpu` without any backend
+  (`default-features = false` only kept `wgsl`), so the first `Instance` panicked
+  with “No wgpu backend feature … was enabled”; the GUI build masked it by
+  inheriting `wgpu/default` through `egui-wgpu`. The Vulkan, GL, Metal and DX12
+  backends are now enabled explicitly, and the compute path restricts the
+  instance to `Backends::PRIMARY`: `request_adapter` otherwise preferred a
+  GL 3.3 adapter unable to create a compute device, even when a working Vulkan
+  adapter (lavapipe in CI) was available. The parity test now treats a missing
+  adapter as a failure when `POINTIMG_GPU` is set, so the job can no longer go
+  green by skipping the comparison.
 - **Documentation drift**: `ARCHITECTURE.md` and `ARCHITECTURE.fr.md` described a
   single dithering algorithm (there are four), omitted `halftone` from
   `--algorithm` and the ICC profile flags; `CONTRIBUTING` now lists the fuzz

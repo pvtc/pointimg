@@ -1,9 +1,11 @@
 //! CPU/GPU parity of the density map (feature `gpu`).
 //!
 //! The test disables itself cleanly if no GPU adapter is available
-//! (CI without a GPU, missing drivers): it first checks `gpu_available()`.
-//! It compares `gpu::compute_density_map_raw` directly against the CPU path,
-//! without depending on the `POINTIMG_GPU` opt-in environment variable.
+//! (desktop without a GPU, missing drivers): it first checks `gpu_available()`.
+//! It compares `gpu::compute_density_map_raw` directly against the CPU path.
+//! When `POINTIMG_GPU` is set — as the dedicated CI job does — a missing
+//! adapter is a failure instead of a skip, so the job cannot go green without
+//! actually comparing the two paths.
 
 use image::RgbImage;
 use pointimg::filter::{compute_density_map_cpu, gpu};
@@ -26,6 +28,10 @@ fn max_abs_diff(a: &[f32], b: &[f32]) -> f32 {
 #[test]
 fn gpu_density_map_matches_cpu() {
     if !gpu::gpu_available() {
+        assert!(
+            std::env::var_os("POINTIMG_GPU").is_none(),
+            "POINTIMG_GPU est défini mais aucun adaptateur GPU n'est disponible"
+        );
         eprintln!("skip : aucun adaptateur GPU disponible");
         return;
     }
