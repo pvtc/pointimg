@@ -468,11 +468,7 @@ pub fn validate_params(w: u32, h: u32, params: &FilterParams) -> Result<()> {
 /// Validates the dimensions before decoding the image into memory.
 pub fn validate_image_dimensions(w: u32, h: u32) -> Result<()> {
     if w == 0 || h == 0 {
-        return Err(anyhow!(
-            crate::frontend::gettext("Image vide ({}x{})")
-                .replacen("{}", &w.to_string(), 1)
-                .replacen("{}", &h.to_string(), 1)
-        ));
+        return Err(anyhow!(crate::frontend::msg::empty_image(w, h)));
     }
     if w > MAX_IMAGE_DIMENSION || h > MAX_IMAGE_DIMENSION {
         return Err(anyhow!(

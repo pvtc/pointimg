@@ -457,7 +457,7 @@ pub(crate) fn update_overlays(state: &Rc<RefCell<State>>, widgets: &Rc<Widgets>)
 
 fn window_subtitle(state: &State) -> String {
     match state.src_rgb.as_ref() {
-        Some(src) => pointimg::frontend::describe_image_size(src.width(), src.height()),
+        Some(src) => frontend::describe_image_size(src.width(), src.height()),
         None => frontend::gettext("Aucune image").to_string(),
     }
 }

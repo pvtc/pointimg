@@ -334,7 +334,7 @@ pub fn derived_export_name(src: Option<&Path>, extension: &str) -> String {
 /// This is the question "ai-je personnalisé un preset ?", asked three
 /// times in each interface. A single definition prevents a fourth call from
 /// reinventing the comparison.
-pub fn matching_preset_index(params: &filter::FilterParams) -> Option<usize> {
+pub fn matching_preset_index(params: &FilterParams) -> Option<usize> {
     filter::builtin_presets()
         .iter()
         .position(|preset| preset.params == *params)
@@ -408,6 +408,12 @@ pub mod msg {
     /// The user gave up on overwriting a file.
     pub fn save_cancelled() -> String {
         super::gettext("Sauvegarde annulée.").to_string()
+    }
+    /// The decoded image has no pixels (shared by the CLI and both GUIs).
+    pub fn empty_image(width: u32, height: u32) -> String {
+        super::gettext("Image vide ({}x{})")
+            .replacen("{}", &width.to_string(), 1)
+            .replacen("{}", &height.to_string(), 1)
     }
 }
 
@@ -1253,7 +1259,7 @@ mod tests {
     /// when the scale does not reduce anything.
     #[test]
     fn le_sous_echantillonnage_respecte_lechelle() {
-        let img = image::RgbImage::new(200, 100);
+        let img = RgbImage::new(200, 100);
         assert_eq!(downsample(&img, 1.0).dimensions(), (200, 100));
         assert_eq!(downsample(&img, 2.0).dimensions(), (200, 100));
         let reduit = downsample(&img, 0.5);
@@ -1375,7 +1381,7 @@ static LOCALE: std::sync::atomic::AtomicU8 = std::sync::atomic::AtomicU8::new(0)
 
 /// Currently selected interface language.
 pub fn locale() -> Locale {
-    match LOCALE.load(std::sync::atomic::Ordering::Relaxed) {
+    match LOCALE.load(Ordering::Relaxed) {
         1 => Locale::Fr,
         _ => Locale::En,
     }
@@ -1388,7 +1394,7 @@ pub fn set_locale(locale: Locale) {
             Locale::En => 0,
             Locale::Fr => 1,
         },
-        std::sync::atomic::Ordering::Relaxed,
+        Ordering::Relaxed,
     );
 }
 

@@ -129,7 +129,7 @@ fn halftone_off_path_unchanged() {
     // Make sure HalftoneMode::Off falls back to the historical pipeline.
     let img = checkerboard(32, 32);
     let params = FilterParams {
-        algorithm: pointimg::filter::Algorithm::Grid,
+        algorithm: filter::Algorithm::Grid,
         cols: 8,
         rng_seed: Some(1),
         halftone: HalftoneMode::Off,

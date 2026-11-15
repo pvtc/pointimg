@@ -85,7 +85,7 @@ pub(crate) fn cancel_compute(state: &Rc<RefCell<State>>, widgets: &Rc<Widgets>) 
     }
     let mut st = state.borrow_mut();
     st.user_cancelled = true;
-    st.status = pointimg::frontend::gettext("Annulation…").to_string();
+    st.status = frontend::gettext("Annulation…").to_string();
     drop(st);
     state.borrow().cancel.store(true, Ordering::SeqCst);
     preview::update_status_labels(state, widgets);
@@ -122,7 +122,7 @@ pub(crate) fn start_compute(state: &Rc<RefCell<State>>, widgets: &Rc<Widgets>) {
         st.status = if full {
             frontend::msg::computing()
         } else {
-            pointimg::frontend::gettext("Aperçu rapide en cours…").to_string()
+            frontend::gettext("Aperçu rapide en cours…").to_string()
         };
         st.last_dots = None;
         (
@@ -206,7 +206,7 @@ pub(crate) fn load_image(path: PathBuf, state: &Rc<RefCell<State>>, widgets: &Rc
     let (generation, tx) = {
         let mut st = state.borrow_mut();
         st.load_generation += 1;
-        st.status = pointimg::frontend::gettext("Chargement de l'image…").to_string();
+        st.status = frontend::gettext("Chargement de l'image…").to_string();
         (st.load_generation, st.tx.clone())
     };
     preview::update_status_labels(state, widgets);
@@ -218,26 +218,23 @@ pub(crate) fn load_image(path: PathBuf, state: &Rc<RefCell<State>>, widgets: &Rc
     });
 }
 
+/// Message shared by the two dimension-reading failures of `load_from_disk`.
+fn dimensions_error(error: impl std::fmt::Display) -> String {
+    frontend::gettext("Erreur lecture dimensions : {e}").replace("{e}", &error.to_string())
+}
+
 /// Reads and decodes an image for the background loader.
 fn load_from_disk(path: &std::path::Path) -> Result<crate::LoadedImage, String> {
     let dimensions = ImageReader::open(path)
-        .map_err(|e| {
-            pointimg::frontend::gettext("Erreur lecture dimensions : {e}")
-                .replace("{e}", &e.to_string())
-        })?
+        .map_err(dimensions_error)?
         .into_dimensions()
-        .map_err(|e| {
-            pointimg::frontend::gettext("Erreur lecture dimensions : {e}")
-                .replace("{e}", &e.to_string())
-        })?;
+        .map_err(dimensions_error)?;
     if dimensions.0 == 0 || dimensions.1 == 0 {
-        return Err(pointimg::frontend::gettext("Image vide ({}x{})")
-            .replacen("{}", &dimensions.0.to_string(), 1)
-            .replacen("{}", &dimensions.1.to_string(), 1));
+        return Err(frontend::msg::empty_image(dimensions.0, dimensions.1));
     }
     let (image, profile_converted, was_resized) = pointimg::color::decode_to_srgb(path, "auto")
         .map_err(|e| {
-            pointimg::frontend::gettext("Erreur de chargement : {e}").replace("{e}", &e.to_string())
+            frontend::gettext("Erreur de chargement : {e}").replace("{e}", &e.to_string())
         })?;
     Ok(crate::LoadedImage {
         path: path.to_path_buf(),
@@ -299,7 +296,7 @@ pub(crate) fn finish_load(
         st.source_was_resized = was_resized;
         st.status = if was_resized {
             {
-                let mut s = pointimg::frontend::gettext(
+                let mut s = frontend::gettext(
                     "Image réduite de {orig_w}x{orig_h} à {}x{} pour respecter la mémoire.",
                 )
                 .to_string();
@@ -310,10 +307,9 @@ pub(crate) fn finish_load(
                 s
             }
         } else if profile_converted {
-            pointimg::frontend::gettext("Profil ICC converti vers sRGB.").to_string()
+            frontend::gettext("Profil ICC converti vers sRGB.").to_string()
         } else {
-            pointimg::frontend::gettext("Image chargée : {}")
-                .replace("{}", &path.display().to_string())
+            frontend::gettext("Image chargée : {}").replace("{}", &path.display().to_string())
         };
     }
     preview::refresh_preview(state, widgets);
@@ -507,11 +503,7 @@ pub(crate) fn reset_params(state: &Rc<RefCell<State>>, widgets: &Rc<Widgets>) {
     sections::update_sections(widgets, &state.borrow().params);
     refresh_src_rgb(state, widgets);
     request_compute(state, widgets);
-    preview::notify(
-        state,
-        widgets,
-        pointimg::frontend::gettext("Réglages réinitialisés."),
-    );
+    preview::notify(state, widgets, frontend::gettext("Réglages réinitialisés."));
 }
 
 /// Restores a single section (↺ button in the group header).
@@ -530,7 +522,7 @@ pub(crate) fn reset_section(
         preview::notify(
             state,
             widgets,
-            pointimg::frontend::gettext("Section déjà par défaut."),
+            frontend::gettext("Section déjà par défaut."),
         );
         return;
     }
@@ -546,11 +538,7 @@ pub(crate) fn reset_section(
     sections::update_sections(widgets, &state.borrow().params);
     refresh_src_rgb(state, widgets);
     request_compute(state, widgets);
-    preview::notify(
-        state,
-        widgets,
-        pointimg::frontend::gettext("Section réinitialisée."),
-    );
+    preview::notify(state, widgets, frontend::gettext("Section réinitialisée."));
 }
 
 /// Applies a built-in preset (undoable, like any other change).
@@ -580,7 +568,7 @@ pub(crate) fn apply_preset(index: usize, state: &Rc<RefCell<State>>, widgets: &R
     preview::notify(
         state,
         widgets,
-        &pointimg::frontend::gettext("Preset « {} » appliqué.").replace("{}", preset.name),
+        &frontend::gettext("Preset « {} » appliqué.").replace("{}", preset.name),
     );
 }
 
@@ -623,7 +611,7 @@ pub(crate) fn copy_to_clipboard(state: &Rc<RefCell<State>>, widgets: &Rc<Widgets
         preview::notify(state, widgets, &frontend::msg::nothing_to_copy());
         return;
     };
-    let texture = crate::preview::rgba_to_texture(&result);
+    let texture = preview::rgba_to_texture(&result);
     // The clipboard is a service of the display: we go through the window to
     // be sure of being on the right display.
     widgets
@@ -698,10 +686,9 @@ pub(crate) fn handle_message(msg: Msg, state: &Rc<RefCell<State>>, widgets: &Rc<
                 st.last_compute_ms = Some(elapsed_ms);
                 st.result_revision += 1;
                 st.status = if full_resolution {
-                    pointimg::frontend::gettext("Calcul terminé.").to_string()
+                    frontend::gettext("Calcul terminé.").to_string()
                 } else {
-                    pointimg::frontend::gettext("Aperçu calculé — finalisation en cours…")
-                        .to_string()
+                    frontend::gettext("Aperçu calculé — finalisation en cours…").to_string()
                 };
                 if st.pending_commit {
                     commit_history(&mut st);
@@ -737,7 +724,7 @@ pub(crate) fn handle_message(msg: Msg, state: &Rc<RefCell<State>>, widgets: &Rc<
                 st.compute_start = None;
                 st.final_pass = false;
                 if cancelled && st.user_cancelled {
-                    st.status = pointimg::frontend::gettext("Calcul annulé.").to_string();
+                    st.status = frontend::gettext("Calcul annulé.").to_string();
                 } else if !cancelled {
                     st.status = message.clone();
                     error = Some(message);
@@ -790,9 +777,9 @@ pub(crate) fn handle_message(msg: Msg, state: &Rc<RefCell<State>>, widgets: &Rc<
             Ok(()) => {
                 crate::files::remember_dir(state, &path);
                 let message = if svg {
-                    pointimg::frontend::gettext("SVG sauvegardé : {}")
+                    frontend::gettext("SVG sauvegardé : {}")
                 } else {
-                    pointimg::frontend::gettext("Sauvegardé : {}")
+                    frontend::gettext("Sauvegardé : {}")
                 };
                 preview::notify(
                     state,
@@ -802,9 +789,9 @@ pub(crate) fn handle_message(msg: Msg, state: &Rc<RefCell<State>>, widgets: &Rc<
             }
             Err(e) => {
                 let message = if svg {
-                    pointimg::frontend::gettext("Erreur d'écriture SVG : {e}").replace("{e}", &e)
+                    frontend::gettext("Erreur d'écriture SVG : {e}").replace("{e}", &e)
                 } else {
-                    pointimg::frontend::gettext("Erreur de sauvegarde : {e}").replace("{e}", &e)
+                    frontend::gettext("Erreur de sauvegarde : {e}").replace("{e}", &e)
                 };
                 preview::notify_error(state, widgets, &message);
             }
@@ -850,7 +837,7 @@ fn run_worker(
                 let msg = if cancel.load(Ordering::SeqCst) {
                     Msg::Failed {
                         generation,
-                        message: pointimg::frontend::gettext("Annulé").to_string(),
+                        message: frontend::gettext("Annulé").to_string(),
                         cancelled: true,
                     }
                 } else {
@@ -867,8 +854,7 @@ fn run_worker(
             Err(e) => {
                 let _ = tx.send_blocking(Msg::Failed {
                     generation,
-                    message: pointimg::frontend::gettext("Erreur : {e}")
-                        .replace("{e}", &e.to_string()),
+                    message: frontend::gettext("Erreur : {e}").replace("{e}", &e.to_string()),
                     cancelled: filter::is_cancelled(&e),
                 });
             }
@@ -911,7 +897,7 @@ fn run_worker(
         Err(e) => {
             let _ = tx.send_blocking(Msg::Failed {
                 generation,
-                message: pointimg::frontend::gettext("Erreur : {e}").replace("{e}", &e.to_string()),
+                message: frontend::gettext("Erreur : {e}").replace("{e}", &e.to_string()),
                 cancelled: filter::is_cancelled(&e),
             });
         }
@@ -946,9 +932,9 @@ mod tests {
     fn reset_targets_are_scoped() {
         let default = FilterParams::default();
         let tuned = FilterParams {
-            algorithm: pointimg::filter::Algorithm::Grid,
+            algorithm: Algorithm::Grid,
             num_points: 4242,
-            dot_shape: pointimg::filter::DotShape::Square,
+            dot_shape: filter::DotShape::Square,
             palette_size: Some(5),
             bg_color: [1, 2, 3],
             gamma_correct: true,
@@ -987,7 +973,7 @@ mod tests {
     #[test]
     fn halftone_presets_carry_a_mode() {
         for preset in filter::builtin_presets() {
-            if preset.params.algorithm == pointimg::filter::Algorithm::Halftone {
+            if preset.params.algorithm == Algorithm::Halftone {
                 assert_matches!(
                     preset.params.halftone,
                     filter::HalftoneMode::Cmyk { .. } | filter::HalftoneMode::Dominant { .. }

@@ -35,7 +35,7 @@ pub fn gpu_available() -> bool {
 
 /// wgpu `block_on`: the instance must be "pumped" in the background, otherwise
 /// `request_adapter`/`request_device` never complete their future.
-fn block_on_pumped<F: std::future::Future>(instance: &wgpu::Instance, fut: F) -> F::Output {
+fn block_on_pumped<F: Future>(instance: &wgpu::Instance, fut: F) -> F::Output {
     use std::sync::Arc;
     use std::sync::atomic::{AtomicBool, Ordering};
     let instance = Arc::new(instance.clone());

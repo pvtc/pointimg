@@ -13,8 +13,8 @@
 //! subtractive mixing of inks on white paper correctly.
 
 use crate::filter::params::Dot;
-use image::RgbImage;
-use image::{Rgb, Rgb32FImage};
+use crate::filter::util::update_centers;
+use image::{ImageBuffer, Pixel, Rgb, Rgb32FImage, RgbImage};
 use serde::{Deserialize, Serialize};
 
 // ─── Public API types (they live here, referenced by params.rs) ───────────────
@@ -149,6 +149,36 @@ pub(crate) fn dots_halftone_linear(src: &Rgb32FImage, cfg: &HalftoneConfig) -> V
 /// RGB → CMYK conversion with simple Under Color Removal (UCR):
 /// when C+M+Y ≥ threshold, the neutral component (min(C,M,Y)) is replaced with Black.
 fn separate_cmyk(src: &RgbImage, angles: [f32; 4]) -> Vec<InkChannel> {
+    separate_cmyk_impl(src, angles, |p| {
+        [
+            p[0] as f32 / 255.0,
+            p[1] as f32 / 255.0,
+            p[2] as f32 / 255.0,
+        ]
+    })
+}
+
+/// Same separation on a linear-light `f32` image (gamma-corrected pipeline).
+fn separate_cmyk_linear(src: &Rgb32FImage, angles: [f32; 4]) -> Vec<InkChannel> {
+    separate_cmyk_impl(src, angles, |p| {
+        [
+            p[0].clamp(0.0, 1.0),
+            p[1].clamp(0.0, 1.0),
+            p[2].clamp(0.0, 1.0),
+        ]
+    })
+}
+
+/// Shared CMYK separation over any pixel type; `to_rgb` returns one pixel as
+/// RGB floats already normalized to `[0, 1]`.
+fn separate_cmyk_impl<P>(
+    src: &ImageBuffer<P, Vec<P::Subpixel>>,
+    angles: [f32; 4],
+    to_rgb: impl Fn(&P) -> [f32; 3],
+) -> Vec<InkChannel>
+where
+    P: Pixel,
+{
     let (w, h) = src.dimensions();
     let n = (w as usize) * (h as usize);
 
@@ -162,28 +192,18 @@ fn separate_cmyk(src: &RgbImage, angles: [f32; 4]) -> Vec<InkChannel> {
     const UCR_THRESHOLD: f32 = 0.30;
 
     for idx in 0..n {
-        let x = idx as u32 % w;
-        let y = idx as u32 / w;
-        let p = src.get_pixel(x, y);
-        let (r, g, b) = (
-            p[0] as f32 / 255.0,
-            p[1] as f32 / 255.0,
-            p[2] as f32 / 255.0,
-        );
+        let p = src.get_pixel(idx as u32 % w, idx as u32 / w);
+        let [r, g, b] = to_rgb(p);
         let k_inv = r.max(g).max(b);
         let k = 1.0 - k_inv; // "natural" black coverage (max RGB)
         // `scale` normalizes the CMY components by `1 - k = max(r,g,b)`.
         // - On pure black (k = 1.0), CMY is not needed → 0.
         // - On a saturated color (cyan = (0,1,1)), max=1 → scale=1.0, and c=1.
         //   The previous formula tested `k_inv < 1.0`, which skipped pure cyan.
-        let scale = if k < 1.0 { 1.0 / k_inv } else { 0.0 };
-        let mut c = (1.0 - r - k) * scale;
-        let mut m = (1.0 - g - k) * scale;
-        let mut y = (1.0 - b - k) * scale;
-        // Clamp for safety.
-        c = c.clamp(0.0, 1.0);
-        m = m.clamp(0.0, 1.0);
-        y = y.clamp(0.0, 1.0);
+        let scale = if k < 1.0 { 1.0 / k_inv.max(1e-6) } else { 0.0 };
+        let mut c = ((1.0 - r - k) * scale).clamp(0.0, 1.0);
+        let mut m = ((1.0 - g - k) * scale).clamp(0.0, 1.0);
+        let mut y = ((1.0 - b - k) * scale).clamp(0.0, 1.0);
         // UCR: when C+M+Y exceeds the threshold, remove the common part.
         let sum = c + m + y;
         if sum > UCR_THRESHOLD {
@@ -201,64 +221,6 @@ fn separate_cmyk(src: &RgbImage, angles: [f32; 4]) -> Vec<InkChannel> {
         k_cov[idx] = cov_u8(k);
     }
 
-    vec![
-        InkChannel {
-            color: [0, 255, 255],
-            angle_deg: angles[0],
-            coverage: c_cov,
-        },
-        InkChannel {
-            color: [255, 0, 255],
-            angle_deg: angles[1],
-            coverage: m_cov,
-        },
-        InkChannel {
-            color: [255, 255, 0],
-            angle_deg: angles[2],
-            coverage: y_cov,
-        },
-        InkChannel {
-            color: [0, 0, 0],
-            angle_deg: angles[3],
-            coverage: k_cov,
-        },
-    ]
-}
-
-fn separate_cmyk_linear(src: &Rgb32FImage, angles: [f32; 4]) -> Vec<InkChannel> {
-    let (w, h) = src.dimensions();
-    let n = (w as usize) * (h as usize);
-    let mut c_cov = vec![0u8; n];
-    let mut m_cov = vec![0u8; n];
-    let mut y_cov = vec![0u8; n];
-    let mut k_cov = vec![0u8; n];
-    const UCR_THRESHOLD: f32 = 0.30;
-
-    for idx in 0..n {
-        let p = src.get_pixel(idx as u32 % w, idx as u32 / w);
-        let (r, g, b) = (
-            p[0].clamp(0.0, 1.0),
-            p[1].clamp(0.0, 1.0),
-            p[2].clamp(0.0, 1.0),
-        );
-        let k_inv = r.max(g).max(b);
-        let k = 1.0 - k_inv;
-        let scale = if k < 1.0 { 1.0 / k_inv.max(1e-6) } else { 0.0 };
-        let mut c = ((1.0 - r - k) * scale).clamp(0.0, 1.0);
-        let mut m = ((1.0 - g - k) * scale).clamp(0.0, 1.0);
-        let mut y = ((1.0 - b - k) * scale).clamp(0.0, 1.0);
-        let sum = c + m + y;
-        if sum > UCR_THRESHOLD {
-            let grey = c.min(m).min(y);
-            c -= grey * 0.5;
-            m -= grey * 0.5;
-            y -= grey * 0.5;
-        }
-        c_cov[idx] = cov_u8(c);
-        m_cov[idx] = cov_u8(m);
-        y_cov[idx] = cov_u8(y);
-        k_cov[idx] = cov_u8(k);
-    }
     vec![
         InkChannel {
             color: [0, 255, 255],
@@ -377,25 +339,7 @@ fn compute_dominant_centers_dedup(
                 },
             );
 
-        let mut converged = true;
-        for i in 0..n {
-            let cnt = counts[i] as f64;
-            if cnt > 0.0 {
-                let new_c = [
-                    (sums[i][0] / cnt) as f32,
-                    (sums[i][1] / cnt) as f32,
-                    (sums[i][2] / cnt) as f32,
-                ];
-                let shift = (new_c[0] - centers[i][0]).powi(2)
-                    + (new_c[1] - centers[i][1]).powi(2)
-                    + (new_c[2] - centers[i][2]).powi(2);
-                if shift > 1.0 {
-                    converged = false;
-                }
-                centers[i] = new_c;
-            }
-        }
-        if converged {
+        if update_centers(&mut centers, &sums, &counts, 1.0) {
             break;
         }
     }

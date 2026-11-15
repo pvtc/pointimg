@@ -36,16 +36,11 @@ pub(crate) fn algorithm_from_index(i: u32) -> Algorithm {
 /// `sync_widgets` is not replayed after a change proposed by the user, since
 /// it serves to resynchronize the widgets *after* a programmatic change.
 pub(crate) fn sync_dithering_note(dithering: Dithering, widgets: &Widgets) {
-    widgets
-        .dots
-        .dithering
-        .set_subtitle(
-            dithering
-                .size_caveat_short()
-                .unwrap_or(pointimg::frontend::gettext(
-                    "Tramage de la palette quantifiée",
-                )),
-        );
+    widgets.dots.dithering.set_subtitle(
+        dithering
+            .size_caveat_short()
+            .unwrap_or(frontend::gettext("Tramage de la palette quantifiée")),
+    );
     widgets
         .dots
         .dithering
@@ -87,18 +82,12 @@ pub(crate) fn quality_from_index(index: u32) -> Quality {
 /// Short help displayed as the subtitle of the algorithm selector.
 fn algorithm_help(algorithm: Algorithm) -> &'static str {
     match algorithm {
-        Algorithm::Grid => {
-            pointimg::frontend::gettext("Une cellule = un point. Rapide et prévisible.")
-        }
-        Algorithm::Kmeans => pointimg::frontend::gettext("Répartition par couleur et position."),
-        Algorithm::Voronoi => {
-            pointimg::frontend::gettext("Lloyd pondéré : le rendu le plus « naturel ».")
-        }
-        Algorithm::Quadtree => {
-            pointimg::frontend::gettext("Plus de points là où l'image est détaillée.")
-        }
+        Algorithm::Grid => frontend::gettext("Une cellule = un point. Rapide et prévisible."),
+        Algorithm::Kmeans => frontend::gettext("Répartition par couleur et position."),
+        Algorithm::Voronoi => frontend::gettext("Lloyd pondéré : le rendu le plus « naturel »."),
+        Algorithm::Quadtree => frontend::gettext("Plus de points là où l'image est détaillée."),
         Algorithm::Halftone => {
-            pointimg::frontend::gettext("Rosette CMJN ou couleurs dominantes (offset print).")
+            frontend::gettext("Rosette CMJN ou couleurs dominantes (offset print).")
         }
     }
 }
@@ -425,16 +414,14 @@ mod tests {
     /// to the starting point, and both directions must loop.
     #[test]
     fn le_cycle_des_apercus_boucle_dans_les_deux_sens() {
-        let modes: Vec<ViewMode> = (0..VIEW_COUNT)
-            .map(pointimg::frontend::view_from_index)
-            .collect();
+        let modes: Vec<ViewMode> = (0..VIEW_COUNT).map(frontend::view_from_index).collect();
         let pas = |index: u32, delta: i32| -> u32 {
             (index as i32 + delta).rem_euclid(VIEW_COUNT as i32) as u32
         };
         for (index, mode) in modes.iter().enumerate() {
             let index = index as u32;
             assert_eq!(pas(pas(index, 1), -1), index, "aller-retour instable");
-            assert_eq!(*mode, pointimg::frontend::view_from_index(index));
+            assert_eq!(*mode, frontend::view_from_index(index));
         }
         // The last one loops back onto the first, and vice versa.
         assert_eq!(pas(0, -1), VIEW_COUNT - 1);

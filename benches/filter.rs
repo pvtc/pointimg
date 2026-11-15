@@ -67,10 +67,10 @@ fn bench_halftone(c: &mut Criterion) {
     let img = bench_image();
     let params = FilterParams {
         algorithm: Algorithm::Halftone,
-        halftone: pointimg::filter::HalftoneMode::Cmyk {
+        halftone: filter::HalftoneMode::Cmyk {
             angles: [15.0, 75.0, 0.0, 45.0],
         },
-        screening: pointimg::filter::Screening::Am,
+        screening: filter::Screening::Am,
         halftone_frequency: 60.0,
         rng_seed: Some(99),
         ..FilterParams::default()
@@ -85,11 +85,11 @@ fn bench_halftone(c: &mut Criterion) {
 
     let dominant = FilterParams {
         algorithm: Algorithm::Halftone,
-        halftone: pointimg::filter::HalftoneMode::Dominant {
+        halftone: filter::HalftoneMode::Dominant {
             n: 6,
             base_angle_deg: 15.0,
         },
-        screening: pointimg::filter::Screening::Am,
+        screening: filter::Screening::Am,
         halftone_frequency: 60.0,
         rng_seed: Some(99),
         ..FilterParams::default()
@@ -106,7 +106,7 @@ fn bench_rgba_palette_dither(c: &mut Criterion) {
         algorithm: Algorithm::Grid,
         cols: 60,
         palette_size: Some(8),
-        dithering: pointimg::filter::Dithering::FloydSteinberg,
+        dithering: filter::Dithering::FloydSteinberg,
         transparent: true,
         ..FilterParams::default()
     };
@@ -130,7 +130,7 @@ fn bench_density_map(c: &mut Criterion) {
 fn bench_memory_estimate(c: &mut Criterion) {
     let params = FilterParams {
         algorithm: Algorithm::Halftone,
-        halftone: pointimg::filter::HalftoneMode::Dominant {
+        halftone: filter::HalftoneMode::Dominant {
             n: 8,
             base_angle_deg: 0.0,
         },

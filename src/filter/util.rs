@@ -1,4 +1,4 @@
-use image::{DynamicImage, GenericImageView, Rgb, RgbImage};
+use image::{DynamicImage, GenericImageView, RgbImage};
 
 use super::halftone::HalftoneMode;
 use super::params::{Algorithm, FilterParams, MAX_IMAGE_DIMENSION, MAX_IMAGE_PIXELS};
@@ -87,21 +87,42 @@ pub fn flatten_to_rgb(img: &DynamicImage, bg: [u8; 3]) -> RgbImage {
     if !img.color().has_alpha() {
         return img.to_rgb8();
     }
-    // Convert to RGBA8 so compositing is uniform
-    let rgba = img.to_rgba8();
-    let (w, h) = rgba.dimensions();
-    RgbImage::from_fn(w, h, |x, y| {
-        let p = rgba.get_pixel(x, y);
-        let a = p[3] as f32 / 255.0;
-        let inv = 1.0 - a;
-        // Rounding (not truncation) to stay consistent with the compositing of
-        // `flatten_rgba_image` on the CLI side.
-        Rgb([
-            (p[0] as f32 * a + bg[0] as f32 * inv).round() as u8,
-            (p[1] as f32 * a + bg[1] as f32 * inv).round() as u8,
-            (p[2] as f32 * a + bg[2] as f32 * inv).round() as u8,
-        ])
-    })
+    // Convert to RGBA8 so compositing is uniform, then share the CLI/GUI
+    // compositing routine (rounding, not truncation).
+    crate::frontend::flatten_rgba_on_bg(&img.to_rgba8(), bg)
+}
+
+/// Folds one k-means iteration's sums into `centers` (in place) and reports
+/// convergence: `true` when no center moved by more than `threshold_sq`
+/// (squared RGB distance).
+///
+/// Shared by the dot-color quantizer (`render`) and the dominant-color
+/// separation (`halftone`), which only differ by their threshold.
+pub(crate) fn update_centers(
+    centers: &mut [[f32; 3]],
+    sums: &[[f64; 3]],
+    counts: &[u64],
+    threshold_sq: f32,
+) -> bool {
+    let mut converged = true;
+    for (center, (sum, &count)) in centers.iter_mut().zip(sums.iter().zip(counts)) {
+        let count = count as f64;
+        if count > 0.0 {
+            let new_center = [
+                (sum[0] / count) as f32,
+                (sum[1] / count) as f32,
+                (sum[2] / count) as f32,
+            ];
+            let shift = (new_center[0] - center[0]).powi(2)
+                + (new_center[1] - center[1]).powi(2)
+                + (new_center[2] - center[2]).powi(2);
+            if shift > threshold_sq {
+                converged = false;
+            }
+            *center = new_center;
+        }
+    }
+    converged
 }
 
 #[cfg(test)]

@@ -160,7 +160,7 @@ pub(crate) fn choose_open_image(
 ) {
     pick_file(
         window,
-        &Ask::new(pointimg::frontend::gettext("Ouvrir une image"), Pick::Open).filters(
+        &Ask::new(frontend::gettext("Ouvrir une image"), Pick::Open).filters(
             vec![make_filter("Images", &actions::SUPPORTED_IMAGE_EXTENSIONS)],
             None,
         ),
@@ -179,7 +179,7 @@ pub(crate) fn choose_open_folder(
     pick_file(
         window,
         &Ask::new(
-            pointimg::frontend::gettext("Ouvrir un dossier d'images"),
+            frontend::gettext("Ouvrir un dossier d'images"),
             Pick::Folder,
         ),
         state,
@@ -201,12 +201,9 @@ pub(crate) fn choose_save_image(
     let tiff = make_filter("TIFF", &["tif", "tiff"]);
     pick_file(
         window,
-        &Ask::new(
-            pointimg::frontend::gettext("Sauvegarder l'image"),
-            Pick::Save,
-        )
-        .named(default_name(state, "png"))
-        .filters(vec![png.clone(), jpeg, webp, bmp, tiff], Some(png.clone())),
+        &Ask::new(frontend::gettext("Sauvegarder l'image"), Pick::Save)
+            .named(default_name(state, "png"))
+            .filters(vec![png.clone(), jpeg, webp, bmp, tiff], Some(png.clone())),
         state,
         widgets,
         save_result,
@@ -222,12 +219,9 @@ pub(crate) fn choose_save_svg(
     let svg = make_filter("SVG", &["svg"]);
     pick_file(
         window,
-        &Ask::new(
-            pointimg::frontend::gettext("Sauvegarder le SVG"),
-            Pick::Save,
-        )
-        .named(default_name(state, "svg"))
-        .filters(vec![svg.clone()], Some(svg.clone())),
+        &Ask::new(frontend::gettext("Sauvegarder le SVG"), Pick::Save)
+            .named(default_name(state, "svg"))
+            .filters(vec![svg.clone()], Some(svg.clone())),
         state,
         widgets,
         save_svg,
@@ -240,11 +234,10 @@ pub(crate) fn choose_load_preset(
     state: &Rc<RefCell<State>>,
     widgets: &Rc<Widgets>,
 ) {
-    let toml = make_filter(pointimg::frontend::gettext("Preset TOML"), &["toml"]);
+    let toml = make_filter(frontend::gettext("Preset TOML"), &["toml"]);
     pick_file(
         window,
-        &Ask::new(pointimg::frontend::gettext("Charger un preset"), Pick::Open)
-            .filters(vec![toml], None),
+        &Ask::new(frontend::gettext("Charger un preset"), Pick::Open).filters(vec![toml], None),
         state,
         widgets,
         apply_preset,
@@ -257,15 +250,12 @@ pub(crate) fn choose_save_preset(
     state: &Rc<RefCell<State>>,
     widgets: &Rc<Widgets>,
 ) {
-    let toml = make_filter(pointimg::frontend::gettext("Preset TOML"), &["toml"]);
+    let toml = make_filter(frontend::gettext("Preset TOML"), &["toml"]);
     pick_file(
         window,
-        &Ask::new(
-            pointimg::frontend::gettext("Sauvegarder le preset"),
-            Pick::Save,
-        )
-        .named("preset.toml".to_string())
-        .filters(vec![toml.clone()], Some(toml.clone())),
+        &Ask::new(frontend::gettext("Sauvegarder le preset"), Pick::Save)
+            .named("preset.toml".to_string())
+            .filters(vec![toml.clone()], Some(toml.clone())),
         state,
         widgets,
         save_preset,
@@ -307,11 +297,8 @@ fn save_preset(path: PathBuf, state: &Rc<RefCell<State>>, widgets: &Rc<Widgets>)
     report_save(
         frontend::save_preset(&path, &state.borrow().params).map_err(|e| e.to_string()),
         &path,
-        || {
-            pointimg::frontend::gettext("Preset sauvegardé : {}")
-                .replace("{}", &path.display().to_string())
-        },
-        |e| pointimg::frontend::gettext("Erreur sauvegarde preset : {e}").replace("{e}", e),
+        || frontend::gettext("Preset sauvegardé : {}").replace("{}", &path.display().to_string()),
+        |e| frontend::gettext("Erreur sauvegarde preset : {e}").replace("{e}", e),
         state,
         widgets,
     );
@@ -323,8 +310,7 @@ fn apply_preset(path: PathBuf, state: &Rc<RefCell<State>>, widgets: &Rc<Widgets>
             remember_dir(state, &path);
             actions::apply_preset_params(
                 params,
-                &pointimg::frontend::gettext("Preset chargé : {}")
-                    .replace("{}", &path.display().to_string()),
+                &frontend::gettext("Preset chargé : {}").replace("{}", &path.display().to_string()),
                 state,
                 widgets,
             );
@@ -333,7 +319,7 @@ fn apply_preset(path: PathBuf, state: &Rc<RefCell<State>>, widgets: &Rc<Widgets>
             preview::notify_error(
                 state,
                 widgets,
-                &pointimg::frontend::gettext("Erreur de chargement du preset : {e}")
+                &frontend::gettext("Erreur de chargement du preset : {e}")
                     .replace("{e}", e.as_str()),
             );
         }
@@ -348,7 +334,7 @@ pub(crate) fn save_result(path: PathBuf, state: &Rc<RefCell<State>>, widgets: &R
             preview::notify(
                 state,
                 widgets,
-                pointimg::frontend::gettext("Aucun résultat à sauvegarder."),
+                frontend::gettext("Aucun résultat à sauvegarder."),
             );
             return;
         };
@@ -357,7 +343,7 @@ pub(crate) fn save_result(path: PathBuf, state: &Rc<RefCell<State>>, widgets: &R
             preview::notify_error(
                 state,
                 widgets,
-                pointimg::frontend::gettext(
+                frontend::gettext(
                     "Rendu en pleine résolution en cours — réessayez dans un instant.",
                 ),
             );
@@ -370,7 +356,7 @@ pub(crate) fn save_result(path: PathBuf, state: &Rc<RefCell<State>>, widgets: &R
             st.tx.clone(),
         )
     };
-    state.borrow_mut().status = pointimg::frontend::gettext("Export en cours…").to_string();
+    state.borrow_mut().status = frontend::gettext("Export en cours…").to_string();
     preview::update_status_labels(state, widgets);
     // Encoding can take seconds (lossless WebP): never block the GTK loop.
     let thread_path = path.clone();
@@ -407,10 +393,10 @@ pub(crate) fn save_svg(path: PathBuf, state: &Rc<RefCell<State>>, widgets: &Rc<W
         preview::notify(
             state,
             widgets,
-            pointimg::frontend::gettext("Le dithering n'est pas reproduit dans l'export SVG."),
+            frontend::gettext("Le dithering n'est pas reproduit dans l'export SVG."),
         );
     }
-    state.borrow_mut().status = pointimg::frontend::gettext("Export SVG en cours…").to_string();
+    state.borrow_mut().status = frontend::gettext("Export SVG en cours…").to_string();
     preview::update_status_labels(state, widgets);
     let thread_path = path.clone();
     std::thread::spawn(move || {
@@ -418,7 +404,7 @@ pub(crate) fn save_svg(path: PathBuf, state: &Rc<RefCell<State>>, widgets: &Rc<W
             Some(dots) => filter::render_svg_from_dots(dims.0, dims.1, dots, &params),
             None => match src.as_ref() {
                 Some(src) => filter::render_svg(src, &params),
-                None => Err(anyhow::anyhow!(pointimg::frontend::gettext("Image vide"))),
+                None => Err(anyhow::anyhow!(frontend::gettext("Image vide"))),
             },
         };
         let result = rendered.map_err(|e| e.to_string()).and_then(|svg| {
@@ -483,7 +469,7 @@ pub(crate) fn update_preset_row(state: &Rc<RefCell<State>>, widgets: &Rc<Widgets
     let selected = widgets.presets.preset_combo.selected();
     let preset = filter::builtin_presets();
     let subtitle = match selected {
-        0 => pointimg::frontend::gettext("Réglages personnalisés").to_string(),
+        0 => frontend::gettext("Réglages personnalisés").to_string(),
         index => preset
             .get(index as usize - 1)
             .map(|p| p.description.to_string())
@@ -499,7 +485,7 @@ pub(crate) fn update_preset_row(state: &Rc<RefCell<State>>, widgets: &Rc<Widgets
     let text = if matches_params {
         subtitle
     } else {
-        pointimg::frontend::gettext("{subtitle} (modifié)").replace("{subtitle}", &subtitle)
+        frontend::gettext("{subtitle} (modifié)").replace("{subtitle}", &subtitle)
     };
     widgets.presets.preset_combo.set_subtitle(&text);
     state.borrow_mut().updating = false;

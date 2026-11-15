@@ -187,7 +187,7 @@ fn apply_inner(src: &RgbImage, params: &FilterParams) -> Result<RgbImage> {
     match params.algorithm {
         Algorithm::Halftone if params.halftone != HalftoneMode::Off => {
             let (rgba, _) = apply_rgba_inner(src, params)?;
-            Ok(image::DynamicImage::ImageRgba8(rgba).to_rgb8())
+            Ok(DynamicImage::ImageRgba8(rgba).to_rgb8())
         }
         Algorithm::Grid => {
             let density = compute_density_map(src, params.variance_sensitivity);
@@ -316,12 +316,12 @@ where
         }
         if params.gamma_correct {
             let (rgba, dots) = apply_rgba(src, params)?;
-            let rgb = image::DynamicImage::ImageRgba8(rgba).to_rgb8();
+            let rgb = DynamicImage::ImageRgba8(rgba).to_rgb8();
             on_progress(1, 1, &rgb);
             return Ok((rgb, dots));
         }
         let (rgba, dots) = apply_rgba_inner(src, params)?;
-        let rgb = image::DynamicImage::ImageRgba8(rgba).to_rgb8();
+        let rgb = DynamicImage::ImageRgba8(rgba).to_rgb8();
         on_progress(1, 1, &rgb);
         return Ok((rgb, dots));
     }
@@ -393,7 +393,7 @@ where
     // `unreachable!()`.
     if params.algorithm == Algorithm::Halftone && params.halftone != HalftoneMode::Off {
         let (rgba, dots) = apply_rgba(src, params)?;
-        let rgb = image::DynamicImage::ImageRgba8(rgba).to_rgb8();
+        let rgb = DynamicImage::ImageRgba8(rgba).to_rgb8();
         on_iter(1, 1);
         return Ok((rgb, dots));
     }
@@ -467,7 +467,7 @@ where
         Previews::Each,
         // `on_progress` receives an image; the `Each` path always guarantees one.
         &mut |iter, total, preview: Option<&RgbImage>| {
-            (on_progress)(
+            on_progress(
                 iter,
                 total,
                 preview.expect("Previews::Each produit une image"),
@@ -490,7 +490,7 @@ pub fn apply(src: &RgbImage, params: &FilterParams) -> Result<RgbImage> {
         // `apply_with_progress_inner`.
         if params.algorithm == Algorithm::Halftone && params.halftone != HalftoneMode::Off {
             let (rgba, _) = apply_rgba(src, params)?;
-            return Ok(image::DynamicImage::ImageRgba8(rgba).to_rgb8());
+            return Ok(DynamicImage::ImageRgba8(rgba).to_rgb8());
         }
         let lin = gamma::srgb_to_linear_image(src);
         let params_lin = linearized_clone(params);
@@ -523,7 +523,7 @@ pub fn apply_rgba(src: &RgbImage, params: &FilterParams) -> Result<(image::RgbaI
             let lin = gamma::srgb_to_linear_f32_image(src);
             let params_lin = linearized_clone(params);
             let dots = dots_halftone_linear(&lin, &params_lin.halftone_config());
-            let image = render::render_halftone(src, &dots, params);
+            let image = render_halftone(src, &dots, params);
             return Ok((image, dots));
         }
         let lin = gamma::srgb_to_linear_image(src);

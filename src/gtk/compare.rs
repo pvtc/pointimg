@@ -88,12 +88,12 @@ fn rgba_checker_surface(img: &RgbaImage) -> Option<cairo::ImageSurface> {
 
 /// Builds the "comparaison" pane.
 pub(crate) fn build_pane() -> ComparePane {
-    let caption = gtk::Label::new(Some(pointimg::frontend::gettext("Comparaison")));
+    let caption = gtk::Label::new(Some(frontend::gettext("Comparaison")));
     caption.set_xalign(0.0);
     caption.add_css_class("dim-label");
     caption.set_margin_start(8);
     caption.set_margin_top(4);
-    caption.set_tooltip_text(Some(pointimg::frontend::gettext(
+    caption.set_tooltip_text(Some(frontend::gettext(
         "Source à gauche du curseur, résultat à droite — glissez pour le déplacer.",
     )));
 
@@ -120,7 +120,7 @@ pub(crate) fn build_pane() -> ComparePane {
 
     // Movable cursor: this is a display setting, it lives in the widget
     // (mirrored into `CompareData` to survive a redraw).
-    let set_split = std::rc::Rc::new({
+    let set_split = Rc::new({
         let data = Rc::clone(&data);
         let area = area.clone();
         move |fraction: f64| {
@@ -140,7 +140,7 @@ pub(crate) fn build_pane() -> ComparePane {
         });
         area.add_controller(click);
 
-        let set_start = std::rc::Rc::new(set_split.clone());
+        let set_start = Rc::new(set_split.clone());
         let area_ref = area.clone();
         let drag = gtk::GestureDrag::new();
         drag.set_button(1);

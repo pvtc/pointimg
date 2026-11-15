@@ -1209,8 +1209,8 @@ fn sync_radii(state: &St, widgets: &Wi) {
 fn sync_radius_pair(
     min_row: &adw::SpinRow,
     max_row: &adw::SpinRow,
-    min_slider: &crate::controls::ValueSlider,
-    max_slider: &crate::controls::ValueSlider,
+    min_slider: &ValueSlider,
+    max_slider: &ValueSlider,
     min: f32,
     max: f32,
 ) {

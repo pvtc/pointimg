@@ -7,8 +7,21 @@ use eframe::egui;
 use super::App;
 use super::convert::rgba_to_color_image_checker;
 use super::io;
+use crate::SaveResultSlot;
 use pointimg::filter;
 use pointimg::frontend;
+
+/// Publishes a finished background export and wakes the UI up.
+fn publish_export(
+    slot: &SaveResultSlot,
+    ctx: &egui::Context,
+    path: PathBuf,
+    is_svg: bool,
+    result: Result<(), String>,
+) {
+    *slot.lock().unwrap_or_else(|e| e.into_inner()) = Some((path, is_svg, result));
+    ctx.request_repaint();
+}
 
 impl App {
     /// Memorizes the directory of a written file, offered to the next dialogs.
@@ -117,7 +130,7 @@ impl App {
     pub(crate) fn save_result(&mut self, path: PathBuf, ctx: &egui::Context) {
         // We never export a downscaled preview by inadvertence.
         if !self.has_final_result() {
-            self.status = pointimg::frontend::gettext(
+            self.status = frontend::gettext(
                 "Rendu en pleine résolution en cours — réessayez dans un instant.",
             )
             .to_string();
@@ -143,12 +156,11 @@ impl App {
         let slot = Clone::clone(&self.save_result_slot);
         let thread_path = path.clone();
         let ctx = ctx.clone();
-        self.status = pointimg::frontend::gettext("Export en cours…").to_string();
+        self.status = frontend::gettext("Export en cours…").to_string();
         std::thread::spawn(move || {
             let result = frontend::save_rgba_image(&thread_path, &image, transparent, bg)
                 .map_err(|e| e.to_string());
-            *slot.lock().unwrap_or_else(|e| e.into_inner()) = Some((thread_path, false, result));
-            ctx.request_repaint();
+            publish_export(&slot, &ctx, thread_path, false, result);
         });
     }
 
@@ -179,7 +191,7 @@ impl App {
             None
         };
         if self.params.dithering != filter::Dithering::Off {
-            self.notify(pointimg::frontend::gettext(
+            self.notify(frontend::gettext(
                 "Le dithering n'est pas reproduit dans l'export SVG.",
             ));
         }
@@ -187,20 +199,19 @@ impl App {
         let slot = Clone::clone(&self.save_result_slot);
         let thread_path = path.clone();
         let ctx = ctx.clone();
-        self.status = pointimg::frontend::gettext("Export SVG en cours…").to_string();
+        self.status = frontend::gettext("Export SVG en cours…").to_string();
         std::thread::spawn(move || {
             let rendered = match dots.as_deref() {
                 Some(dots) => filter::render_svg_from_dots(w, h, dots, &params),
                 None => match fallback.as_ref() {
                     Some(src) => filter::render_svg(src, &params),
-                    None => Err(anyhow::anyhow!(pointimg::frontend::gettext("Image vide"))),
+                    None => Err(anyhow::anyhow!(frontend::gettext("Image vide"))),
                 },
             };
             let result = rendered.map_err(|e| e.to_string()).and_then(|svg| {
                 frontend::atomic_text_write(&thread_path, &svg).map_err(|e| e.to_string())
             });
-            *slot.lock().unwrap_or_else(|e| e.into_inner()) = Some((thread_path, true, result));
-            ctx.request_repaint();
+            publish_export(&slot, &ctx, thread_path, true, result);
         });
     }
 
@@ -218,17 +229,17 @@ impl App {
             Ok(()) => {
                 self.remember_dir(&path);
                 let message = if svg {
-                    pointimg::frontend::gettext("SVG sauvegardé : {}")
+                    frontend::gettext("SVG sauvegardé : {}")
                 } else {
-                    pointimg::frontend::gettext("Sauvegardé : {}")
+                    frontend::gettext("Sauvegardé : {}")
                 };
                 self.notify(message.replace("{}", &path.display().to_string()));
             }
             Err(e) => {
                 let message = if svg {
-                    pointimg::frontend::gettext("Erreur écriture SVG : {e}").replace("{e}", &e)
+                    frontend::gettext("Erreur écriture SVG : {e}").replace("{e}", &e)
                 } else {
-                    pointimg::frontend::gettext("Erreur sauvegarde : {e}").replace("{e}", &e)
+                    frontend::gettext("Erreur sauvegarde : {e}").replace("{e}", &e)
                 };
                 self.notify_error(message);
             }

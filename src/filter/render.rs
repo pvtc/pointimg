@@ -1,4 +1,5 @@
 use crate::filter::params::{Dot, DotShape, FilterParams};
+use crate::filter::util::update_centers;
 use image::{Rgb, RgbImage, Rgba, RgbaImage};
 use rayon::prelude::*;
 use std::f32::consts::PI;
@@ -337,25 +338,7 @@ fn compute_centers(dots: &[Dot], n: usize) -> Vec<[f32; 3]> {
             counts[best] += 1;
         }
 
-        let mut converged = true;
-        for i in 0..n {
-            let cnt = counts[i] as f64;
-            if cnt > 0.0 {
-                let new_center = [
-                    (sums[i][0] / cnt) as f32,
-                    (sums[i][1] / cnt) as f32,
-                    (sums[i][2] / cnt) as f32,
-                ];
-                let shift = (new_center[0] - centers[i][0]).powi(2)
-                    + (new_center[1] - centers[i][1]).powi(2)
-                    + (new_center[2] - centers[i][2]).powi(2);
-                if shift > 0.5 {
-                    converged = false;
-                }
-                centers[i] = new_center;
-            }
-        }
-        if converged {
+        if update_centers(&mut centers, &sums, &counts, 0.5) {
             break;
         }
     }
@@ -402,13 +385,12 @@ pub(crate) fn quantize_dots(dots: &[Dot], n: usize) -> Vec<Dot> {
             let best_color = centers
                 .iter()
                 .min_by(|a, b| {
-                    let da = (a[0] - dot.color[0] as f32).powi(2)
-                        + (a[1] - dot.color[1] as f32).powi(2)
-                        + (a[2] - dot.color[2] as f32).powi(2);
-                    let db = (b[0] - dot.color[0] as f32).powi(2)
-                        + (b[1] - dot.color[1] as f32).powi(2)
-                        + (b[2] - dot.color[2] as f32).powi(2);
-                    da.total_cmp(&db)
+                    let distance = |c: &[f32; 3]| {
+                        (c[0] - dot.color[0] as f32).powi(2)
+                            + (c[1] - dot.color[1] as f32).powi(2)
+                            + (c[2] - dot.color[2] as f32).powi(2)
+                    };
+                    distance(a).total_cmp(&distance(b))
                 })
                 .map(|c| [c[0] as u8, c[1] as u8, c[2] as u8])
                 .unwrap_or(dot.color);

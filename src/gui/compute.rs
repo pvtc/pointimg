@@ -70,7 +70,7 @@ impl App {
         self.status = if full_resolution {
             frontend::msg::computing().to_string()
         } else {
-            pointimg::frontend::gettext("Aperçu rapide en cours…").to_string()
+            frontend::gettext("Aperçu rapide en cours…").to_string()
         };
         self.compute_start = Some(Instant::now());
         self.last_param_change = None;
@@ -146,6 +146,16 @@ fn run_compute_worker(
     let mut last_preview = Instant::now();
     let preview_interval = Duration::from_millis(100);
 
+    // A failure is only surfaced if this generation still owns the result and
+    // the user did not cancel it in the meantime.
+    let report_failure = |error: &dyn std::fmt::Display| {
+        if generation_is_current(&compute_generation, generation) && !cancel.load(Ordering::Relaxed)
+        {
+            *status_err.lock().unwrap_or_else(|e| e.into_inner()) =
+                Some(frontend::gettext("Erreur : {e}").replace("{e}", &error.to_string()));
+        }
+    };
+
     // Halftone + transparent: no progressive preview, we call apply_rgba once
     // and convert to RGBA for storage.
     if params.transparent || params.algorithm == Algorithm::Halftone {
@@ -161,15 +171,7 @@ fn run_compute_worker(
                     result_is_final.store(full_resolution, Ordering::Release);
                 }
             }
-            Err(e) => {
-                if generation_is_current(&compute_generation, generation)
-                    && !cancel.load(Ordering::Relaxed)
-                {
-                    *status_err.lock().unwrap_or_else(|e| e.into_inner()) = Some(
-                        pointimg::frontend::gettext("Erreur : {e}").replace("{e}", &e.to_string()),
-                    );
-                }
-            }
+            Err(e) => report_failure(&e),
         }
         computing.store(false, Ordering::Release);
         ctx.request_repaint();
@@ -244,15 +246,7 @@ fn run_compute_worker(
                 result_is_final.store(full_resolution, Ordering::Release);
             }
         }
-        Err(e) => {
-            if generation_is_current(&compute_generation, generation)
-                && !cancel.load(Ordering::Relaxed)
-            {
-                *status_err.lock().unwrap_or_else(|e| e.into_inner()) = Some(
-                    pointimg::frontend::gettext("Erreur : {e}").replace("{e}", &e.to_string()),
-                );
-            }
-        }
+        Err(e) => report_failure(&e),
     }
     computing.store(false, Ordering::Release);
     ctx.request_repaint();

@@ -860,7 +860,7 @@ mod proprietes {
                 let reference = mean_luma(&source);
                 let mut out = source.clone();
                 // `Dithering::Off`: nearest neighbor, without any diffusion.
-                apply(&mut out, &palette, Dithering::Off);
+                apply(&mut out, &palette, Off);
                 let delta = (mean_luma(&out) - reference).abs();
                 assert!(
                     delta < 6.0,

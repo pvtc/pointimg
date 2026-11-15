@@ -184,7 +184,7 @@ pub(crate) struct LoadedImage {
 /// Slot filled by the background image loader.
 type LoadSlot = Arc<Mutex<Option<(u64, Result<LoadedImage, String>)>>>;
 /// Slot filled by the background exporter.
-type SaveResultSlot = Arc<Mutex<Option<(PathBuf, bool, Result<(), String>)>>>;
+pub(crate) type SaveResultSlot = Arc<Mutex<Option<(PathBuf, bool, Result<(), String>)>>>;
 
 /// Application state: shares the type between the `app`, `compute`,
 /// `save` and `ui` modules (one `impl App` per module for its part of logic).
@@ -283,7 +283,7 @@ pub(crate) struct App {
     pub export_sizes: Option<pointimg::export::ExportSizes>,
     pub export_sizes_revision: u64,
     pub export_sizes_generation: Arc<AtomicU64>,
-    pub export_sizes_computing: Arc<std::sync::atomic::AtomicBool>,
+    pub export_sizes_computing: Arc<AtomicBool>,
     pub export_sizes_slot: Arc<Mutex<Option<pointimg::export::ExportSizes>>>,
 
     /// Result of the last completed background export: path, whether it was
@@ -379,7 +379,7 @@ impl Default for App {
             export_sizes: None,
             export_sizes_revision: 0,
             export_sizes_generation: Arc::new(AtomicU64::new(0)),
-            export_sizes_computing: Arc::new(std::sync::atomic::AtomicBool::new(false)),
+            export_sizes_computing: Arc::new(AtomicBool::new(false)),
             export_sizes_slot: Arc::new(Mutex::new(None)),
             save_result_slot: Arc::new(Mutex::new(None)),
             view_mode: ViewMode::Compare,

@@ -426,9 +426,7 @@ fn load_from_disk(path: &Path) -> Result<super::LoadedImage, String> {
             frontend::gettext("Erreur lecture dimensions : {e}").replace("{e}", &e.to_string())
         })?;
     if dimensions.0 == 0 || dimensions.1 == 0 {
-        return Err(frontend::gettext("Image vide ({}x{})")
-            .replacen("{}", &dimensions.0.to_string(), 1)
-            .replacen("{}", &dimensions.1.to_string(), 1));
+        return Err(frontend::msg::empty_image(dimensions.0, dimensions.1));
     }
     let (image, profile_converted, was_resized) = pointimg::color::decode_to_srgb(path, "auto")
         .map_err(|e| frontend::gettext("Erreur chargement : {e}").replace("{e}", &e.to_string()))?;
