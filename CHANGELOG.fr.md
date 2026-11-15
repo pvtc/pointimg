@@ -13,10 +13,11 @@ et ce projet adhère au [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
   nécessaire ici : `egui::Id::new` → `egui::Id::unique`, renommé en amont.
   Dependabot groupe désormais les deux crates : séparées, chaque mise à jour
   laissait le lockfile incohérent et tous les contrôles `--locked` échouaient.
-- **Dépendances** : `log` 0.4.35, `moxcms` 0.9.2 et `toml` 1.2 ; GitHub Actions
-  `checkout` v7, `upload-artifact` v7 et `download-artifact` v8 (leurs entrées
-  `name`/`path` sont inchangées). La limite Dependabot `github-actions` passe de
-  2 à 5 : à 2, la mise à jour de `download-artifact` était silencieusement omise.
+- **Dépendances** : `log` 0.4.35, `moxcms` 0.9.2, `toml` 1.2.1 et `rfd` 0.18 ;
+  GitHub Actions `checkout` v7, `upload-artifact` v7, `download-artifact` v8
+  et `action-gh-release` v3 (les entrées utilisées sont inchangées). La limite
+  Dependabot `github-actions` passe de 2 à 5 : à 2, plusieurs mises à jour
+  étaient silencieusement omises.
 
 ### Ajouté
 
